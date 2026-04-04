@@ -1,30 +1,49 @@
 import { fetchTeams, fetchScoreboard } from './espn.js';
+import { sqliteRepository, closeDb } from '../storage/sqlite.js';
+import { formatTeamsTable, formatGamesTable, formatScrapeSummary } from '../cli/tables.js';
 import type { Sport } from '../schema/provenance.js';
 
 const sport: Sport = (process.argv[2] as Sport) || 'nfl';
+const allSports: Sport[] = sport === 'all' as unknown as Sport
+  ? ['nfl', 'nba', 'mlb', 'nhl', 'mls']
+  : [sport];
+
+async function scrapeSport(s: Sport): Promise<{ teams: number; games: number }> {
+  const teams = await fetchTeams(s);
+  for (const t of teams) await sqliteRepository.upsertTeam(t);
+
+  const games = await fetchScoreboard(s);
+  for (const g of games) await sqliteRepository.upsertGame(g);
+
+  return { teams: teams.length, games: games.length };
+}
 
 async function main() {
-  console.log(`\n=== Fetching ${sport.toUpperCase()} teams ===`);
-  const teams = await fetchTeams(sport);
-  console.log(`Got ${teams.length} teams:`);
-  for (const t of teams.slice(0, 5)) {
-    console.log(`  ${t.id} — ${t.name} (${t.city}) [${t.conference ?? '?'} / ${t.division ?? '?'}]`);
-  }
-  if (teams.length > 5) console.log(`  ... and ${teams.length - 5} more`);
+  const results: { sport: Sport; teams: number; games: number }[] = [];
 
-  console.log(`\n=== Fetching ${sport.toUpperCase()} scoreboard ===`);
-  const games = await fetchScoreboard(sport);
-  console.log(`Got ${games.length} games:`);
-  for (const g of games.slice(0, 5)) {
-    const score = g.score ? `${g.score.away}-${g.score.home}` : 'TBD';
-    console.log(`  ${g.awayTeamId} @ ${g.homeTeamId} — ${g.status} (${score})`);
+  for (const s of allSports) {
+    const result = await scrapeSport(s);
+    results.push({ sport: s, ...result });
   }
-  if (games.length > 5) console.log(`  ... and ${games.length - 5} more`);
 
-  console.log(`\nDone. Check data/logs/scrape-log.jsonl for entries.`);
+  // CLI output
+  for (const s of allSports) {
+    const teams = await sqliteRepository.getTeamsBySport(s);
+    formatTeamsTable(s, teams);
+
+    const games = await sqliteRepository.getGamesByDate(new Date().toISOString().slice(0, 10));
+    const sportGames = games.filter(g => g.sport === s);
+    if (sportGames.length > 0) {
+      formatGamesTable(s, sportGames);
+    }
+  }
+
+  formatScrapeSummary(results);
+  closeDb();
 }
 
 main().catch((err) => {
   console.error('Scrape failed:', err.message);
+  closeDb();
   process.exit(1);
 });

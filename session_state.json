@@ -1,23 +1,28 @@
 {
-  "current_phase": "foundation",
-  "next_session_type": "scrape",
-  "next_action": "Run first ESPN scrape for NFL teams and current scoreboard, validate data quality gate",
+  "current_phase": "collection",
+  "next_session_type": "analyze",
+  "next_action": "Accumulate 2-3 weeks of data, then run first ratchet hypothesis on NBA home win rate",
   "pipeline": {
-    "phase": "idle",
-    "last_scrape": null,
+    "phase": "scraping",
+    "last_scrape": "2026-04-04T10:51:15Z",
     "active_hypotheses": 0,
-    "pending_analyses": []
+    "pending_analyses": ["NBA home win rate baseline"]
   },
   "sources_status": {
-    "espn": "untested",
-    "odds_api": "untested",
+    "espn": "active",
+    "odds_api": "configured",
     "sportsdata_io": "untested",
     "sports_reference": "untested"
   },
   "portfolio": {
-    "total_scrapes": 0,
+    "total_scrapes": 18,
     "total_analyses": 0,
     "total_predictions": 0,
     "active_hypotheses": 0
+  },
+  "database": {
+    "teams": 92,
+    "games": 25,
+    "sports_active": ["nfl", "nba", "mlb"]
   }
 }

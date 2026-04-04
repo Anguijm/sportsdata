@@ -6,13 +6,18 @@
   "scripts": {
     "type-check": "tsc --noEmit",
     "build": "tsc",
-    "scrape": "node --loader ts-node/esm src/scrapers/espn.ts",
-    "analyze": "node --loader ts-node/esm src/analysis/correlations.ts",
-    "ratchet": "node --loader ts-node/esm src/orchestration/ratchet.ts"
+    "scrape": "npx tsx src/scrapers/run-espn.ts",
+    "scrape:all": "npx tsx src/scrapers/run-espn.ts all",
+    "cycle": "npx tsx src/orchestration/scheduler.ts",
+    "status": "npx tsx src/cli/status.ts",
+    "odds": "npx tsx src/scrapers/run-odds.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "better-sqlite3": "^12.8.0"
+  },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/node": "^22.0.0"
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
   }
 }

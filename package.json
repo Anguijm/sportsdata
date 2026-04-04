@@ -1,0 +1,18 @@
+{
+  "name": "sportsdata",
+  "version": "0.1.0",
+  "description": "US sports data analytics platform with auto-research ratchet loop and council governance",
+  "type": "module",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "build": "tsc",
+    "scrape": "node --loader ts-node/esm src/scrapers/espn.ts",
+    "analyze": "node --loader ts-node/esm src/analysis/correlations.ts",
+    "ratchet": "node --loader ts-node/esm src/orchestration/ratchet.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

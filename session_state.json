@@ -1,0 +1,23 @@
+{
+  "current_phase": "foundation",
+  "next_session_type": "scrape",
+  "next_action": "Run first ESPN scrape for NFL teams and current scoreboard, validate data quality gate",
+  "pipeline": {
+    "phase": "idle",
+    "last_scrape": null,
+    "active_hypotheses": 0,
+    "pending_analyses": []
+  },
+  "sources_status": {
+    "espn": "untested",
+    "odds_api": "untested",
+    "sportsdata_io": "untested",
+    "sports_reference": "untested"
+  },
+  "portfolio": {
+    "total_scrapes": 0,
+    "total_analyses": 0,
+    "total_predictions": 0,
+    "active_hypotheses": 0
+  }
+}

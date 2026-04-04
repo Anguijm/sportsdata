@@ -1,0 +1,77 @@
+project: sportsdata
+version: "0.1.0"
+description: US sports data analytics platform
+
+council:
+  angles:
+    - data-quality
+    - statistical-validity
+    - prediction-accuracy
+    - domain-expert
+  resolver: resolver
+  auto_approve_threshold: 0 # Always require human approval
+  default_model: claude-sonnet-4-6
+  review_granularity:
+    scraping: minimal # Background health indicator
+    analysis: standard # Methodology review
+    predictions: maximum # Full council before publishing
+
+evaluation_gates:
+  idea:
+    required: true
+    checks: [feasibility, data_availability, novelty]
+    blocks_on: [duplicate_analysis, impossible_query]
+  plan:
+    required: true
+    checks: [methodology, sample_size, data_sources]
+    blocks_on: [bad_methodology, insufficient_data]
+  build:
+    required: true
+    checks: [results_vs_criteria, statistical_significance]
+    blocks_on: [failed_assertions, p_hacking]
+  prediction:
+    required: true
+    checks: [confidence_threshold, source_corroboration]
+    min_confidence: 0.6
+    min_sources: 2
+    high_stakes_min_sources: 3
+    high_stakes_types: [injury_status, line_movement]
+  data_quality:
+    required: true
+    checks: [completeness, freshness, schema_conformance]
+    max_staleness_hours: 24
+
+ratchet:
+  mode: semi_autonomous # auto-iterate analysis, human-gate scraper mods
+  dev_mode: true # Log gates but don't block during development
+  max_iterations_per_hypothesis: 50
+  improvement_metrics:
+    game_outcome: brier_score
+    point_spread: mae
+    player_stat: rmse
+    trend_detection: pearson_r
+
+storage:
+  operational: sqlite
+  analytical: duckdb
+  logging: jsonl_append
+
+sources:
+  espn:
+    type: rest
+    rate_limit: 60 # requests per minute
+    priority: 1
+  odds_api:
+    type: rest
+    rate_limit: 10
+    priority: 2
+    free_monthly_limit: 500
+  sportsdata_io:
+    type: rest
+    rate_limit: 30
+    priority: 3
+  sports_reference:
+    type: scraping
+    rate_limit: 5
+    priority: 4
+    respectful_delay_ms: 3000

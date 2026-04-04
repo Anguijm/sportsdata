@@ -1,0 +1,47 @@
+import type { Provenance, Sport } from './provenance.js';
+
+export interface Game {
+  id: string; // normalized: "nfl:2025-W12-KC@BUF"
+  sport: Sport;
+  season: string;
+  date: string; // ISO 8601
+  homeTeamId: string;
+  awayTeamId: string;
+  venue?: string;
+  status: 'scheduled' | 'in_progress' | 'final' | 'postponed' | 'cancelled';
+  score?: GameScore;
+  odds?: GameOdds;
+  weather?: WeatherConditions;
+  provenance: Provenance;
+}
+
+export interface GameScore {
+  home: number;
+  away: number;
+  periodScores?: { period: string; home: number; away: number }[];
+  overtime: boolean;
+}
+
+export interface GameOdds {
+  spread: { favorite: string; line: number };
+  overUnder: number;
+  moneyline: { home: number; away: number };
+  source: string;
+  asOf: string; // ISO timestamp — odds change
+  provenance: Provenance;
+}
+
+export interface WeatherConditions {
+  temperature?: number; // Fahrenheit
+  wind?: number; // mph
+  precipitation?: string;
+  dome: boolean;
+}
+
+export interface GameResult {
+  gameId: string;
+  winner: string;
+  spreadResult: 'cover' | 'push' | 'miss';
+  overUnderResult: 'over' | 'push' | 'under';
+  provenance: Provenance;
+}

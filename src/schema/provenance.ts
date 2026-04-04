@@ -20,7 +20,7 @@ export type DataSource =
   | 'sports-reference'
   | 'manual';
 
-export type Sport = 'nfl' | 'nba' | 'mlb' | 'nhl' | 'mls';
+export type Sport = 'nfl' | 'nba' | 'mlb' | 'nhl' | 'mls' | 'epl';
 
 export type Season = {
   sport: Sport;

@@ -18,6 +18,7 @@ const SPORT_PATHS: Record<Sport, string> = {
   mlb: 'baseball/mlb',
   nhl: 'hockey/nhl',
   mls: 'soccer/usa.1',
+  epl: 'soccer/eng.1',
 };
 
 const RATE_LIMIT = 60; // per minute

@@ -18,6 +18,7 @@ const SPORT_KEYS: Record<Sport, string> = {
   mlb: 'baseball_mlb',
   nhl: 'icehockey_nhl',
   mls: 'soccer_usa_mls',
+  epl: 'soccer_epl',
 };
 
 // 500 req/month ≈ 16/day — be conservative

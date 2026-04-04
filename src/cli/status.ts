@@ -10,7 +10,7 @@ import { readLog } from '../storage/json-log.js';
 import type { ScrapeLogEntry } from '../storage/json-log.js';
 
 const sportFilter = process.argv[2] as Sport | undefined;
-const ALL_SPORTS: Sport[] = ['nfl', 'nba', 'mlb', 'nhl', 'mls'];
+const ALL_SPORTS: Sport[] = ['nfl', 'nba', 'mlb', 'nhl', 'mls', 'epl'];
 const sports = sportFilter ? [sportFilter] : ALL_SPORTS;
 
 async function main() {

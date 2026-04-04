@@ -19,7 +19,7 @@ export interface ScheduleConfig {
 }
 
 const DEFAULT_CONFIG: ScheduleConfig = {
-  sports: ['nfl', 'nba', 'mlb'],
+  sports: ['nfl', 'nba', 'mlb', 'nhl', 'mls', 'epl'],
   oddsEnabled: !!process.env.THE_ODDS_API_KEY,
   maxRetries: 3,
   retryDelayMs: 5000,

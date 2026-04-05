@@ -13,14 +13,21 @@
     "odds": "npx tsx src/scrapers/run-odds.ts",
     "inspect": "npx tsx src/cli/inspect.ts",
     "seed:nba": "npx tsx src/storage/seed-nba-mappings.ts",
-    "historical": "npx tsx src/scrapers/run-historical.ts"
+    "historical": "npx tsx src/scrapers/run-historical.ts",
+    "findings": "npx tsx src/cli/findings.ts",
+    "api": "npx tsx src/viz/data-api.ts",
+    "viz": "npx tsx src/viz/data-api.ts & npx vite",
+    "dev": "npx vite"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0"
   },
   "devDependencies": {
+    "@observablehq/plot": "^0.6.17",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "scrollama": "^3.2.0",
+    "typescript": "^5.7.0",
+    "vite": "^8.0.3"
   }
 }

@@ -52,3 +52,28 @@
 {"timestamp":"2026-04-04T19:46:15.214Z","source":"espn","sport":"mls","dataType":"scoreboard","records":15,"gate":"CLEAR","durationMs":16}
 {"timestamp":"2026-04-04T19:46:15.912Z","source":"espn","sport":"epl","dataType":"teams","records":20,"gate":"CLEAR","durationMs":697}
 {"timestamp":"2026-04-04T19:46:16.021Z","source":"espn","sport":"epl","dataType":"scoreboard","records":1,"gate":"CLEAR","durationMs":108}
+{"timestamp":"2026-04-05T11:52:21.800Z","source":"balldontlie","sport":"nba","dataType":"season-2023","records":200,"gate":"FAIL","durationMs":26043,"error":"BallDontLie rate limit hit — waiting"}
+{"timestamp":"2026-04-05T11:52:22.249Z","source":"balldontlie","sport":"nba","dataType":"season-2024","records":0,"gate":"FAIL","durationMs":411,"error":"BallDontLie rate limit hit — waiting"}
+{"timestamp":"2026-04-05T11:52:22.639Z","source":"balldontlie","sport":"nba","dataType":"season-2025","records":0,"gate":"FAIL","durationMs":390,"error":"BallDontLie rate limit hit — waiting"}
+{"timestamp":"2026-04-05T11:52:39.071Z","source":"odds-api","sport":"nba","dataType":"odds","records":14,"gate":"CLEAR","durationMs":954}
+{"timestamp":"2026-04-05T11:52:46.634Z","source":"espn","sport":"nfl","dataType":"teams","records":32,"gate":"CLEAR","durationMs":665}
+{"timestamp":"2026-04-05T11:52:47.134Z","source":"espn","sport":"nfl","dataType":"scoreboard","records":1,"gate":"CLEAR","durationMs":481}
+{"timestamp":"2026-04-05T11:52:47.651Z","source":"espn","sport":"nba","dataType":"teams","records":30,"gate":"CLEAR","durationMs":517}
+{"timestamp":"2026-04-05T11:52:47.688Z","source":"espn","sport":"nba","dataType":"scoreboard","records":3,"gate":"CLEAR","durationMs":35}
+{"timestamp":"2026-04-05T11:52:48.056Z","source":"espn","sport":"mlb","dataType":"teams","records":30,"gate":"CLEAR","durationMs":368}
+{"timestamp":"2026-04-05T11:52:48.618Z","source":"espn","sport":"mlb","dataType":"scoreboard","records":16,"gate":"CLEAR","durationMs":560}
+{"timestamp":"2026-04-05T11:52:49.285Z","source":"espn","sport":"nhl","dataType":"teams","records":32,"gate":"CLEAR","durationMs":666}
+{"timestamp":"2026-04-05T11:52:49.854Z","source":"espn","sport":"nhl","dataType":"scoreboard","records":15,"gate":"CLEAR","durationMs":567}
+{"timestamp":"2026-04-05T11:52:50.283Z","source":"espn","sport":"mls","dataType":"teams","records":30,"gate":"CLEAR","durationMs":429}
+{"timestamp":"2026-04-05T11:52:50.434Z","source":"espn","sport":"mls","dataType":"scoreboard","records":15,"gate":"CLEAR","durationMs":149}
+{"timestamp":"2026-04-05T11:52:50.614Z","source":"espn","sport":"epl","dataType":"teams","records":20,"gate":"CLEAR","durationMs":179}
+{"timestamp":"2026-04-05T11:52:50.819Z","source":"espn","sport":"epl","dataType":"scoreboard","records":1,"gate":"CLEAR","durationMs":204}
+{"timestamp":"2026-04-05T11:52:51.433Z","source":"odds-api","sport":"nfl","dataType":"odds","records":0,"gate":"CLEAR","durationMs":614}
+{"timestamp":"2026-04-05T11:52:52.155Z","source":"odds-api","sport":"nba","dataType":"odds","records":14,"gate":"CLEAR","durationMs":722}
+{"timestamp":"2026-04-05T11:52:52.460Z","source":"odds-api","sport":"mlb","dataType":"odds","records":17,"gate":"CLEAR","durationMs":305}
+{"timestamp":"2026-04-05T11:52:52.765Z","source":"odds-api","sport":"nhl","dataType":"odds","records":7,"gate":"CLEAR","durationMs":305}
+{"timestamp":"2026-04-05T11:52:53.072Z","source":"odds-api","sport":"mls","dataType":"odds","records":15,"gate":"CLEAR","durationMs":307}
+{"timestamp":"2026-04-05T11:52:53.379Z","source":"odds-api","sport":"epl","dataType":"odds","records":20,"gate":"CLEAR","durationMs":307}
+{"timestamp":"2026-04-05T12:00:15.037Z","source":"balldontlie","sport":"nba","dataType":"season-2023","records":1319,"gate":"CLEAR","durationMs":384154}
+{"timestamp":"2026-04-05T12:07:41.405Z","source":"balldontlie","sport":"nba","dataType":"season-2024","records":1321,"gate":"CLEAR","durationMs":446215}
+{"timestamp":"2026-04-05T12:14:51.053Z","source":"balldontlie","sport":"nba","dataType":"season-2025","records":1231,"gate":"CLEAR","durationMs":429475}

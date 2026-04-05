@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sportsdata</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="narrative" id="narrative">
+    <div class="section" id="intro">
+      <div class="section-text" id="intro-text">Loading...</div>
+    </div>
+
+    <div class="section" id="distribution">
+      <div class="section-text">
+        The average game was decided by <span class="number" id="avg-margin">?</span> points.
+        Most games look like this.
+      </div>
+      <div class="chart-container" id="histogram-chart"></div>
+    </div>
+
+    <div id="findings-container"></div>
+
+    <div class="section" id="outro">
+      <div class="section-text" id="outro-text"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

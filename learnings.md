@@ -42,3 +42,13 @@ Accumulated patterns, anti-patterns, and insights from scraping, analysis, and p
 - **INSIGHT**: NBA home win rate from 9 games = 55.6%, already near historical average (~57-60%)
 - **INSIGHT**: Spread/OU results only computable when odds are attached — most current games have no odds without Odds API key active
 - **INSIGHT**: Team name mapping is trivial for NBA (names match across providers) but will be harder for soccer (different naming conventions)
+
+### viz-interesting-detector (2026-04-06)
+- **KEEP**: Finding interface with spotlight, temporalAnchor, comparisonBaseline, narrativeHint — rich enough for scroll-driven narrative
+- **KEEP**: Streak finder produced genuinely surprising results (DET 28-game loss streak, OKC 62-point blowout)
+- **KEEP**: Three detectors (streaks, margins, mediocrity) are sufficient for compelling findings from 3,883 games
+- **IMPROVE**: Surprise score calculation needs tuning — too many findings at 100% (streak P(N) formula saturates quickly)
+- **IMPROVE**: Duplicate WSH 16-game streaks appearing — need cross-season deduplication
+- **INSIGHT**: Council was right to mandate white background — Jon Bois aesthetic is anti-dashboard, sterile Google Sheets energy
+- **INSIGHT**: Observable Plot + Vite is a clean stack — zero-config TypeScript, fast HMR, simple SVG output
+- **INSIGHT**: Data API as separate process is correct — decouples heavy SQLite queries from frontend dev server

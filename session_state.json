@@ -1,38 +1,40 @@
 {
-  "current_phase": "collection",
-  "next_session_type": "historical-ingest",
-  "next_action": "Run BallDontLie historical NBA ingest (needs API key), activate Odds API (needs key), accumulate 60 days for first predictions",
+  "current_phase": "visualization",
+  "next_session_type": "viz-scroll",
+  "next_action": "Build scroll narrative with Scrollama, add timeline and streak charts, tune finding pacing",
   "pipeline": {
     "phase": "scraping",
-    "last_scrape": "2026-04-05T10:41:00Z",
+    "last_scrape": "2026-04-05T19:14:51Z",
     "active_hypotheses": 0,
     "pending_analyses": ["NBA home win rate baseline", "NBA spread accuracy"]
   },
   "sources_status": {
     "espn": "active",
-    "odds_api": "client_ready",
-    "balldontlie": "client_ready",
+    "odds_api": "active",
+    "balldontlie": "active",
     "sportsdata_io": "untested",
     "sports_reference": "untested"
   },
   "portfolio": {
-    "total_scrapes": 30,
+    "total_scrapes": 42,
     "total_analyses": 0,
     "total_predictions": 0,
     "active_hypotheses": 0,
-    "game_results_resolved": 28
+    "game_results_resolved": 3814,
+    "findings_detected": 35
   },
   "database": {
     "teams": 174,
-    "games": 51,
-    "results": 28,
+    "games": 3946,
+    "results": 3814,
     "team_mappings": 90,
     "sports_active": ["nfl", "nba", "mlb", "nhl", "mls", "epl"]
   },
-  "sprint3_status": {
-    "p1_odds_activation": "client_wired_into_scheduler",
-    "p2_game_outcomes": "complete_28_resolved",
-    "p3_team_mapping": "complete_90_nba_mappings",
-    "p4_historical_ingest": "client_ready_needs_api_key"
+  "visualization": {
+    "detector_algorithms": ["streak_finder", "margin_outlier", "mediocrity"],
+    "web_frontend": "scaffolded",
+    "charts_implemented": ["histogram"],
+    "charts_planned": ["timeline", "streaks", "scatter", "drilldown"],
+    "aesthetic": "jon-bois-white"
   }
 }

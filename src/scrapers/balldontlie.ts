@@ -10,7 +10,7 @@ import { createProvenance } from './normalizer.js';
 import { resolveByProviderName } from '../storage/sqlite.js';
 
 const BDL_BASE = 'https://api.balldontlie.io';
-const RATE_DELAY_MS = 12500; // 5 req/min = 1 per 12s, pad to 12.5s
+const RATE_DELAY_MS = 15000; // 5 req/min = 1 per 12s, pad to 15s for safety
 
 function getApiKey(): string {
   const key = process.env.BALLDONTLIE_API_KEY;
@@ -18,13 +18,15 @@ function getApiKey(): string {
   return key;
 }
 
-async function bdlFetch(path: string): Promise<unknown> {
+async function bdlFetch(path: string, retries = 2): Promise<unknown> {
   const url = `${BDL_BASE}${path}`;
   const response = await fetch(url, {
     headers: { Authorization: getApiKey() },
   });
-  if (response.status === 429) {
-    throw new Error('BallDontLie rate limit hit — waiting');
+  if (response.status === 429 && retries > 0) {
+    console.log(`  ⟳ Rate limited, waiting 30s...`);
+    await new Promise(resolve => setTimeout(resolve, 30000));
+    return bdlFetch(path, retries - 1);
   }
   if (!response.ok) {
     throw new Error(`BDL returned ${response.status}: ${response.statusText}`);

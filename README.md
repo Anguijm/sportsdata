@@ -67,6 +67,13 @@ npm run odds            # Fetch current odds (needs THE_ODDS_API_KEY)
 npm run historical      # Load historical NBA data (needs BALLDONTLIE_API_KEY)
 npm run seed:nba        # Seed NBA team mappings across providers
 
+# Analysis & Visualization
+npm run findings        # Scan for interesting patterns (streaks, outliers, mediocrity)
+npm run findings nba    # Sport-specific findings
+npm run api             # Start data API server (port 3001)
+npm run dev             # Start Vite dev server (port 4000)
+npm run viz             # Start both API + Vite together
+
 # Development
 npm run type-check      # TypeScript type checking
 npm run build           # Compile TypeScript
@@ -100,10 +107,22 @@ src/
     ratchet.ts      Karpathy ratchet loop (hypothesize/evaluate/keep/revert)
     gates.ts        Evaluation gates (idea, plan, build, prediction, data quality)
 
+  analysis/         "Interesting Things" detector
+    interesting.ts  3 algorithms: streaks, margin outliers, mediocrity
+
+  viz/              Visualization backend
+    data-api.ts     HTTP JSON endpoints for chart data (port 3001)
+
   cli/              Terminal interface
     status.ts       Database overview and scrape health
     inspect.ts      Data inspection (mappings, results, home-rate)
+    findings.ts     Ranked interesting findings output
     tables.ts       Formatted terminal table rendering
+
+web/                Jon Bois-style scroll narrative (Vite, port 4000)
+  index.html        Single scroll page
+  main.ts           Observable Plot charts + scroll orchestration
+  style.css         White/Roboto aesthetic (council-approved)
 
 .harness/           Governance
   council/          Expert review personas (data quality, stats, prediction, domain)
@@ -134,10 +153,25 @@ HYPOTHESIZE -> MODIFY -> EXECUTE -> EVALUATE -> KEEP or REVERT
 
 Monotonic improvement: each iteration either improves the metric or reverts. Metrics: Brier score (game outcomes), MAE (spreads), RMSE (player stats), Pearson r (trends).
 
+## Visualization (Jon Bois-Inspired)
+
+Scroll-driven data storytelling inspired by Jon Bois (Chart Party, Dorktown, The History of the Seattle Mariners). White background, Roboto typography, Google Sheets energy. The "Interesting Things" detector scans data for:
+
+- **Streaks**: Win/loss streaks of 7+ games (Detroit's 28-game losing streak)
+- **Margin Outliers**: Games beyond 2.5σ (OKC's 62-point blowout over Portland)
+- **Mediocrity**: Teams closest to .500 with high alternation rates
+- **Nail-biters**: 1-point games that could have gone either way
+
+```bash
+npm run findings nba    # See what the detector found
+npm run viz             # Launch the scroll narrative
+```
+
 ## Current Stats
 
 - 174 teams across 6 leagues
-- 3,946 games in database
+- 3,883 NBA games (3 seasons historical via BallDontLie)
 - 3,814 game results resolved with outcomes
 - 90 NBA team mappings (30 teams x 3 providers)
-- ~2,300 lines of TypeScript
+- 35 interesting findings detected (streaks, blowouts, nail-biters)
+- ~3,100 lines of TypeScript across 30 files

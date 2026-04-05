@@ -1,0 +1,148 @@
+/* Jon Bois Aesthetic — Google Sheets energy, not Bloomberg terminal */
+
+:root {
+  --bg-page: #f8f8f8;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f0f0f0;
+  --text-primary: #1a1a1a;
+  --text-secondary: #666666;
+  --text-data: #333333;
+  --border: #e0e0e0;
+  --highlight: #e63946;
+  --win: #2d6a4f;
+  --loss: #e63946;
+  --neutral: #adb5bd;
+  --spotlight: #e63946;
+
+  --sport-nfl: #013369;
+  --sport-nba: #1d428a;
+  --sport-mlb: #002d72;
+  --sport-nhl: #2a2a2a;
+  --sport-mls: #80a83b;
+  --sport-epl: #3d195b;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Roboto, Arial, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Scroll narrative container */
+.narrative {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 80px 24px;
+}
+
+.section {
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.section-text {
+  font-size: 18px;
+  color: var(--text-primary);
+  margin-bottom: 32px;
+  max-width: 540px;
+}
+
+.section-text .number {
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 700;
+}
+
+.section-text .highlight {
+  color: var(--highlight);
+  font-weight: 700;
+}
+
+/* Chart containers */
+.chart-container {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 24px;
+  margin: 16px 0;
+}
+
+.chart-container svg {
+  width: 100%;
+  height: auto;
+}
+
+/* Finding cards in scroll */
+.finding {
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+}
+
+.finding-headline {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.finding-detail {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.finding-narrative {
+  font-size: 16px;
+  font-style: italic;
+  color: var(--text-secondary);
+  margin-top: 16px;
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+}
+
+/* Spotlight — extra breathing room */
+.finding.spotlight {
+  padding: 80px 0;
+}
+
+.finding.spotlight .finding-headline {
+  font-size: 24px;
+}
+
+/* Data annotations on charts */
+.annotation {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11px;
+  fill: var(--text-data);
+}
+
+.annotation.highlight {
+  fill: var(--highlight);
+  font-weight: 700;
+}
+
+/* Summary stats */
+.stats-bar {
+  display: flex;
+  gap: 32px;
+  padding: 16px 0;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.stats-bar .stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: block;
+}

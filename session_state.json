@@ -1,28 +1,38 @@
 {
   "current_phase": "collection",
-  "next_session_type": "analyze",
-  "next_action": "Accumulate 2-3 weeks of data, then run first ratchet hypothesis on NBA home win rate",
+  "next_session_type": "historical-ingest",
+  "next_action": "Run BallDontLie historical NBA ingest (needs API key), activate Odds API (needs key), accumulate 60 days for first predictions",
   "pipeline": {
     "phase": "scraping",
-    "last_scrape": "2026-04-04T10:51:15Z",
+    "last_scrape": "2026-04-05T10:41:00Z",
     "active_hypotheses": 0,
-    "pending_analyses": ["NBA home win rate baseline"]
+    "pending_analyses": ["NBA home win rate baseline", "NBA spread accuracy"]
   },
   "sources_status": {
     "espn": "active",
-    "odds_api": "configured",
+    "odds_api": "client_ready",
+    "balldontlie": "client_ready",
     "sportsdata_io": "untested",
     "sports_reference": "untested"
   },
   "portfolio": {
-    "total_scrapes": 18,
+    "total_scrapes": 30,
     "total_analyses": 0,
     "total_predictions": 0,
-    "active_hypotheses": 0
+    "active_hypotheses": 0,
+    "game_results_resolved": 28
   },
   "database": {
-    "teams": 92,
-    "games": 25,
-    "sports_active": ["nfl", "nba", "mlb"]
+    "teams": 174,
+    "games": 51,
+    "results": 28,
+    "team_mappings": 90,
+    "sports_active": ["nfl", "nba", "mlb", "nhl", "mls", "epl"]
+  },
+  "sprint3_status": {
+    "p1_odds_activation": "client_wired_into_scheduler",
+    "p2_game_outcomes": "complete_28_resolved",
+    "p3_team_mapping": "complete_90_nba_mappings",
+    "p4_historical_ingest": "client_ready_needs_api_key"
   }
 }

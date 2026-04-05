@@ -18,6 +18,7 @@ export type DataSource =
   | 'odds-api'
   | 'sportsdata-io'
   | 'sports-reference'
+  | 'balldontlie'
   | 'manual';
 
 export type Sport = 'nfl' | 'nba' | 'mlb' | 'nhl' | 'mls' | 'epl';

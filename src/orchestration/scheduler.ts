@@ -6,7 +6,7 @@
 
 import { fetchTeams, fetchScoreboard } from '../scrapers/espn.js';
 import { fetchOdds } from '../scrapers/odds-api.js';
-import { sqliteRepository, closeDb } from '../storage/sqlite.js';
+import { sqliteRepository, closeDb, resolveGameOutcomes } from '../storage/sqlite.js';
 import { formatScrapeSummary } from '../cli/tables.js';
 import { appendLog } from '../storage/json-log.js';
 import type { Sport } from '../schema/provenance.js';
@@ -121,7 +121,12 @@ export async function runCycle(config: ScheduleConfig = DEFAULT_CONFIG): Promise
         console.log(`  ✗ Odds API: ${msg}`);
       }
     }
+  } else {
+    console.log(`\n▸ Odds API: skipped (THE_ODDS_API_KEY not set)`);
   }
+
+  // Auto-resolve game outcomes for any newly finalized games
+  resolveGameOutcomes();
 
   formatScrapeSummary(results);
 

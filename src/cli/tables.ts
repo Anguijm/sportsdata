@@ -3,7 +3,7 @@ import type { Sport } from '../schema/provenance.js';
 import { readLog } from '../storage/json-log.js';
 import type { ScrapeLogEntry } from '../storage/json-log.js';
 
-function pad(str: string, len: number): string {
+export function pad(str: string, len: number): string {
   return str.slice(0, len).padEnd(len);
 }
 

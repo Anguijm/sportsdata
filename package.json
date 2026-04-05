@@ -10,7 +10,10 @@
     "scrape:all": "npx tsx src/scrapers/run-espn.ts all",
     "cycle": "npx tsx src/orchestration/scheduler.ts",
     "status": "npx tsx src/cli/status.ts",
-    "odds": "npx tsx src/scrapers/run-odds.ts"
+    "odds": "npx tsx src/scrapers/run-odds.ts",
+    "inspect": "npx tsx src/cli/inspect.ts",
+    "seed:nba": "npx tsx src/storage/seed-nba-mappings.ts",
+    "historical": "npx tsx src/scrapers/run-historical.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0"

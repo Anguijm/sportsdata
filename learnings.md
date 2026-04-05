@@ -32,3 +32,13 @@ Accumulated patterns, anti-patterns, and insights from scraping, analysis, and p
 - **INSIGHT**: Full 3-sport scrape cycle completes in 1.3s — well within any cron interval
 - **INSIGHT**: SQLite WAL mode + foreign keys pragma should be set on every connection open
 - **INSIGHT**: Odds API free tier returns events with multiple bookmakers — using first bookmaker is fine for MVP but should aggregate later
+
+### sprint3-outcomes-mapping-bdl (2026-04-05)
+- **KEEP**: Auto-resolving game outcomes in the scheduler cycle — 28 results resolved automatically on first run
+- **KEEP**: Team mapping table with canonical_id + provider — clean pattern, extensible to all sports
+- **KEEP**: Inspect CLI with multiple subcommands (mappings, results, home-rate) — immediate data visibility
+- **KEEP**: BallDontLie cursor-based pagination with rate delay — clean resumable pattern
+- **IMPROVE**: BallDontLie free tier is only 5 req/min (not 60) — historical ingest will be slow (~12.5s per page)
+- **INSIGHT**: NBA home win rate from 9 games = 55.6%, already near historical average (~57-60%)
+- **INSIGHT**: Spread/OU results only computable when odds are attached — most current games have no odds without Odds API key active
+- **INSIGHT**: Team name mapping is trivial for NBA (names match across providers) but will be harder for soccer (different naming conventions)

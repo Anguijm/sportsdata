@@ -25,13 +25,22 @@ interface Finding {
   narrativeHint: string;
 }
 
-interface TeamSequence {
-  teamId: string;
-  abbr: string;
+interface SeasonRow {
+  year: number;
+  label: string;
   sequence: boolean[];
   wins: number;
   losses: number;
   winPct: number;
+  ptsForPg: number;
+  ptsAgainstPg: number;
+  diffPg: number;
+}
+
+interface TeamSequence {
+  teamId: string;
+  abbr: string;
+  seasons: SeasonRow[];
 }
 
 interface Game {
@@ -160,29 +169,56 @@ function renderExtremes(container: HTMLElement, data: { blowouts: Game[]; nailBi
   container.innerHTML = cards.join('');
 }
 
-// --- Streak grid ---
+// --- Streak grid (per-season with diff) ---
 
 function renderStreaks(container: HTMLElement, sequences: TeamSequence[]) {
-  // Show top 30 teams by recent activity
-  const top = sequences.filter(s => s.sequence.length > 50).slice(0, 30);
+  // Find all unique seasons
+  const allSeasons = new Set<number>();
+  sequences.forEach(t => t.seasons.forEach(s => allSeasons.add(s.year)));
+  const seasonList = Array.from(allSeasons).sort((a, b) => b - a);
 
-  const html = top.map(team => {
-    const segments = team.sequence.map(won =>
-      `<div class="streak-segment ${won ? 'win' : 'loss'}"></div>`
-    ).join('');
+  const html = seasonList.map(year => {
+    const label = `${year}-${String(year + 1).slice(2)}`;
+    const teamsInSeason = sequences
+      .map(t => ({ team: t, season: t.seasons.find(s => s.year === year) }))
+      .filter(x => x.season && x.season.sequence.length >= 50)
+      .sort((a, b) => (b.season!.winPct ?? 0) - (a.season!.winPct ?? 0));
+
+    const rows = teamsInSeason.map(({ team, season }) => {
+      const s = season!;
+      const segments = s.sequence.map(won =>
+        `<div class="streak-segment ${won ? 'win' : 'loss'}"></div>`
+      ).join('');
+
+      const diffSign = s.diffPg >= 0 ? '+' : '';
+      const diffClass = s.diffPg >= 0 ? 'wins' : 'losses';
+
+      return `
+        <div class="streak-row season-row">
+          <div class="streak-team">${team.abbr}</div>
+          <div class="streak-bar">${segments}</div>
+          <div class="streak-record">
+            <span class="wins">${s.wins}</span>–<span class="losses">${s.losses}</span>
+          </div>
+          <div class="streak-diff ${diffClass}">
+            ${diffSign}${s.diffPg.toFixed(1)}
+          </div>
+        </div>
+      `;
+    }).join('');
 
     return `
-      <div class="streak-row">
-        <div class="streak-team">${team.abbr}</div>
-        <div class="streak-bar">${segments}</div>
-        <div class="streak-record">
-          <span class="wins">${team.wins}</span>–<span class="losses">${team.losses}</span>
+      <div class="season-block">
+        <div class="season-header">
+          <div class="season-label">${label}</div>
+          <div class="season-meta">${teamsInSeason.length} teams · sorted by win rate · ppg differential on the right</div>
         </div>
+        <div class="streak-grid">${rows}</div>
       </div>
     `;
   }).join('');
 
-  container.innerHTML = `<div class="streak-grid">${html}</div>`;
+  container.innerHTML = html;
 }
 
 // --- Findings ranked list ---

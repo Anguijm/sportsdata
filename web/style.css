@@ -181,22 +181,60 @@ body {
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
 }
 
-/* Streak rows */
+/* Season-aware streak grid */
+.season-block {
+  margin: 48px 0;
+}
+
+.season-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.season-label {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.season-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .streak-grid {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 24px 0;
+  gap: 2px;
+  margin: 8px 0;
 }
 
 .streak-row {
   display: grid;
-  grid-template-columns: 60px 1fr 80px;
+  grid-template-columns: 60px 1fr 80px 80px;
   align-items: center;
   gap: 16px;
-  padding: 12px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--border);
 }
+
+.streak-diff {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 13px;
+  text-align: right;
+  font-weight: 700;
+}
+
+.streak-diff.wins { color: var(--win); }
+.streak-diff.losses { color: var(--loss); }
 
 .streak-team {
   font-family: 'JetBrains Mono', 'SF Mono', monospace;

@@ -84,33 +84,95 @@ export function startDataApi(): void {
         }
 
         case '/api/team-sequences': {
-          // Returns each team's win/loss sequence ordered by date — for streak chart
+          // Per team per season: sequence + record + point differential
           const db = getDb();
           const rows = db.prepare(`
-            SELECT date, winner, loser FROM game_results
+            SELECT date, winner, loser, home_score, away_score, home_win FROM game_results
             WHERE sport = ? ORDER BY date
-          `).all(sport) as { date: string; winner: string; loser: string }[];
+          `).all(sport) as {
+            date: string; winner: string; loser: string;
+            home_score: number; away_score: number; home_win: number;
+          }[];
 
-          const teamSequences = new Map<string, boolean[]>();
+          // Map<teamId, Map<seasonYear, { sequence, pointsFor, pointsAgainst }>>
+          const teamSeasonData = new Map<string, Map<number, {
+            sequence: boolean[];
+            pointsFor: number;
+            pointsAgainst: number;
+          }>>();
+
           for (const r of rows) {
-            for (const teamId of [r.winner, r.loser]) {
-              if (!teamSequences.has(teamId)) teamSequences.set(teamId, []);
-              teamSequences.get(teamId)!.push(teamId === r.winner);
+            const d = new Date(r.date);
+            const month = d.getUTCMonth();
+            const year = d.getUTCFullYear();
+            const seasonYear = month >= 9 ? year : year - 1;
+
+            const homeIsWinner = r.home_win === 1;
+            const homeTeam = homeIsWinner ? r.winner : r.loser;
+            const awayTeam = homeIsWinner ? r.loser : r.winner;
+
+            for (const [teamId, scoreFor, scoreAgainst, won] of [
+              [homeTeam, r.home_score, r.away_score, homeIsWinner],
+              [awayTeam, r.away_score, r.home_score, !homeIsWinner],
+            ] as const) {
+              if (!teamSeasonData.has(teamId as string)) {
+                teamSeasonData.set(teamId as string, new Map());
+              }
+              const seasons = teamSeasonData.get(teamId as string)!;
+              if (!seasons.has(seasonYear)) {
+                seasons.set(seasonYear, { sequence: [], pointsFor: 0, pointsAgainst: 0 });
+              }
+              const s = seasons.get(seasonYear)!;
+              s.sequence.push(won as boolean);
+              s.pointsFor += scoreFor as number;
+              s.pointsAgainst += scoreAgainst as number;
             }
           }
 
-          const result = Array.from(teamSequences.entries()).map(([teamId, seq]) => {
-            const wins = seq.filter(Boolean).length;
-            const losses = seq.length - wins;
-            return {
+          const result: Array<{
+            teamId: string;
+            abbr: string;
+            seasons: Array<{
+              year: number;
+              label: string;
+              sequence: boolean[];
+              wins: number;
+              losses: number;
+              winPct: number;
+              ptsForPg: number;
+              ptsAgainstPg: number;
+              diffPg: number;
+            }>;
+          }> = [];
+
+          for (const [teamId, seasons] of teamSeasonData) {
+            const seasonList = Array.from(seasons.entries())
+              .map(([year, s]) => {
+                const games = s.sequence.length;
+                const wins = s.sequence.filter(Boolean).length;
+                return {
+                  year,
+                  label: `${year}-${String(year + 1).slice(2)}`,
+                  sequence: s.sequence,
+                  wins,
+                  losses: games - wins,
+                  winPct: wins / games,
+                  ptsForPg: s.pointsFor / games,
+                  ptsAgainstPg: s.pointsAgainst / games,
+                  diffPg: (s.pointsFor - s.pointsAgainst) / games,
+                };
+              })
+              .sort((a, b) => b.year - a.year);
+
+            result.push({
               teamId,
               abbr: teamId.split(':')[1] ?? teamId,
-              sequence: seq,
-              wins,
-              losses,
-              winPct: wins / seq.length,
-            };
-          }).sort((a, b) => b.winPct - a.winPct);
+              seasons: seasonList,
+            });
+          }
+
+          // Sort by most recent season win pct
+          result.sort((a, b) => (b.seasons[0]?.winPct ?? 0) - (a.seasons[0]?.winPct ?? 0));
 
           response = jsonResponse(result);
           break;

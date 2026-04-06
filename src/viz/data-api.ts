@@ -83,6 +83,54 @@ export function startDataApi(): void {
           break;
         }
 
+        case '/api/team-sequences': {
+          // Returns each team's win/loss sequence ordered by date — for streak chart
+          const db = getDb();
+          const rows = db.prepare(`
+            SELECT date, winner, loser FROM game_results
+            WHERE sport = ? ORDER BY date
+          `).all(sport) as { date: string; winner: string; loser: string }[];
+
+          const teamSequences = new Map<string, boolean[]>();
+          for (const r of rows) {
+            for (const teamId of [r.winner, r.loser]) {
+              if (!teamSequences.has(teamId)) teamSequences.set(teamId, []);
+              teamSequences.get(teamId)!.push(teamId === r.winner);
+            }
+          }
+
+          const result = Array.from(teamSequences.entries()).map(([teamId, seq]) => {
+            const wins = seq.filter(Boolean).length;
+            const losses = seq.length - wins;
+            return {
+              teamId,
+              abbr: teamId.split(':')[1] ?? teamId,
+              sequence: seq,
+              wins,
+              losses,
+              winPct: wins / seq.length,
+            };
+          }).sort((a, b) => b.winPct - a.winPct);
+
+          response = jsonResponse(result);
+          break;
+        }
+
+        case '/api/extreme-games': {
+          // Top 5 biggest blowouts and 5 closest games
+          const db = getDb();
+          const blowouts = db.prepare(`
+            SELECT game_id, date, winner, loser, home_score, away_score, margin
+            FROM game_results WHERE sport = ? ORDER BY margin DESC LIMIT 5
+          `).all(sport);
+          const nailBiters = db.prepare(`
+            SELECT game_id, date, winner, loser, home_score, away_score, margin
+            FROM game_results WHERE sport = ? AND margin > 0 ORDER BY margin ASC LIMIT 5
+          `).all(sport);
+          response = jsonResponse({ blowouts, nailBiters });
+          break;
+        }
+
         case '/api/health': {
           const db = getDb();
           const gameCount = (db.prepare('SELECT COUNT(*) as c FROM games').get() as { c: number }).c;

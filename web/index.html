@@ -3,29 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>sportsdata</title>
+  <title>sportsdata — three seasons of NBA, the interesting parts</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div class="narrative" id="narrative">
-    <div class="section" id="intro">
-      <div class="section-text" id="intro-text">Loading...</div>
+  <div class="narrative">
+    <div class="hero">
+      <div class="hero-eyebrow">sportsdata · three nba seasons</div>
+      <h1 id="hero-title">Loading...</h1>
+      <p id="hero-text"></p>
+      <div class="big-stats" id="big-stats"></div>
     </div>
 
-    <div class="section" id="distribution">
-      <div class="section-text">
-        The average game was decided by <span class="number" id="avg-margin">?</span> points.
-        Most games look like this.
-      </div>
-      <div class="chart-container" id="histogram-chart"></div>
+    <div class="section">
+      <div class="section-eyebrow">Section 01 · Distribution</div>
+      <h2>How most games end<span class="highlight">.</span></h2>
+      <p class="lead">
+        The shape of normal. Most NBA games are decided by single digits.
+        A handful are decided by 50+. Here's the histogram.
+      </p>
+      <div class="chart" id="histogram-chart"></div>
     </div>
 
-    <div id="findings-container"></div>
+    <div class="section">
+      <div class="section-eyebrow">Section 02 · Extremes</div>
+      <h2>The games that broke the curve<span class="highlight">.</span></h2>
+      <p class="lead">
+        Every distribution has tails. These are the tails.
+      </p>
+      <div class="callout-grid" id="extremes-grid"></div>
+    </div>
 
-    <div class="section" id="outro">
-      <div class="section-text" id="outro-text"></div>
+    <div class="section">
+      <div class="section-eyebrow">Section 03 · Streaks</div>
+      <h2>Three seasons of every team<span class="highlight">.</span></h2>
+      <p class="lead">
+        Every game, every result, every team. Wins in green, losses in red. Read left to right.
+        Some teams went on runs that changed how their cities felt about basketball.
+      </p>
+      <div id="streak-grid"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-eyebrow">Section 04 · The Findings</div>
+      <h2>The 35 most interesting things<span class="highlight">.</span></h2>
+      <p class="lead">
+        Ranked by surprise. The algorithmic detector found these patterns by scanning every game
+        in the dataset for streaks, blowouts, nail-biters, and statistical anomalies.
+      </p>
+      <div class="findings-grid" id="findings-grid"></div>
+    </div>
+
+    <div class="footer">
+      <p>3,883 NBA games · 2023–2025 seasons · <a href="https://github.com/Anguijm/sportsdata">github</a></p>
+      <p style="margin-top: 8px;">data: balldontlie · espn · the odds api</p>
     </div>
   </div>
 

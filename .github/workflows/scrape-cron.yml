@@ -1,0 +1,19 @@
+name: Backup Scrape Cron
+
+on:
+  schedule:
+    # Run daily at 6am UTC (1am CT)
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger scrape cycle on Fly.io
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.FLY_API_TOKEN }}" \
+            "https://sportsdata-api.fly.dev/api/trigger-cycle" \
+            || echo "Fly.io trigger failed — API may be sleeping"
+        continue-on-error: true

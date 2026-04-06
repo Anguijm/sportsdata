@@ -167,6 +167,35 @@ npm run findings nba    # See what the detector found
 npm run viz             # Launch the scroll narrative
 ```
 
+## Deployment (Council-Approved Split Architecture)
+
+```
+Users → Cloudflare Pages (frontend, 300+ edges) + Fly.io (API + SQLite)
+        GitHub Actions (backup cron, daily 6am UTC)
+```
+
+### Deploy Frontend
+```bash
+npx wrangler login                    # One-time auth
+npx vite build                        # Build static site
+npx wrangler pages deploy web/dist --project-name=sportsdata
+```
+
+### Deploy API
+```bash
+flyctl auth login                     # One-time auth
+flyctl launch                         # Create app + volume
+flyctl secrets set THE_ODDS_API_KEY=xxx BALLDONTLIE_API_KEY=xxx
+flyctl deploy                         # Deploy
+```
+
+### GitHub Secrets (for CI/CD)
+- `CLOUDFLARE_API_TOKEN` — Cloudflare API token
+- `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
+- `FLY_API_TOKEN` — Fly.io deploy token
+
+Auto-deploys: push to `main` triggers Cloudflare Pages build (web/ changes) and backup cron runs daily.
+
 ## Current Stats
 
 - 174 teams across 6 leagues

@@ -71,8 +71,12 @@ export function startDataApi(): void {
           break;
         }
 
+        case '/api/health':
+          response = jsonResponse({ status: 'ok', timestamp: new Date().toISOString() });
+          break;
+
         default:
-          response = jsonResponse({ error: 'Not found', endpoints: ['/api/findings', '/api/margins', '/api/home-timeline', '/api/games', '/api/stats'] });
+          response = jsonResponse({ error: 'Not found', endpoints: ['/api/findings', '/api/margins', '/api/home-timeline', '/api/games', '/api/stats', '/api/health'] });
           res.writeHead(404, response.headers);
           res.end(response.body);
           return;

@@ -1,0 +1,11 @@
+node_modules
+dist
+data/sqlite
+data/duckdb
+.env
+.git
+Plans
+MEMORY
+web
+vite.config.ts
+*.md

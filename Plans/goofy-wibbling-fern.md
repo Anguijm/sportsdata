@@ -176,6 +176,19 @@ web/
 - At least 3 spotlight moments where the page pauses on a single data point
 - Charts look like Google Sheets, not Bloomberg terminal
 
+## Hosting Architecture (Council-Approved)
+
+Split deployment — unanimous 4/4:
+
+| Layer | Where | Cost |
+|-------|-------|------|
+| Frontend (Vite static) | Cloudflare Pages | Free |
+| API + SQLite | Fly.io (persistent volume + Litestream) | Free |
+| Backup cron | GitHub Actions | Free |
+| Fallback API | Railway | $5/mo if needed |
+
+Deferred: Cloudflare Workers + Turso (edge SQLite) — evaluate post-launch.
+
 ## Parking Lot (Future Consideration)
 
 | Idea | When to Revisit | Notes |

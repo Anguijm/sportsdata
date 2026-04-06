@@ -6,6 +6,8 @@ primary_region = 'dfw'
 [env]
   PORT = '3001'
   NODE_ENV = 'production'
+  SQLITE_PATH = '/app/data/sqlite/sportsdata.db'
+  LOGS_DIR = '/app/data/logs'
 
 [http_service]
   internal_port = 3001

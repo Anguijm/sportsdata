@@ -1,14 +1,17 @@
 import Database from 'better-sqlite3';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { mkdirSync } from 'node:fs';
 import type { Repository } from './repository.js';
 import type { Game, Team, Prediction, Hypothesis, Player } from '../schema/index.js';
 
-const DB_PATH = join(import.meta.dirname, '../../data/sqlite/sportsdata.db');
+const DB_PATH = process.env.SQLITE_PATH
+  ?? join(import.meta.dirname, '../../data/sqlite/sportsdata.db');
 
 let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!_db) {
+    mkdirSync(dirname(DB_PATH), { recursive: true });
     _db = new Database(DB_PATH);
     _db.pragma('journal_mode = WAL');
     _db.pragma('foreign_keys = ON');

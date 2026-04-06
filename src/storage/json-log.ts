@@ -1,7 +1,10 @@
-import { appendFileSync, readFileSync, existsSync } from 'node:fs';
+import { appendFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DATA_DIR = join(import.meta.dirname, '../../data/logs');
+const DATA_DIR = process.env.LOGS_DIR
+  ?? join(import.meta.dirname, '../../data/logs');
+
+mkdirSync(DATA_DIR, { recursive: true });
 
 export type LogType = 'scrape' | 'analysis' | 'prediction';
 

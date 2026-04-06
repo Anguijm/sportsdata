@@ -8,7 +8,8 @@ import { getDb, closeDb } from '../storage/sqlite.js';
 import { scanForFindings, getMarginDistribution, getHomeWinTimeline } from '../analysis/interesting.js';
 import type { Sport } from '../schema/provenance.js';
 
-const PORT = 3001;
+const PORT = parseInt(process.env.PORT ?? '3001', 10);
+const HOST = process.env.HOST ?? '0.0.0.0';
 
 function jsonResponse(data: unknown): { body: string; headers: Record<string, string> } {
   return {
@@ -22,6 +23,17 @@ function jsonResponse(data: unknown): { body: string; headers: Record<string, st
 
 export function startDataApi(): void {
   const server = createServer((req, res) => {
+    // CORS preflight
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      });
+      res.end();
+      return;
+    }
+
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
     const path = url.pathname;
     const sport = (url.searchParams.get('sport') ?? 'nba') as Sport;
@@ -71,9 +83,18 @@ export function startDataApi(): void {
           break;
         }
 
-        case '/api/health':
-          response = jsonResponse({ status: 'ok', timestamp: new Date().toISOString() });
+        case '/api/health': {
+          const db = getDb();
+          const gameCount = (db.prepare('SELECT COUNT(*) as c FROM games').get() as { c: number }).c;
+          const resultCount = (db.prepare('SELECT COUNT(*) as c FROM game_results').get() as { c: number }).c;
+          response = jsonResponse({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            games: gameCount,
+            results: resultCount,
+          });
           break;
+        }
 
         default:
           response = jsonResponse({ error: 'Not found', endpoints: ['/api/findings', '/api/margins', '/api/home-timeline', '/api/games', '/api/stats', '/api/health'] });
@@ -91,8 +112,8 @@ export function startDataApi(): void {
     }
   });
 
-  server.listen(PORT, () => {
-    console.log(`Data API running on http://localhost:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`Data API running on http://${HOST}:${PORT}`);
   });
 
   process.on('SIGINT', () => { closeDb(); process.exit(0); });

@@ -416,6 +416,295 @@ body {
   color: var(--spotlight);
 }
 
+/* Hero card for top player per sport */
+.hero-card {
+  background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);
+  border: 1px solid var(--accent-dim);
+  border-left: 4px solid var(--spotlight);
+  border-radius: 8px;
+  padding: 32px;
+  margin: 24px 0 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-card::after {
+  content: '★';
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  font-size: 32px;
+  color: var(--spotlight);
+  opacity: 0.3;
+}
+
+.hero-card-eyebrow {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--spotlight);
+  margin-bottom: 12px;
+}
+
+.hero-card-name {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+
+.hero-card-meta {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 6px;
+}
+
+.hero-card-primary {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin: 24px 0 20px;
+}
+
+.hero-primary-value {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 56px;
+  font-weight: 800;
+  color: var(--spotlight);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hero-primary-label {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hero-card-context {
+  display: flex;
+  gap: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.hero-context-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-context-label {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.hero-context-value {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Collapsible category */
+.player-category {
+  margin: 16px 0;
+}
+
+.player-category > summary {
+  cursor: pointer;
+  list-style: none;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+
+.player-category > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.15s;
+  color: var(--text-muted);
+}
+
+.player-category[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.player-category > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Rate stat sub-line */
+.stat-rate {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.stat-rate .rate-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.leaderboards {
+  margin-top: 8px;
+}
+
+/* Player section */
+.sport-block {
+  margin: 56px 0;
+}
+
+.sport-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 24px;
+}
+
+.sport-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.sport-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.player-category {
+  margin: 24px 0;
+}
+
+.player-category-label {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.player-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.player-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--bg-surface);
+  transition: background 0.15s;
+}
+
+.player-row:hover {
+  background: var(--bg-elevated);
+}
+
+.player-row.spotlight {
+  background: linear-gradient(90deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);
+  border-left: 3px solid var(--spotlight);
+  padding-left: 15px;
+}
+
+.player-rank {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.player-row.spotlight .player-rank {
+  color: var(--spotlight);
+}
+
+.player-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.player-name .name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-name .meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.player-stat {
+  text-align: right;
+}
+
+.stat-value {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.player-row.spotlight .stat-value {
+  color: var(--spotlight);
+}
+
+.stat-context {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+@media (max-width: 720px) {
+  .player-row { grid-template-columns: 32px 1fr auto; padding: 12px; }
+  .player-name .name { font-size: 14px; }
+  .stat-value { font-size: 16px; }
+}
+
 /* Footer */
 .footer {
   padding: 80px 0;

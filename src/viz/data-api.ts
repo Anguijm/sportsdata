@@ -6,6 +6,8 @@
 import { createServer } from 'node:http';
 import { getDb, closeDb } from '../storage/sqlite.js';
 import { scanForFindings, getMarginDistribution, getHomeWinTimeline } from '../analysis/interesting.js';
+import { findPlayerFindings, getSportPlayerData } from '../analysis/player-findings.js';
+import { getPlayerCount } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
@@ -190,6 +192,28 @@ export function startDataApi(): void {
             FROM game_results WHERE sport = ? AND margin > 0 ORDER BY margin ASC LIMIT 5
           `).all(sport);
           response = jsonResponse({ blowouts, nailBiters });
+          break;
+        }
+
+        case '/api/players': {
+          const findings = findPlayerFindings(sport);
+          response = jsonResponse(findings);
+          break;
+        }
+
+        case '/api/sport-data': {
+          // Returns hero + findings for a single sport (council-mandated card structure)
+          const data = getSportPlayerData(sport);
+          response = jsonResponse(data);
+          break;
+        }
+
+        case '/api/player-counts': {
+          const counts: Record<string, number> = {};
+          for (const s of ['nfl', 'nba', 'mlb', 'nhl', 'mls', 'epl']) {
+            counts[s] = getPlayerCount(s);
+          }
+          response = jsonResponse(counts);
           break;
         }
 

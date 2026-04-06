@@ -88,6 +88,22 @@ function initTables(db: Database.Database): void {
       PRIMARY KEY (canonical_id, provider)
     );
 
+    CREATE TABLE IF NOT EXISTS player_stats (
+      player_id TEXT NOT NULL,
+      sport TEXT NOT NULL,
+      season TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      position TEXT,
+      jersey TEXT,
+      age INTEGER,
+      team_id TEXT,
+      team_abbr TEXT,
+      games_played INTEGER NOT NULL DEFAULT 0,
+      stats_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (player_id, sport, season)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_games_sport ON games(sport);
     CREATE INDEX IF NOT EXISTS idx_games_date ON games(date);
     CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);
@@ -95,6 +111,8 @@ function initTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_results_sport ON game_results(sport);
     CREATE INDEX IF NOT EXISTS idx_results_date ON game_results(date);
     CREATE INDEX IF NOT EXISTS idx_mappings_provider ON team_mappings(provider, provider_id);
+    CREATE INDEX IF NOT EXISTS idx_player_stats_sport ON player_stats(sport, season);
+    CREATE INDEX IF NOT EXISTS idx_player_stats_team ON player_stats(team_abbr, sport);
   `);
 }
 
@@ -418,4 +436,94 @@ export function getMappingGaps(sport: string): { canonical_id: string; missing_p
     if (missing.length > 0) gaps.push({ canonical_id: id, missing_providers: missing });
   }
   return gaps;
+}
+
+// --- Player Stats ---
+
+export interface PlayerStatsRow {
+  player_id: string;
+  sport: string;
+  season: string;
+  full_name: string;
+  position: string | null;
+  jersey: string | null;
+  age: number | null;
+  team_id: string | null;
+  team_abbr: string | null;
+  games_played: number;
+  stats_json: string;
+  updated_at: string;
+}
+
+export interface PlayerStatsInput {
+  playerId: string;
+  sport: string;
+  season: string;
+  fullName: string;
+  position?: string;
+  jersey?: string;
+  age?: number | null;
+  teamId?: string;
+  teamAbbr?: string;
+  gamesPlayed: number;
+  stats: Record<string, number>;
+}
+
+export function upsertPlayerStats(rows: PlayerStatsInput[]): number {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT INTO player_stats (player_id, sport, season, full_name, position, jersey, age, team_id, team_abbr, games_played, stats_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(player_id, sport, season) DO UPDATE SET
+      full_name=excluded.full_name,
+      position=excluded.position,
+      jersey=excluded.jersey,
+      age=excluded.age,
+      team_id=excluded.team_id,
+      team_abbr=excluded.team_abbr,
+      games_played=excluded.games_played,
+      stats_json=excluded.stats_json,
+      updated_at=excluded.updated_at
+  `);
+
+  const insertAll = db.transaction((items: PlayerStatsInput[]) => {
+    const now = new Date().toISOString();
+    let count = 0;
+    for (const r of items) {
+      stmt.run(
+        r.playerId,
+        r.sport,
+        r.season,
+        r.fullName,
+        r.position ?? null,
+        r.jersey ?? null,
+        r.age ?? null,
+        r.teamId ?? null,
+        r.teamAbbr ?? null,
+        r.gamesPlayed,
+        JSON.stringify(r.stats),
+        now,
+      );
+      count++;
+    }
+    return count;
+  });
+
+  return insertAll(rows);
+}
+
+export function getPlayerStats(sport: string, season?: string): PlayerStatsRow[] {
+  const db = getDb();
+  if (season) {
+    return db.prepare('SELECT * FROM player_stats WHERE sport = ? AND season = ?').all(sport, season) as PlayerStatsRow[];
+  }
+  return db.prepare('SELECT * FROM player_stats WHERE sport = ?').all(sport) as PlayerStatsRow[];
+}
+
+export function getPlayerCount(sport?: string): number {
+  const db = getDb();
+  if (sport) {
+    return (db.prepare('SELECT COUNT(*) as c FROM player_stats WHERE sport = ?').get(sport) as { c: number }).c;
+  }
+  return (db.prepare('SELECT COUNT(*) as c FROM player_stats').get() as { c: number }).c;
 }

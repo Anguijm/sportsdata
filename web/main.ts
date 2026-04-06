@@ -221,6 +221,145 @@ function renderStreaks(container: HTMLElement, sequences: TeamSequence[]) {
   container.innerHTML = html;
 }
 
+// --- Player findings (per sport, council-approved hero card pattern) ---
+
+interface PlayerFinding {
+  id: string;
+  sport: string;
+  category: string;
+  rank: number;
+  playerName: string;
+  team: string;
+  position: string;
+  headline: string;
+  statValue: number;
+  statLabel: string;
+  rateStatLabel?: string;
+  rateStatValue?: string;
+  qualifier: string;
+  spotlight: boolean;
+}
+
+interface PlayerHero {
+  sport: string;
+  name: string;
+  team: string;
+  position: string;
+  category: string;
+  headline: string;
+  primaryStat: { label: string; value: string };
+  contextStats: Array<{ label: string; value: string }>;
+  qualifier: string;
+}
+
+interface SportData {
+  hero: PlayerHero | null;
+  findings: PlayerFinding[];
+}
+
+const SPORT_LABELS: Record<string, string> = {
+  nba: 'NBA · Basketball',
+  nfl: 'NFL · Football',
+  mlb: 'MLB · Baseball',
+  nhl: 'NHL · Hockey',
+  mls: 'MLS · Soccer',
+  epl: 'Premier League',
+};
+
+const SPORT_ORDER = ['nba', 'nfl', 'mlb', 'nhl', 'epl', 'mls'];
+
+async function loadAllSportData(): Promise<Map<string, SportData>> {
+  const map = new Map<string, SportData>();
+  await Promise.all(SPORT_ORDER.map(async s => {
+    try {
+      const res = await fetch(`${API_BASE}/api/sport-data?sport=${s}`);
+      const data = await res.json() as SportData;
+      if (data.findings.length > 0) map.set(s, data);
+    } catch {
+      /* skip */
+    }
+  }));
+  return map;
+}
+
+function renderHeroCard(hero: PlayerHero): string {
+  const contextHtml = hero.contextStats.map(s => `
+    <div class="hero-context-stat">
+      <div class="hero-context-label">${s.label}</div>
+      <div class="hero-context-value">${s.value}</div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="hero-card">
+      <div class="hero-card-eyebrow">${hero.category} · ${hero.qualifier}</div>
+      <div class="hero-card-name">${hero.name}</div>
+      <div class="hero-card-meta">${hero.team} · ${hero.position}</div>
+      <div class="hero-card-primary">
+        <div class="hero-primary-value">${hero.primaryStat.value}</div>
+        <div class="hero-primary-label">${hero.primaryStat.label}</div>
+      </div>
+      <div class="hero-card-context">${contextHtml}</div>
+    </div>
+  `;
+}
+
+function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, SportData>, counts: Record<string, number>) {
+  const sports = SPORT_ORDER.filter(s => allPlayers.has(s));
+  if (sports.length === 0) {
+    container.innerHTML = '<p style="color: var(--text-muted)">No player data yet.</p>';
+    return;
+  }
+
+  const html = sports.map(sport => {
+    const { hero, findings } = allPlayers.get(sport)!;
+    const totalCount = counts[sport] ?? 0;
+
+    // Group by category, drop hero category from leaderboards (it's already shown above)
+    const byCategory = new Map<string, PlayerFinding[]>();
+    for (const f of findings) {
+      if (!byCategory.has(f.category)) byCategory.set(f.category, []);
+      byCategory.get(f.category)!.push(f);
+    }
+
+    const categoryBlocks = Array.from(byCategory.entries()).map(([cat, list]) => {
+      const rows = list.map(f => `
+        <div class="player-row ${f.spotlight ? 'spotlight' : ''}">
+          <div class="player-rank">${f.rank}</div>
+          <div class="player-name">
+            <span class="name">${f.playerName}</span>
+            <span class="meta">${f.team} · ${f.position || '—'}</span>
+          </div>
+          <div class="player-stat">
+            <div class="stat-value">${f.headline}</div>
+            ${f.rateStatLabel ? `<div class="stat-rate"><span class="rate-label">${f.rateStatLabel}</span> ${f.rateStatValue}</div>` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      return `
+        <details class="player-category" ${cat === Array.from(byCategory.keys())[0] ? 'open' : ''}>
+          <summary class="player-category-label">${cat}</summary>
+          <div class="player-rows">${rows}</div>
+        </details>
+      `;
+    }).join('');
+
+    return `
+      <div class="sport-block">
+        <div class="sport-header">
+          <div class="sport-title">${SPORT_LABELS[sport] ?? sport.toUpperCase()}</div>
+          <div class="sport-meta">${totalCount} players · qualified leaders only</div>
+        </div>
+        ${hero ? renderHeroCard(hero) : ''}
+        <div class="leaderboards">${categoryBlocks}</div>
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = html;
+}
+
 // --- Findings ranked list ---
 
 function renderFindings(container: HTMLElement, findings: Finding[]) {
@@ -253,12 +392,14 @@ function renderFindings(container: HTMLElement, findings: Finding[]) {
 
 async function main() {
   try {
-    const [stats, margins, findings, sequences, extremes] = await Promise.all([
+    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts] = await Promise.all([
       fetchJson<Stats>('/api/stats'),
       fetchJson<{ margin: number; count: number }[]>('/api/margins'),
       fetchJson<Finding[]>('/api/findings'),
       fetchJson<TeamSequence[]>('/api/team-sequences'),
       fetchJson<{ blowouts: Game[]; nailBiters: Game[] }>('/api/extreme-games'),
+      loadAllSportData(),
+      fetch(`${API_BASE}/api/player-counts`).then(r => r.json() as Promise<Record<string, number>>),
     ]);
 
     const totalGames = stats.total_games;
@@ -304,6 +445,7 @@ async function main() {
     renderExtremes(document.getElementById('extremes-grid')!, extremes);
     renderStreaks(document.getElementById('streak-grid')!, sequences);
     renderFindings(document.getElementById('findings-grid')!, findings);
+    renderPlayerSection(document.getElementById('players-section')!, allSportData, playerCounts);
 
   } catch (err) {
     document.getElementById('hero-title')!.textContent = 'Failed to load data';

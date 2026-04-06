@@ -14,6 +14,7 @@
     "inspect": "npx tsx src/cli/inspect.ts",
     "seed:nba": "npx tsx src/storage/seed-nba-mappings.ts",
     "historical": "npx tsx src/scrapers/run-historical.ts",
+    "players": "npx tsx src/scrapers/run-player-stats.ts",
     "findings": "npx tsx src/cli/findings.ts",
     "api": "npx tsx src/viz/data-api.ts",
     "viz": "npx tsx src/viz/data-api.ts & npx vite",

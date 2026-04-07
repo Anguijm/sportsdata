@@ -30,4 +30,6 @@ RUN touch data/logs/scrape-log.jsonl data/logs/analysis-log.jsonl data/logs/pred
 
 EXPOSE 3001
 
-CMD ["npx", "tsx", "src/viz/data-api.ts"]
+# Use direct path to tsx binary to avoid npx download on cold start.
+# tsx is bundled in node_modules via npm ci.
+CMD ["node", "node_modules/.bin/tsx", "src/viz/data-api.ts"]

@@ -8,6 +8,8 @@ import { getDb, closeDb } from '../storage/sqlite.js';
 import { scanForFindings, getMarginDistribution, getHomeWinTimeline } from '../analysis/interesting.js';
 import { findPlayerFindings, getSportPlayerData } from '../analysis/player-findings.js';
 import { getPlayerCount } from '../storage/sqlite.js';
+import { getTrackRecord, getUpcomingPredictions, getRecentResolvedPredictions, resolvePredictions } from '../analysis/resolve-predictions.js';
+import { predictUpcoming } from '../analysis/predict-runner.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Sport } from '../schema/provenance.js';
@@ -200,6 +202,47 @@ export function startDataApi(): void {
         case '/api/players': {
           const findings = findPlayerFindings(sport);
           response = jsonResponse(findings);
+          break;
+        }
+
+        case '/api/trigger/predict': {
+          // Council mandate: idempotent, twice-daily
+          // Auth check: simple bearer token, fail-closed
+          const auth = req.headers['authorization'];
+          const expected = process.env.PREDICT_TRIGGER_TOKEN;
+          if (!expected || auth !== `Bearer ${expected}`) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Unauthorized' }));
+            return;
+          }
+          const resolved = resolvePredictions(sport);
+          const generated = predictUpcoming(sport);
+          response = jsonResponse({
+            sport,
+            resolved: resolved.resolved,
+            correct: resolved.correct,
+            generated: generated.predictions.length,
+            skipped: generated.skipped,
+            triggeredAt: new Date().toISOString(),
+          });
+          break;
+        }
+
+        case '/api/predictions/upcoming': {
+          const preds = getUpcomingPredictions(sport);
+          response = jsonResponse(preds);
+          break;
+        }
+
+        case '/api/predictions/recent': {
+          const preds = getRecentResolvedPredictions(sport);
+          response = jsonResponse(preds);
+          break;
+        }
+
+        case '/api/predictions/track-record': {
+          const record = getTrackRecord(sport);
+          response = jsonResponse(record);
           break;
         }
 

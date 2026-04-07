@@ -88,6 +88,29 @@ function initTables(db: Database.Database): void {
       PRIMARY KEY (canonical_id, provider)
     );
 
+    CREATE TABLE IF NOT EXISTS predictions (
+      id TEXT PRIMARY KEY,
+      game_id TEXT NOT NULL,
+      sport TEXT NOT NULL,
+      model_version TEXT NOT NULL,
+      predicted_winner TEXT NOT NULL,
+      predicted_prob REAL NOT NULL,
+      reasoning_json TEXT NOT NULL,
+      reasoning_text TEXT NOT NULL,
+      made_at TEXT NOT NULL,
+      team_state_as_of TEXT NOT NULL,
+      low_confidence INTEGER NOT NULL DEFAULT 0,
+      resolved_at TEXT,
+      actual_winner TEXT,
+      was_correct INTEGER,
+      brier_score REAL,
+      UNIQUE (game_id, model_version)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_predictions_sport_resolved ON predictions(sport, resolved_at);
+    CREATE INDEX IF NOT EXISTS idx_predictions_game ON predictions(game_id);
+    CREATE INDEX IF NOT EXISTS idx_predictions_state_time ON predictions(team_state_as_of);
+
     CREATE TABLE IF NOT EXISTS player_stats (
       player_id TEXT NOT NULL,
       sport TEXT NOT NULL,

@@ -221,6 +221,154 @@ function renderStreaks(container: HTMLElement, sequences: TeamSequence[]) {
   container.innerHTML = html;
 }
 
+// --- Live predictions ---
+
+interface PredictionRow {
+  id: string;
+  game_id: string;
+  sport: string;
+  model_version: string;
+  predicted_winner: string;
+  predicted_prob: number;
+  reasoning_text: string;
+  made_at: string;
+  resolved_at: string | null;
+  actual_winner: string | null;
+  was_correct: number | null;
+  brier_score: number | null;
+  low_confidence: number;
+  game_date: string;
+  home_team_id: string;
+  away_team_id: string;
+  game_status: string;
+}
+
+interface TrackRecordRow {
+  modelVersion: string;
+  sport: string;
+  resolved: number;
+  correct: number;
+  accuracy: number;
+  avgBrier: number;
+  lowConfidenceResolved: number;
+  lowConfidenceCorrect: number;
+}
+
+function formatGameDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffDays = Math.floor((d.getTime() - now.getTime()) / 86400000);
+  if (diffDays === 0) return 'TONIGHT';
+  if (diffDays === 1) return 'TOMORROW';
+  if (diffDays === -1) return 'YESTERDAY';
+  if (diffDays > 1 && diffDays < 7) return `IN ${diffDays} DAYS`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+}
+
+function renderPredictions(
+  container: HTMLElement,
+  upcoming: PredictionRow[],
+  recent: PredictionRow[],
+  trackRecord: TrackRecordRow,
+) {
+  const tr = trackRecord;
+  const trackHtml = `
+    <div class="track-record">
+      <div class="track-record-eyebrow">v2 model · live track record</div>
+      <div class="track-record-main">
+        <div class="track-stat">
+          <div class="track-stat-value">${tr.correct}<span class="track-stat-sep">–</span>${tr.resolved - tr.correct}</div>
+          <div class="track-stat-label">RECORD</div>
+        </div>
+        <div class="track-stat">
+          <div class="track-stat-value">${tr.resolved > 0 ? (tr.accuracy * 100).toFixed(1) + '%' : '—'}</div>
+          <div class="track-stat-label">ACCURACY</div>
+        </div>
+        <div class="track-stat">
+          <div class="track-stat-value">${tr.resolved > 0 ? tr.avgBrier.toFixed(3) : '—'}</div>
+          <div class="track-stat-label">AVG BRIER</div>
+        </div>
+      </div>
+      ${tr.resolved < 30
+        ? `<div class="track-disclaimer">Sample size: ${tr.resolved} predictions. Track record will stabilize as more games resolve.</div>`
+        : ''}
+      ${tr.lowConfidenceResolved > 0
+        ? `<div class="track-disclaimer">Excluded: ${tr.lowConfidenceCorrect}-${tr.lowConfidenceResolved - tr.lowConfidenceCorrect} on low-confidence (≤5 games of state)</div>`
+        : ''}
+    </div>
+  `;
+
+  const upcomingHtml = upcoming.length === 0
+    ? '<div class="empty-state">No upcoming NBA games scheduled.</div>'
+    : upcoming.map(p => {
+        const homeAbbr = p.home_team_id.split(':')[1] ?? p.home_team_id;
+        const awayAbbr = p.away_team_id.split(':')[1] ?? p.away_team_id;
+        const winnerAbbr = p.predicted_winner.split(':')[1] ?? p.predicted_winner;
+        const confidence = (p.predicted_prob * 100).toFixed(0);
+        const dateLabel = formatGameDate(p.game_date);
+        return `
+          <div class="prediction-card ${p.low_confidence ? 'low-confidence' : ''}">
+            <div class="prediction-header">
+              <div class="prediction-date">${dateLabel}</div>
+              ${p.low_confidence ? '<div class="prediction-pill">thin data</div>' : ''}
+            </div>
+            <div class="prediction-matchup">
+              <div class="matchup-team ${winnerAbbr === awayAbbr ? 'pick' : ''}">${awayAbbr}</div>
+              <div class="matchup-at">@</div>
+              <div class="matchup-team ${winnerAbbr === homeAbbr ? 'pick' : ''}">${homeAbbr}</div>
+            </div>
+            <div class="prediction-pick">
+              <div class="pick-text">Model pick: <strong>${winnerAbbr}</strong></div>
+              <div class="pick-confidence">${confidence}%</div>
+            </div>
+            <div class="prediction-reasoning">${p.reasoning_text}</div>
+          </div>
+        `;
+      }).join('');
+
+  const recentHtml = recent.length === 0
+    ? ''
+    : `
+      <div class="recent-predictions">
+        <h3 class="recent-title">Recently Resolved</h3>
+        ${recent.map(p => {
+          const homeAbbr = p.home_team_id.split(':')[1] ?? p.home_team_id;
+          const awayAbbr = p.away_team_id.split(':')[1] ?? p.away_team_id;
+          const winnerAbbr = p.predicted_winner.split(':')[1] ?? p.predicted_winner;
+          const actualAbbr = p.actual_winner?.split(':')[1] ?? '';
+          const correct = p.was_correct === 1;
+          return `
+            <div class="recent-row ${correct ? 'correct' : 'wrong'}">
+              <div class="recent-icon">${correct ? '✓' : '✗'}</div>
+              <div class="recent-matchup">${awayAbbr} @ ${homeAbbr}</div>
+              <div class="recent-pick">picked ${winnerAbbr}</div>
+              <div class="recent-actual">actual: ${actualAbbr}</div>
+              <div class="recent-conf">${(p.predicted_prob * 100).toFixed(0)}%</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+  container.innerHTML = `
+    ${trackHtml}
+    <div class="upcoming-predictions">
+      <h3 class="upcoming-title">${upcoming.length > 0 ? `${upcoming.length} upcoming games` : 'No upcoming games'}</h3>
+      <div class="upcoming-grid">${upcomingHtml}</div>
+    </div>
+    ${recentHtml}
+  `;
+}
+
+async function loadPredictions(sport = 'nba'): Promise<{ upcoming: PredictionRow[]; recent: PredictionRow[]; trackRecord: TrackRecordRow }> {
+  const [upcoming, recent, trackRecord] = await Promise.all([
+    fetch(`${API_BASE}/api/predictions/upcoming?sport=${sport}`).then(r => r.json() as Promise<PredictionRow[]>),
+    fetch(`${API_BASE}/api/predictions/recent?sport=${sport}`).then(r => r.json() as Promise<PredictionRow[]>),
+    fetch(`${API_BASE}/api/predictions/track-record?sport=${sport}`).then(r => r.json() as Promise<TrackRecordRow>),
+  ]);
+  return { upcoming, recent, trackRecord };
+}
+
 // --- Ratchet loop results ---
 
 interface RatchetArtifact {
@@ -558,7 +706,7 @@ function renderFindings(container: HTMLElement, findings: Finding[]) {
 
 async function main() {
   try {
-    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet] = await Promise.all([
+    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet, predictions] = await Promise.all([
       fetchJson<Stats>('/api/stats'),
       fetchJson<{ margin: number; count: number }[]>('/api/margins'),
       fetchJson<Finding[]>('/api/findings'),
@@ -567,6 +715,7 @@ async function main() {
       loadAllSportData(),
       fetch(`${API_BASE}/api/player-counts`).then(r => r.json() as Promise<Record<string, number>>),
       loadRatchet('nba'),
+      loadPredictions('nba'),
     ]);
 
     const totalGames = stats.total_games;
@@ -612,6 +761,10 @@ async function main() {
     renderExtremes(document.getElementById('extremes-grid')!, extremes);
     renderStreaks(document.getElementById('streak-grid')!, sequences);
     renderFindings(document.getElementById('findings-grid')!, findings);
+    renderPredictions(
+      document.getElementById('predictions-section')!,
+      predictions.upcoming, predictions.recent, predictions.trackRecord
+    );
     if (ratchet) {
       renderRatchet(document.getElementById('ratchet-section')!, ratchet);
     } else {

@@ -1,0 +1,26 @@
+name: Predict Cron
+
+# Council mandate (Sprint 7): twice daily — 5am UTC catches early scrapes,
+# 22:00 UTC catches West Coast game confirmations.
+on:
+  schedule:
+    - cron: '0 5 * * *'
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger predict on Fly.io
+        run: |
+          # First refresh game data
+          curl -sf -X POST "https://sportsdata-api.fly.dev/api/trigger/scrape" \
+            -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
+            || echo "Scrape trigger failed (non-fatal)"
+
+          # Then run predictions
+          curl -sf -X POST "https://sportsdata-api.fly.dev/api/trigger/predict" \
+            -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
+            || echo "Predict trigger failed"
+        continue-on-error: true

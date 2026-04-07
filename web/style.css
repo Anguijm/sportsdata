@@ -416,6 +416,71 @@ body {
   color: var(--spotlight);
 }
 
+/* Sprint 8.5 — split cohorts for live vs backtest */
+.track-cohorts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+  .track-cohorts { grid-template-columns: 1fr; }
+}
+
+.track-cohort {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.track-cohort.cohort-live {
+  border-left: 3px solid var(--spotlight);
+}
+
+.track-cohort.cohort-backfill {
+  border-left: 3px solid var(--accent);
+  opacity: 0.88;
+}
+
+.track-cohort-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.track-cohort-label {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.cohort-live .track-cohort-label { color: var(--spotlight); }
+.cohort-backfill .track-cohort-label { color: var(--accent); }
+
+.track-cohort-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex: 1;
+  text-align: right;
+}
+
+.track-cohort-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.track-cohort-stats .track-stat-value {
+  font-size: 28px;
+}
+
 /* Predictions section */
 .track-record {
   background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);

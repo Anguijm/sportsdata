@@ -93,6 +93,7 @@ function initTables(db: Database.Database): void {
       game_id TEXT NOT NULL,
       sport TEXT NOT NULL,
       model_version TEXT NOT NULL,
+      prediction_source TEXT NOT NULL DEFAULT 'live',
       predicted_winner TEXT NOT NULL,
       predicted_prob REAL NOT NULL,
       reasoning_json TEXT NOT NULL,
@@ -104,12 +105,28 @@ function initTables(db: Database.Database): void {
       actual_winner TEXT,
       was_correct INTEGER,
       brier_score REAL,
-      UNIQUE (game_id, model_version)
+      -- Sprint 8.5 council mandate (Architect): composite key separates live from backfill
+      UNIQUE (game_id, model_version, prediction_source)
     );
 
     CREATE INDEX IF NOT EXISTS idx_predictions_sport_resolved ON predictions(sport, resolved_at);
     CREATE INDEX IF NOT EXISTS idx_predictions_game ON predictions(game_id);
     CREATE INDEX IF NOT EXISTS idx_predictions_state_time ON predictions(team_state_as_of);
+  `);
+
+  // Sprint 8.5 migration: add prediction_source column to existing predictions table.
+  // Must run BEFORE the source-aware index can be created.
+  // Idempotent — fresh DBs already have the column from CREATE TABLE; this no-ops.
+  try {
+    db.exec("ALTER TABLE predictions ADD COLUMN prediction_source TEXT NOT NULL DEFAULT 'live'");
+  } catch {
+    // Column already exists, ignore
+  }
+
+  db.exec(`
+    -- Sprint 8.5 council mandate (Architect): filtered queries by source
+    CREATE INDEX IF NOT EXISTS idx_predictions_source_model ON predictions(prediction_source, model_version);
+
 
     CREATE TABLE IF NOT EXISTS player_stats (
       player_id TEXT NOT NULL,

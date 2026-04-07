@@ -244,9 +244,23 @@ interface PredictionRow {
   game_status: string;
 }
 
+interface TrackRecordCohort {
+  source: 'live' | 'backfill';
+  resolved: number;
+  correct: number;
+  accuracy: number;
+  avgBrier: number;
+  lowConfidenceResolved: number;
+  lowConfidenceCorrect: number;
+}
+
 interface TrackRecordRow {
   modelVersion: string;
   sport: string;
+  // Council mandate (UX): NEVER merge live and backfill
+  live?: TrackRecordCohort;
+  backfill?: TrackRecordCohort;
+  // Backwards-compat top-level (live cohort)
   resolved: number;
   correct: number;
   accuracy: number;
@@ -272,29 +286,76 @@ function renderPredictions(
   recent: PredictionRow[],
   trackRecord: TrackRecordRow,
 ) {
-  const tr = trackRecord;
-  const trackHtml = `
-    <div class="track-record">
-      <div class="track-record-eyebrow">v2 model · live track record</div>
-      <div class="track-record-main">
-        <div class="track-stat">
-          <div class="track-stat-value">${tr.correct}<span class="track-stat-sep">–</span>${tr.resolved - tr.correct}</div>
-          <div class="track-stat-label">RECORD</div>
+  // Council mandate (UX): two distinct cohorts, NEVER merged
+  const live = trackRecord.live ?? {
+    source: 'live' as const,
+    resolved: trackRecord.resolved,
+    correct: trackRecord.correct,
+    accuracy: trackRecord.accuracy,
+    avgBrier: trackRecord.avgBrier,
+    lowConfidenceResolved: trackRecord.lowConfidenceResolved,
+    lowConfidenceCorrect: trackRecord.lowConfidenceCorrect,
+  };
+  const backfill = trackRecord.backfill;
+
+  const renderCohort = (
+    label: string,
+    sublabel: string,
+    cohort: TrackRecordCohort,
+    isLive: boolean
+  ): string => {
+    const acc = cohort.resolved > 0 ? (cohort.accuracy * 100).toFixed(1) + '%' : '—';
+    const brier = cohort.resolved > 0 ? cohort.avgBrier.toFixed(3) : '—';
+    return `
+      <div class="track-cohort ${isLive ? 'cohort-live' : 'cohort-backfill'}">
+        <div class="track-cohort-header">
+          <div class="track-cohort-label">${label}</div>
+          <div class="track-cohort-sub">${sublabel}</div>
         </div>
-        <div class="track-stat">
-          <div class="track-stat-value">${tr.resolved > 0 ? (tr.accuracy * 100).toFixed(1) + '%' : '—'}</div>
-          <div class="track-stat-label">ACCURACY</div>
-        </div>
-        <div class="track-stat">
-          <div class="track-stat-value">${tr.resolved > 0 ? tr.avgBrier.toFixed(3) : '—'}</div>
-          <div class="track-stat-label">AVG BRIER</div>
+        <div class="track-cohort-stats">
+          <div class="track-stat">
+            <div class="track-stat-value">${cohort.correct}<span class="track-stat-sep">–</span>${cohort.resolved - cohort.correct}</div>
+            <div class="track-stat-label">RECORD</div>
+          </div>
+          <div class="track-stat">
+            <div class="track-stat-value">${acc}</div>
+            <div class="track-stat-label">ACCURACY</div>
+          </div>
+          <div class="track-stat">
+            <div class="track-stat-value">${brier}</div>
+            <div class="track-stat-label">BRIER</div>
+          </div>
         </div>
       </div>
-      ${tr.resolved < 30
-        ? `<div class="track-disclaimer">Sample size: ${tr.resolved} predictions. Track record will stabilize as more games resolve.</div>`
+    `;
+  };
+
+  const trackHtml = `
+    <div class="track-record">
+      <div class="track-record-eyebrow">v2 model · track record</div>
+      <div class="track-cohorts">
+        ${renderCohort(
+          'LIVE',
+          live.resolved === 0
+            ? 'No live games resolved yet — accumulating'
+            : `${live.resolved} predictions made under live conditions`,
+          live,
+          true
+        )}
+        ${backfill && backfill.resolved > 0
+          ? renderCohort(
+              'BACKTEST',
+              `${backfill.resolved} held-out games · point-in-time state · NOT live`,
+              backfill,
+              false
+            )
+          : ''}
+      </div>
+      ${live.resolved < 30 && live.resolved > 0
+        ? `<div class="track-disclaimer">Live sample size: ${live.resolved}. Track record will stabilize as more games resolve.</div>`
         : ''}
-      ${tr.lowConfidenceResolved > 0
-        ? `<div class="track-disclaimer">Excluded: ${tr.lowConfidenceCorrect}-${tr.lowConfidenceResolved - tr.lowConfidenceCorrect} on low-confidence (≤5 games of state)</div>`
+      ${backfill && backfill.resolved > 0
+        ? `<div class="track-disclaimer">Backtest is the v2 model run retrospectively on held-out 2024-25 + 2025-26 games using only data available before each game. It is the model's calibration baseline, not a live record.</div>`
         : ''}
     </div>
   `;

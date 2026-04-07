@@ -116,19 +116,32 @@ export function resolvePredictions(sport?: Sport): ResolveResult {
   };
 }
 
-export interface TrackRecord {
-  modelVersion: string;
-  sport: string;
+export interface TrackRecordCohort {
+  source: 'live' | 'backfill';
   resolved: number;
   correct: number;
   accuracy: number;
   avgBrier: number;
-  /** Excluded from main cohort: predictions made on low-state team data */
   lowConfidenceResolved: number;
   lowConfidenceCorrect: number;
 }
 
-export function getTrackRecord(sport: Sport, modelVersion = 'v2'): TrackRecord {
+export interface TrackRecord {
+  modelVersion: string;
+  sport: string;
+  // Council mandate (UX): SEPARATE cohorts, never merged
+  live: TrackRecordCohort;
+  backfill: TrackRecordCohort;
+  // Backwards-compat top-level fields = LIVE cohort only (so old frontends don't show backfill as live)
+  resolved: number;
+  correct: number;
+  accuracy: number;
+  avgBrier: number;
+  lowConfidenceResolved: number;
+  lowConfidenceCorrect: number;
+}
+
+function getCohort(sport: Sport, modelVersion: string, source: 'live' | 'backfill'): TrackRecordCohort {
   const db = getDb();
 
   const main = db.prepare(`
@@ -137,30 +150,50 @@ export function getTrackRecord(sport: Sport, modelVersion = 'v2'): TrackRecord {
            AVG(brier_score) as avg_brier
     FROM predictions
     WHERE sport = ? AND model_version = ?
+      AND COALESCE(prediction_source, 'live') = ?
       AND resolved_at IS NOT NULL
       AND low_confidence = 0
-  `).get(sport, modelVersion) as { resolved: number; correct: number; avg_brier: number };
+  `).get(sport, modelVersion, source) as { resolved: number; correct: number; avg_brier: number };
 
   const lowConf = db.prepare(`
     SELECT COUNT(*) as resolved, SUM(was_correct) as correct
     FROM predictions
     WHERE sport = ? AND model_version = ?
+      AND COALESCE(prediction_source, 'live') = ?
       AND resolved_at IS NOT NULL
       AND low_confidence = 1
-  `).get(sport, modelVersion) as { resolved: number; correct: number };
+  `).get(sport, modelVersion, source) as { resolved: number; correct: number };
 
   const resolved = main.resolved ?? 0;
   const correct = main.correct ?? 0;
 
   return {
-    modelVersion,
-    sport,
+    source,
     resolved,
     correct,
     accuracy: resolved > 0 ? correct / resolved : 0,
     avgBrier: main.avg_brier ?? 0,
     lowConfidenceResolved: lowConf.resolved ?? 0,
     lowConfidenceCorrect: lowConf.correct ?? 0,
+  };
+}
+
+export function getTrackRecord(sport: Sport, modelVersion = 'v2'): TrackRecord {
+  const live = getCohort(sport, modelVersion, 'live');
+  const backfill = getCohort(sport, modelVersion, 'backfill');
+
+  return {
+    modelVersion,
+    sport,
+    live,
+    backfill,
+    // Backwards-compat top-level = live only (UX mandate: never merge)
+    resolved: live.resolved,
+    correct: live.correct,
+    accuracy: live.accuracy,
+    avgBrier: live.avgBrier,
+    lowConfidenceResolved: live.lowConfidenceResolved,
+    lowConfidenceCorrect: live.lowConfidenceCorrect,
   };
 }
 

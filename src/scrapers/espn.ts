@@ -9,6 +9,10 @@ import type { Sport } from '../schema/provenance.js';
 import type { ScrapeLogEntry } from '../storage/json-log.js';
 import { appendLog, countRecentRequests } from '../storage/json-log.js';
 import { createProvenance } from './normalizer.js';
+import {
+  validateScoreboard, validateTeams,
+  type EspnScoreboardResponse, type EspnTeamsResponse, type ValidationResult,
+} from './validators.js';
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
@@ -30,6 +34,10 @@ const ESPN_STATUS_MAP: Record<string, Game['status']> = {
   post: 'final',
 };
 
+/** Council mandate (Sprint 8): retry with backoff, fail-closed on schema drift */
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAYS_MS = [2000, 4000, 8000];
+
 async function rateLimitedFetch(url: string): Promise<Response> {
   const recentRequests = countRecentRequests('espn', RATE_WINDOW_MINUTES);
   if (recentRequests >= RATE_LIMIT) {
@@ -38,11 +46,72 @@ async function rateLimitedFetch(url: string): Promise<Response> {
   return fetch(url);
 }
 
-/** Fetch, normalize, and log a scrape in one pass */
+/** Optional alerting webhook (Discord, Slack, etc.) — opt-in via env */
+async function alertOnFailure(reason: string, sport: Sport, dataType: string): Promise<void> {
+  const webhook = process.env.ESPN_ALERT_WEBHOOK;
+  if (!webhook) return;
+  try {
+    await fetch(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: `🚨 ESPN scrape FAIL: ${sport}/${dataType} — ${reason}`,
+      }),
+    });
+  } catch {
+    // Alerting failure is non-fatal
+  }
+}
+
+type FetchResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: string };
+
+/**
+ * Council mandate (Sprint 8 / Engineer):
+ * Discriminated union return — no throws, easier to gate on.
+ * Retry with backoff, fail-closed on schema validation.
+ */
+async function safeFetch<T>(
+  url: string,
+  validator: (raw: unknown) => ValidationResult<T>,
+): Promise<FetchResult<T>> {
+  let lastError = 'unknown';
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      const response = await rateLimitedFetch(url);
+      if (!response.ok) {
+        lastError = `HTTP ${response.status}: ${response.statusText}`;
+        if (attempt < RETRY_ATTEMPTS - 1) {
+          await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+          continue;
+        }
+        return { ok: false, reason: lastError };
+      }
+
+      const raw = await response.json() as unknown;
+      const validation = validator(raw);
+      if (!validation.ok) {
+        // Schema drift — do NOT retry, fail closed immediately
+        return { ok: false, reason: `schema validation failed: ${validation.reason}` };
+      }
+      return { ok: true, data: validation.data };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      if (attempt < RETRY_ATTEMPTS - 1) {
+        await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      }
+    }
+  }
+  return { ok: false, reason: `network error after ${RETRY_ATTEMPTS} attempts: ${lastError}` };
+}
+
+/** Fetch, validate, normalize, and log a scrape in one pass */
 async function scrapedFetch<TRaw, TResult>(
   sport: Sport,
   endpoint: string,
   dataType: string,
+  validator: (raw: unknown) => ValidationResult<TRaw>,
   normalize: (raw: TRaw, sport: Sport, url: string) => TResult[]
 ): Promise<TResult[]> {
   const url = `${ESPN_BASE}/${SPORT_PATHS[sport]}/${endpoint}`;
@@ -59,74 +128,31 @@ async function scrapedFetch<TRaw, TResult>(
     ...overrides,
   });
 
-  try {
-    const response = await rateLimitedFetch(url);
-    if (!response.ok) {
-      throw new Error(`ESPN returned ${response.status}: ${response.statusText}`);
-    }
-
-    const data = await response.json() as TRaw;
-    const results = normalize(data, sport, url);
-
-    appendLog('scrape', logEntry({ records: results.length }));
-    return results;
-  } catch (error) {
-    appendLog('scrape', logEntry({
-      gate: 'FAIL',
-      error: error instanceof Error ? error.message : String(error),
-    }));
-    throw error;
+  const result = await safeFetch(url, validator);
+  if (!result.ok) {
+    appendLog('scrape', logEntry({ gate: 'FAIL', error: result.reason }));
+    await alertOnFailure(result.reason, sport, dataType);
+    // Council mandate: fail-closed → return empty array, do NOT throw
+    // Caller can detect via empty result + log entry
+    return [];
   }
+
+  const results = normalize(result.data, sport, url);
+  appendLog('scrape', logEntry({ records: results.length }));
+  return results;
 }
 
 /** Fetch current scoreboard for a sport */
 export function fetchScoreboard(sport: Sport): Promise<Game[]> {
-  return scrapedFetch(sport, 'scoreboard', 'scoreboard', normalizeScoreboard);
+  return scrapedFetch(sport, 'scoreboard', 'scoreboard', validateScoreboard, normalizeScoreboard);
 }
 
 /** Fetch teams for a sport */
 export function fetchTeams(sport: Sport): Promise<Team[]> {
-  return scrapedFetch(sport, 'teams', 'teams', normalizeTeams);
+  return scrapedFetch(sport, 'teams', 'teams', validateTeams, normalizeTeams);
 }
 
-// --- ESPN Response Types (partial, based on community docs) ---
-
-interface EspnScoreboardResponse {
-  events: Array<{
-    id: string;
-    date: string;
-    name: string;
-    status: { type: { state: string; completed: boolean } };
-    competitions: Array<{
-      venue?: { fullName: string };
-      competitors: Array<{
-        id: string;
-        homeAway: string;
-        team: { abbreviation: string; displayName: string };
-        score?: string;
-      }>;
-      odds?: Array<{ details: string; overUnder: number }>;
-    }>;
-  }>;
-}
-
-interface EspnTeamsResponse {
-  sports: Array<{
-    leagues: Array<{
-      teams: Array<{
-        team: {
-          id: string;
-          abbreviation: string;
-          displayName: string;
-          location: string;
-          groups?: { parent?: { name: string }; name: string };
-        };
-      }>;
-    }>;
-  }>;
-}
-
-// --- Normalizers ---
+// --- Normalizers (response types now in validators.ts) ---
 
 function normalizeScoreboard(data: EspnScoreboardResponse, sport: Sport, url: string): Game[] {
   return data.events.map((event) => {

@@ -10,6 +10,7 @@ import { join, dirname } from 'node:path';
 import type { Sport } from '../schema/provenance.js';
 import { ITERATIONS } from '../analysis/predict.js';
 import { runBacktest } from '../analysis/backtest.js';
+import { computeVegasComparison } from '../analysis/vegas-baseline.js';
 import { closeDb } from '../storage/sqlite.js';
 
 const sport: Sport = (process.argv[2] as Sport) ?? 'nba';
@@ -42,12 +43,26 @@ function main() {
   console.log(`  Brier improvement: ${brierImprovement.toFixed(4)}`);
   console.log(`  CI overlap with baseline: ${ciOverlap ? 'YES (result may be noise)' : 'NO (result is significant)'}`);
 
-  // Save artifact
+  // Sprint 8: Vegas comparison (council mandate — instrumentation only)
+  console.log('\nComputing Vegas baseline comparison...');
+  const vegasComparison = computeVegasComparison(sport);
+  console.log(`  Vegas matched games: ${vegasComparison.sampleSize}`);
+  if (vegasComparison.preliminary) {
+    console.log(`  ⚠ ${vegasComparison.note}`);
+  }
+  if (vegasComparison.vegas) {
+    console.log(`  Vegas accuracy: ${(vegasComparison.vegas.accuracy * 100).toFixed(1)}% [${(vegasComparison.vegas.accuracyCI95[0] * 100).toFixed(1)}%, ${(vegasComparison.vegas.accuracyCI95[1] * 100).toFixed(1)}%]`);
+    console.log(`  Vegas Brier: ${vegasComparison.vegas.brier.toFixed(4)}`);
+  }
+
+  // Save artifact (Sprint 8: schemaVersion 2 — adds vegas field)
   const artifact = {
+    schemaVersion: 2,
     sport,
     runAt: new Date().toISOString(),
     trainCutoffSeason: 2023,
     iterations: results,
+    vegas: vegasComparison,
     summary: {
       bestIteration: best.iterationId,
       baselineBrier: baseline.test.brier,

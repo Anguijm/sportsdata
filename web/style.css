@@ -840,26 +840,44 @@ body {
   font-size: 14px;
 }
 
-/* Hero card for top player per sport */
+/* Hero card — Sprint 8 polish */
 .hero-card {
   background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);
-  border: 1px solid var(--accent-dim);
-  border-left: 4px solid var(--spotlight);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--team-primary, var(--spotlight));
   border-radius: 8px;
   padding: 32px;
   margin: 24px 0 32px;
   position: relative;
   overflow: hidden;
+  min-height: 280px;
+}
+
+/* Council mandate: large abbr bg >40% card height, fills the headshot void */
+.hero-card-bg-abbr {
+  position: absolute;
+  right: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 220px;
+  font-weight: 900;
+  line-height: 0.85;
+  color: var(--team-primary, var(--accent));
+  opacity: 0.12;
+  letter-spacing: -0.05em;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+.hero-card-content {
+  position: relative;
+  z-index: 1;
 }
 
 .hero-card::after {
-  content: '★';
-  position: absolute;
-  top: 16px;
-  right: 24px;
-  font-size: 32px;
-  color: var(--spotlight);
-  opacity: 0.3;
+  display: none;
 }
 
 .hero-card-eyebrow {
@@ -938,6 +956,53 @@ body {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+/* Council mandate: ranking badge with explicit denominator */
+.hero-card-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 8px 14px;
+  background: var(--team-primary, var(--accent-dim));
+  border-radius: 4px;
+  cursor: help;
+  position: relative;
+  z-index: 2;
+  max-width: fit-content;
+}
+
+.hero-card-badge .badge-rank {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 16px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.hero-card-badge .badge-of {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.hero-card-badge .badge-qualifier {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+  margin-left: 4px;
+}
+
+@media (max-width: 720px) {
+  .hero-card-bg-abbr { font-size: 140px; right: -10px; }
+  .hero-card { padding: 24px; min-height: 240px; }
+  .hero-card-name { font-size: 28px; }
+  .hero-primary-value { font-size: 42px; }
+  .hero-card-context { gap: 16px; flex-wrap: wrap; }
+  .hero-card-badge { flex-wrap: wrap; }
+  .hero-card-badge .badge-qualifier { padding-left: 0; border-left: none; margin-left: 0; }
 }
 
 /* Collapsible category */

@@ -3,6 +3,7 @@
  */
 
 import * as Plot from '@observablehq/plot';
+import { getTeamColor } from './team-colors.js';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
 const SPORT = 'nba';
@@ -596,7 +597,7 @@ async function loadAllSportData(): Promise<Map<string, SportData>> {
   return map;
 }
 
-function renderHeroCard(hero: PlayerHero): string {
+function renderHeroCard(hero: PlayerHero, totalQualified: number): string {
   const contextHtml = hero.contextStats.map(s => `
     <div class="hero-context-stat">
       <div class="hero-context-label">${s.label}</div>
@@ -604,16 +605,29 @@ function renderHeroCard(hero: PlayerHero): string {
     </div>
   `).join('');
 
+  // Council mandate: per-team accent colors with sport fallback
+  const colors = getTeamColor(hero.sport, hero.team);
+
+  // Council mandate: ranking badge with explicit denominator
+  // Council mandate: large team abbr bg >40% card height
   return `
-    <div class="hero-card">
-      <div class="hero-card-eyebrow">${hero.category} · ${hero.qualifier}</div>
-      <div class="hero-card-name">${hero.name}</div>
-      <div class="hero-card-meta">${hero.team} · ${hero.position}</div>
-      <div class="hero-card-primary">
-        <div class="hero-primary-value">${hero.primaryStat.value}</div>
-        <div class="hero-primary-label">${hero.primaryStat.label}</div>
+    <div class="hero-card" style="--team-primary: ${colors.primary}; --team-secondary: ${colors.secondary};">
+      <div class="hero-card-bg-abbr">${hero.team}</div>
+      <div class="hero-card-content">
+        <div class="hero-card-eyebrow">${hero.category}</div>
+        <div class="hero-card-name">${hero.name}</div>
+        <div class="hero-card-meta">${hero.team} · ${hero.position}</div>
+        <div class="hero-card-primary">
+          <div class="hero-primary-value">${hero.primaryStat.value}</div>
+          <div class="hero-primary-label">${hero.primaryStat.label}</div>
+        </div>
+        <div class="hero-card-context">${contextHtml}</div>
+        <div class="hero-card-badge" title="Top of ${totalQualified} qualified players in this category. ${hero.qualifier}.">
+          <span class="badge-rank">#1</span>
+          <span class="badge-of">of ${totalQualified}</span>
+          <span class="badge-qualifier">${hero.qualifier}</span>
+        </div>
       </div>
-      <div class="hero-card-context">${contextHtml}</div>
     </div>
   `;
 }
@@ -665,7 +679,7 @@ function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, Spo
           <div class="sport-title">${SPORT_LABELS[sport] ?? sport.toUpperCase()}</div>
           <div class="sport-meta">${totalCount} players · qualified leaders only</div>
         </div>
-        ${hero ? renderHeroCard(hero) : ''}
+        ${hero ? renderHeroCard(hero, totalCount) : ''}
         <div class="leaderboards">${categoryBlocks}</div>
       </div>
     `;

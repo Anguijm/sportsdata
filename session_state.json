@@ -1,40 +1,82 @@
 {
-  "current_phase": "visualization",
-  "next_session_type": "viz-scroll",
-  "next_action": "Build scroll narrative with Scrollama, add timeline and streak charts, tune finding pacing",
+  "current_phase": "sprint_9_mobile_fixes_in_progress",
+  "last_completed_sprint": "sprint_8_5_backfill_resolver",
+  "next_session_type": "mobile_ux_build",
+  "next_action": "Resume Sprint 9 mobile fixes build — plan approved (3 WARN / 1 CLEAR), see SESSION_LOG.md Sprint 9 section",
   "pipeline": {
     "phase": "scraping",
-    "last_scrape": "2026-04-05T19:14:51Z",
+    "last_scrape": "2026-04-07T19:00:00Z",
     "active_hypotheses": 0,
-    "pending_analyses": ["NBA home win rate baseline", "NBA spread accuracy"]
+    "predictions_generated": 50,
+    "predictions_backfilled": 2500,
+    "predictions_resolved_live": 0
   },
   "sources_status": {
-    "espn": "active",
-    "odds_api": "active",
+    "espn": "active_hardened",
+    "odds_api": "active_accumulating",
     "balldontlie": "active",
     "sportsdata_io": "untested",
-    "sports_reference": "untested"
+    "sports_reference": "deferred"
   },
   "portfolio": {
-    "total_scrapes": 42,
-    "total_analyses": 0,
-    "total_predictions": 0,
-    "active_hypotheses": 0,
-    "game_results_resolved": 3814,
-    "findings_detected": 35
+    "total_scrapes": 60,
+    "total_resolved_outcomes": 3876,
+    "backfilled_predictions": 2500,
+    "live_predictions_pending": 50,
+    "live_predictions_resolved": 0,
+    "findings_detected": 46,
+    "v2_test_brier": 0.2486,
+    "v2_test_accuracy": 0.614
   },
   "database": {
     "teams": 174,
     "games": 3946,
-    "results": 3814,
+    "results": 3876,
     "team_mappings": 90,
+    "player_stats": 5049,
+    "predictions_total": 2550,
     "sports_active": ["nfl", "nba", "mlb", "nhl", "mls", "epl"]
   },
   "visualization": {
-    "detector_algorithms": ["streak_finder", "margin_outlier", "mediocrity"],
-    "web_frontend": "scaffolded",
-    "charts_implemented": ["histogram"],
-    "charts_planned": ["timeline", "streaks", "scatter", "drilldown"],
-    "aesthetic": "jon-bois-white"
+    "aesthetic": "dark_mode_user_override",
+    "sections_live": [
+      "hero",
+      "distribution",
+      "extremes",
+      "streak_grid",
+      "findings",
+      "live_predictions_split_cohorts",
+      "ratchet",
+      "players_6_sports"
+    ],
+    "mobile_fixes_status": "plan_approved_build_incomplete"
+  },
+  "deploy": {
+    "frontend_url": "https://sportsdata.pages.dev",
+    "api_url": "https://sportsdata-api.fly.dev",
+    "fly_machine": "287e392a913538",
+    "fly_region": "dfw",
+    "fly_memory_mb": 512,
+    "fly_always_on": true,
+    "cron_predict": "0 5,22 * * *",
+    "cron_scrape": "0 6 * * *"
+  },
+  "sprint_9_plan": {
+    "status": "approved_not_built",
+    "council_verdict": "3_WARN_1_CLEAR",
+    "items": [
+      "global_overflow_guards_body_html",
+      "streak_grid_top5_bottom5_with_details",
+      "findings_top10_with_details_toggle",
+      "ratchet_summary_stack_mobile",
+      "ratchet_iterations_stacked_cards_mobile",
+      "players_sport_tab_selector_localStorage"
+    ],
+    "mandates": {
+      "use_native_details_element": true,
+      "overflow_100_percent_not_100vw": true,
+      "localStorage_sport_persistence": true,
+      "rewrite_streak_headline_best_worst_by_diff": true
+    }
   }
 }

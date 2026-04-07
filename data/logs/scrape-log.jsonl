@@ -275,3 +275,17 @@
 {"timestamp":"2026-04-06T19:53:11.370Z","source":"espn","sport":"nfl","dataType":"roster-TB","records":63,"gate":"CLEAR","durationMs":699}
 {"timestamp":"2026-04-06T19:53:24.786Z","source":"espn","sport":"nfl","dataType":"roster-TEN","records":78,"gate":"CLEAR","durationMs":720}
 {"timestamp":"2026-04-06T19:53:40.808Z","source":"espn","sport":"nfl","dataType":"roster-WSH","records":75,"gate":"CLEAR","durationMs":255}
+{"timestamp":"2026-04-07T10:23:29.927Z","source":"espn","sport":"nfl","dataType":"teams","records":32,"gate":"CLEAR","durationMs":764}
+{"timestamp":"2026-04-07T10:23:29.961Z","source":"espn","sport":"nfl","dataType":"scoreboard","records":1,"gate":"CLEAR","durationMs":14}
+{"timestamp":"2026-04-07T10:23:30.091Z","source":"espn","sport":"nba","dataType":"teams","records":30,"gate":"CLEAR","durationMs":129}
+{"timestamp":"2026-04-07T10:23:30.124Z","source":"espn","sport":"nba","dataType":"scoreboard","records":5,"gate":"CLEAR","durationMs":32}
+{"timestamp":"2026-04-07T10:23:30.842Z","source":"espn","sport":"mlb","dataType":"teams","records":30,"gate":"CLEAR","durationMs":707}
+{"timestamp":"2026-04-07T10:23:30.862Z","source":"espn","sport":"mlb","dataType":"scoreboard","records":13,"gate":"CLEAR","durationMs":18}
+{"timestamp":"2026-04-07T10:23:31.304Z","source":"espn","sport":"nhl","dataType":"teams","records":32,"gate":"CLEAR","durationMs":430}
+{"timestamp":"2026-04-07T10:23:31.316Z","source":"espn","sport":"nhl","dataType":"scoreboard","records":4,"gate":"CLEAR","durationMs":10}
+{"timestamp":"2026-04-07T10:23:31.861Z","source":"espn","sport":"mls","dataType":"teams","records":30,"gate":"CLEAR","durationMs":534}
+{"timestamp":"2026-04-07T10:23:31.875Z","source":"espn","sport":"mls","dataType":"scoreboard","records":15,"gate":"CLEAR","durationMs":13}
+{"timestamp":"2026-04-07T10:23:32.374Z","source":"espn","sport":"epl","dataType":"teams","records":20,"gate":"CLEAR","durationMs":498}
+{"timestamp":"2026-04-07T10:23:32.389Z","source":"espn","sport":"epl","dataType":"scoreboard","records":1,"gate":"CLEAR","durationMs":14}
+{"timestamp":"2026-04-07T12:15:36.497Z","source":"espn","sport":"nba","dataType":"teams","records":30,"gate":"CLEAR","durationMs":230}
+{"timestamp":"2026-04-07T12:15:36.528Z","source":"espn","sport":"nba","dataType":"scoreboard","records":5,"gate":"CLEAR","durationMs":12}

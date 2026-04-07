@@ -193,14 +193,37 @@ flyctl deploy                         # Deploy
 - `CLOUDFLARE_API_TOKEN` — Cloudflare API token
 - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
 - `FLY_API_TOKEN` — Fly.io deploy token
+- `PREDICT_TRIGGER_TOKEN` — Bearer token for `/api/trigger/predict` cron
 
-Auto-deploys: push to `main` triggers Cloudflare Pages build (web/ changes) and backup cron runs daily.
+Auto-deploys: push to `main` triggers Cloudflare Pages build (web/ changes).
+Daily crons: scrape backup (6am UTC), predictions (5am + 22:00 UTC).
 
-## Current Stats
+## Current Stats (as of Sprint 8.5)
 
-- 174 teams across 6 leagues
-- 3,883 NBA games (3 seasons historical via BallDontLie)
-- 3,814 game results resolved with outcomes
-- 90 NBA team mappings (30 teams x 3 providers)
-- 35 interesting findings detected (streaks, blowouts, nail-biters)
-- ~3,100 lines of TypeScript across 30 files
+- **6 leagues**: NFL, NBA, MLB, NHL, MLS, EPL
+- **174 teams** normalized across providers
+- **3,946 games** in DB · **3,876 resolved** with outcomes
+- **5,049 player stats** (all 6 sports via ESPN core API)
+- **2,500 backfilled v2 predictions** · 61.4% accuracy · 0.249 Brier
+- **50 live predictions** awaiting game resolution
+- **90 NBA team mappings** (30 teams × 3 providers)
+- ~4,500 lines of TypeScript across 40+ files
+
+## Live URLs
+
+- **Frontend**: https://sportsdata.pages.dev
+- **API**: https://sportsdata-api.fly.dev
+- **Health**: https://sportsdata-api.fly.dev/api/health
+
+## Model: v2 Ratchet (NBA)
+
+The predictive model was built via a Karpathy-style ratchet loop:
+
+| Version | Description | Test Brier | Δ |
+|---------|-------------|------------|---|
+| v0 | Always pick home team | 0.4529 | — |
+| v1 | + Flip if visitor has 10+ more wins | 0.3233 | −0.1296 |
+| **v2** | **+ Flip on 3+ point differential** | **0.2486** | **−0.0745** |
+| v3 | + Cold streak penalty | 0.2510 | +0.0022 (rejected) |
+
+**45% Brier improvement over baseline**, bootstrap 95% CIs non-overlapping (statistically significant). Validated on 2,500 held-out games (2024-25 + 2025-26 seasons) with point-in-time team state (no future leakage).

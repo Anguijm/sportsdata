@@ -130,6 +130,8 @@ function initTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_games_sport ON games(sport);
     CREATE INDEX IF NOT EXISTS idx_games_date ON games(date);
     CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);
+    -- Sprint 8.5: composite index for cross-namespace prediction resolver match
+    CREATE INDEX IF NOT EXISTS idx_games_natural_key ON games(sport, date, home_team_id, away_team_id);
     CREATE INDEX IF NOT EXISTS idx_teams_sport ON teams(sport);
     CREATE INDEX IF NOT EXISTS idx_results_sport ON game_results(sport);
     CREATE INDEX IF NOT EXISTS idx_results_date ON game_results(date);

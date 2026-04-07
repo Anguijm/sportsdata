@@ -33,27 +33,49 @@ export function resolvePredictions(sport?: Sport): ResolveResult {
   const now = Date.now();
   const cutoffTime = new Date(now - RESOLUTION_DELAY_HOURS * 60 * 60 * 1000).toISOString();
 
-  // Find unresolved predictions where the game is final + old enough
+  // Sprint 8.5: Cross-namespace matching by (sport, date, home, away).
+  // Predictions are made against BDL game IDs (`nba:bdl-...`) but ESPN scrapes
+  // create new rows under ESPN IDs (`nba:401...`). The SAME physical game can
+  // have two rows. Match by composite natural key instead of game_id.
+  //
+  // Council debt: track canonical_game_id schema migration as Sprint 9 P0.
+  // Council mandate: index on games(sport, date, home_team_id, away_team_id) added.
+  // Council mandate: NBA-only scope tested first, MLB doubleheader risk acknowledged.
   const sportFilter = sport ? 'AND p.sport = ?' : '';
   const params: unknown[] = [cutoffTime];
   if (sport) params.push(sport);
 
+  // Allow ±1 day on date match because ESPN dates are UTC of game start;
+  // a 7pm PT game becomes 3am UTC next day, but BDL labels it as the local date.
   const candidates = db.prepare(`
     SELECT p.id, p.game_id, p.sport, p.predicted_winner, p.predicted_prob, p.low_confidence,
            gr.winner as actual_winner, gr.resolved_at
     FROM predictions p
-    JOIN game_results gr ON p.game_id = gr.game_id
+    JOIN games pg ON p.game_id = pg.id
+    JOIN games gg ON gg.sport = pg.sport
+                 AND gg.home_team_id = pg.home_team_id
+                 AND gg.away_team_id = pg.away_team_id
+                 AND ABS(julianday(gg.date) - julianday(pg.date)) <= 1
+                 AND gg.id != pg.id
+    JOIN game_results gr ON gr.game_id = gg.id
     WHERE p.resolved_at IS NULL
       AND gr.resolved_at < ?
       ${sportFilter}
+    LIMIT 500
   `).all(...params) as UnresolvedPrediction[];
 
   // Count still-pending predictions (game not yet final or too fresh)
   const pendingParams: unknown[] = [];
   if (sport) pendingParams.push(sport);
   const pendingResult = db.prepare(`
-    SELECT COUNT(*) as count FROM predictions p
-    LEFT JOIN game_results gr ON p.game_id = gr.game_id
+    SELECT COUNT(DISTINCT p.id) as count FROM predictions p
+    JOIN games pg ON p.game_id = pg.id
+    LEFT JOIN games gg ON gg.sport = pg.sport
+                       AND gg.home_team_id = pg.home_team_id
+                       AND gg.away_team_id = pg.away_team_id
+                       AND ABS(julianday(gg.date) - julianday(pg.date)) <= 1
+                       AND gg.id != pg.id
+    LEFT JOIN game_results gr ON gr.game_id = gg.id
     WHERE p.resolved_at IS NULL
       AND (gr.game_id IS NULL OR gr.resolved_at >= ?)
       ${sportFilter}

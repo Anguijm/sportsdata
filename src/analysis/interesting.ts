@@ -247,6 +247,29 @@ function computeSeasonRecords(sport: Sport): Map<string, SeasonRecord> {
   return records;
 }
 
+/** Compute per-season league pace (average total points per game) */
+function computeSeasonPace(sport: Sport): Map<number, number> {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT date, home_score, away_score FROM game_results WHERE sport = ?
+  `).all(sport) as { date: string; home_score: number; away_score: number }[];
+
+  const totals = new Map<number, { sum: number; count: number }>();
+  for (const r of rows) {
+    const season = nbaSeasonYear(r.date);
+    if (!totals.has(season)) totals.set(season, { sum: 0, count: 0 });
+    const t = totals.get(season)!;
+    t.sum += r.home_score + r.away_score;
+    t.count++;
+  }
+
+  const pace = new Map<number, number>();
+  for (const [season, t] of totals) {
+    pace.set(season, t.sum / t.count);
+  }
+  return pace;
+}
+
 export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[] {
   const db = getDb();
   const margins = db.prepare(`
@@ -265,36 +288,51 @@ export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[
   const threshold = mean + sigmaThreshold * stddev;
 
   const seasonRecords = computeSeasonRecords(sport);
+  const seasonPace = computeSeasonPace(sport);
   const findings: Finding[] = [];
 
-  // Blowouts (top margins)
-  const blowouts = margins.filter(m => m.margin >= threshold);
+  // Pace-adjusted re-ranking: compute margin as percentage of typical total score
+  // Council mandate: a 62-point margin in a 216-total-point game is different than in a 160-total game
+  const marginsWithPct = margins.map(m => {
+    const season = nbaSeasonYear(m.date);
+    const avgTotal = seasonPace.get(season) ?? 220; // fallback NBA pace
+    const actualTotal = m.home_score + m.away_score;
+    const marginPct = m.margin / avgTotal;
+    return { ...m, season, avgTotal, actualTotal, marginPct };
+  }).sort((a, b) => b.marginPct - a.marginPct);
+
+  // Blowouts — now ranked by pace-adjusted margin (marginPct)
+  const blowouts = marginsWithPct.filter(m => m.margin >= threshold);
   for (const [i, b] of blowouts.slice(0, 8).entries()) {
     const winnerAbbr = b.winner.split(':')[1] ?? b.winner;
     const loserAbbr = b.loser.split(':')[1] ?? b.loser;
     const zScore = (b.margin - mean) / stddev;
-    const totalPoints = b.home_score + b.away_score;
+    const totalPoints = b.actualTotal;
     // home_win=1 means home team won. Map winner/loser to actual scores.
     const winnerScore = b.home_win === 1 ? b.home_score : b.away_score;
     const loserScore = b.home_win === 1 ? b.away_score : b.home_score;
+    const pacePct = (b.marginPct * 100).toFixed(1);
     const seasonYear = nbaSeasonYear(b.date);
     const winnerRec = seasonRecords.get(`${b.winner}-${seasonYear}`);
     const loserRec = seasonRecords.get(`${b.loser}-${seasonYear}`);
 
-    // Build context-specific narrative
+    // Pace-adjusted narrative: express margin as percentage of total points
+    // This is the council-mandated fix for "140-130 vs 95-85 both look like 10pt games"
     let narrative: string;
-    if (b.margin >= 60) {
+    if (b.marginPct >= 0.25) {
+      narrative = `Pace-adjusted dominance. ${winnerAbbr} won by ${b.margin} points in a ${totalPoints}-total-point game — ${pacePct}% of all points scored went to the winner. That's not a rout, that's annihilation.`;
+    } else if (b.margin >= 60) {
       narrative = `Sixty points. In an NBA game. ${winnerAbbr} scored ${winnerScore}, ${loserAbbr} scored ${loserScore}. The kind of result that gets discussed in front offices the next morning.`;
     } else if (winnerRec && loserRec && winnerRec.wins / (winnerRec.wins + winnerRec.losses) < 0.5) {
-      narrative = `${winnerAbbr} finished the season ${winnerRec.wins}-${winnerRec.losses} — under .500 — but on this night they did THIS. Against a ${loserRec.wins}-${loserRec.losses} ${loserAbbr} team.`;
+      narrative = `${winnerAbbr} finished the season ${winnerRec.wins}-${winnerRec.losses} — under .500 — but on this night they did THIS. Against a ${loserRec.wins}-${loserRec.losses} ${loserAbbr} team (pace-adjusted margin: ${pacePct}%).`;
     } else if (loserRec && loserRec.wins / (loserRec.wins + loserRec.losses) > 0.55) {
-      narrative = `Worth noting: ${loserAbbr} was a winning team that season (${loserRec.wins}-${loserRec.losses}). They still got beat by ${b.margin}.`;
+      narrative = `Worth noting: ${loserAbbr} was a winning team that season (${loserRec.wins}-${loserRec.losses}). They still got beat by ${b.margin} (${pacePct}% of total points).`;
     } else if (totalPoints >= 250) {
-      narrative = `High-pace game. ${totalPoints} total points scored. ${winnerAbbr} just scored more of them — way more.`;
+      narrative = `High-pace game: ${totalPoints} total points. ${winnerAbbr} outscored the opponent by ${pacePct}% — in a slow game that would have meant ${(b.marginPct * 210).toFixed(0)} points.`;
     } else if (totalPoints <= 200) {
-      narrative = `Low-scoring game. Only ${totalPoints} total points, and ${winnerAbbr} took ${winnerScore} of them.`;
+      narrative = `Low-scoring game. Only ${totalPoints} total points — ${winnerAbbr} took ${winnerScore}. Pace-adjusted, this ${b.margin}-point margin is worth about ${(b.marginPct * 220).toFixed(0)} in an average-pace game.`;
     } else {
-      narrative = `${zScore.toFixed(1)}σ above the league average margin of ${mean.toFixed(1)}. The kind of result that ends up in season recap reels.`;
+      narrative = `${zScore.toFixed(1)}σ above average. Pace-adjusted margin: ${pacePct}% of total points scored — a true blowout regardless of tempo.`;
     }
 
     findings.push({

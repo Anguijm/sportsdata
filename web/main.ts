@@ -221,6 +221,172 @@ function renderStreaks(container: HTMLElement, sequences: TeamSequence[]) {
   container.innerHTML = html;
 }
 
+// --- Ratchet loop results ---
+
+interface RatchetArtifact {
+  sport: string;
+  runAt: string;
+  trainCutoffSeason: number;
+  iterations: Array<{
+    iterationId: string;
+    version: string;
+    description: string;
+    train: RatchetScore;
+    test: RatchetScore;
+    deltaVsPrevious?: { brier: number; accuracy: number };
+  }>;
+  summary: {
+    bestIteration: string;
+    baselineBrier: number;
+    bestBrier: number;
+    improvement: number;
+    beatBaseline: boolean;
+    significanceNote: string;
+  };
+}
+
+interface RatchetScore {
+  sampleSize: number;
+  brier: number;
+  brierCI95: [number, number];
+  accuracy: number;
+  accuracyCI95: [number, number];
+  homeWinRate: number;
+}
+
+function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
+  const { iterations, summary } = data;
+  const best = iterations.find(i => i.iterationId === summary.bestIteration);
+  if (!best) return;
+
+  // Chart: iteration brier on train vs test, with CI bands
+  const chartWidth = 760;
+  const chartHeight = 260;
+  const margin = { top: 20, right: 60, bottom: 40, left: 60 };
+  const plotW = chartWidth - margin.left - margin.right;
+  const plotH = chartHeight - margin.top - margin.bottom;
+
+  const allBriers = iterations.flatMap(i => [i.train.brier, i.test.brier, i.train.brierCI95[0], i.train.brierCI95[1], i.test.brierCI95[0], i.test.brierCI95[1]]);
+  const maxBrier = Math.max(...allBriers) * 1.05;
+  const minBrier = Math.max(0, Math.min(...allBriers) * 0.95);
+
+  const xScale = (i: number) => margin.left + (i / Math.max(1, iterations.length - 1)) * plotW;
+  const yScale = (brier: number) => margin.top + plotH - ((brier - minBrier) / (maxBrier - minBrier)) * plotH;
+
+  // Build points/lines
+  const testLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brier)}`).join(' ');
+  const trainLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brier)}`).join(' ');
+
+  // Test CI band
+  const ciTop = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95[0])}`);
+  const ciBot = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95[1])}`).reverse();
+  const ciBand = [...ciTop, ...ciBot].join(' ');
+
+  const iterationRows = iterations.map((it, i) => {
+    const delta = it.deltaVsPrevious
+      ? `${it.deltaVsPrevious.brier > 0 ? '+' : ''}${it.deltaVsPrevious.brier.toFixed(4)}`
+      : '—';
+    const deltaClass = it.deltaVsPrevious
+      ? it.deltaVsPrevious.brier < 0 ? 'delta-down' : 'delta-up'
+      : '';
+    const isBest = it.iterationId === summary.bestIteration;
+    return `
+      <div class="iter-row ${isBest ? 'best' : ''}">
+        <div class="iter-id">${it.iterationId}</div>
+        <div class="iter-desc">${it.description}</div>
+        <div class="iter-brier">${it.test.brier.toFixed(4)}</div>
+        <div class="iter-acc">${(it.test.accuracy * 100).toFixed(1)}%</div>
+        <div class="iter-delta ${deltaClass}">${delta}</div>
+        ${isBest ? '<div class="iter-winner">★ KEPT</div>' : ''}
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="ratchet-summary">
+      <div class="ratchet-summary-item">
+        <div class="ratchet-label">BASELINE BRIER</div>
+        <div class="ratchet-value">${summary.baselineBrier.toFixed(4)}</div>
+        <div class="ratchet-sub">v0: pick home team</div>
+      </div>
+      <div class="ratchet-arrow">→</div>
+      <div class="ratchet-summary-item best">
+        <div class="ratchet-label">BEST BRIER</div>
+        <div class="ratchet-value">${summary.bestBrier.toFixed(4)}</div>
+        <div class="ratchet-sub">${summary.bestIteration}: ${best.description}</div>
+      </div>
+      <div class="ratchet-arrow">=</div>
+      <div class="ratchet-summary-item improvement">
+        <div class="ratchet-label">IMPROVEMENT</div>
+        <div class="ratchet-value">−${summary.improvement.toFixed(4)}</div>
+        <div class="ratchet-sub">${((summary.improvement / summary.baselineBrier) * 100).toFixed(0)}% better than baseline</div>
+      </div>
+    </div>
+
+    <div class="chart">
+      <svg viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="xMidYMid meet">
+        <!-- CI band -->
+        <polygon points="${ciBand}" fill="#64d2ff" fill-opacity="0.15" />
+        <!-- Train line -->
+        <polyline points="${trainLine}" fill="none" stroke="#666" stroke-width="2" stroke-dasharray="4,4" />
+        <!-- Test line -->
+        <polyline points="${testLine}" fill="none" stroke="#64d2ff" stroke-width="3" />
+        <!-- Points -->
+        ${iterations.map((it, i) => `
+          <circle cx="${xScale(i)}" cy="${yScale(it.test.brier)}" r="6"
+            fill="${it.iterationId === summary.bestIteration ? '#ff9f0a' : '#64d2ff'}"
+            stroke="#0a0a0a" stroke-width="2" />
+          <text x="${xScale(i)}" y="${chartHeight - 15}"
+            text-anchor="middle" font-size="12" fill="#a3a3a3" font-family="JetBrains Mono">
+            ${it.iterationId}
+          </text>
+          <text x="${xScale(i)}" y="${yScale(it.test.brier) - 14}"
+            text-anchor="middle" font-size="11" fill="#e5e5e5" font-family="JetBrains Mono">
+            ${it.test.brier.toFixed(3)}
+          </text>
+        `).join('')}
+        <!-- Y-axis label -->
+        <text x="15" y="${chartHeight / 2}" text-anchor="middle" font-size="11"
+          fill="#a3a3a3" font-family="JetBrains Mono" transform="rotate(-90 15 ${chartHeight / 2})">
+          Brier (lower = better)
+        </text>
+      </svg>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-line test"></span> Test set (2024-25+)</span>
+        <span class="legend-item"><span class="legend-line train"></span> Train set (pre-2024)</span>
+        <span class="legend-item"><span class="legend-band"></span> 95% bootstrap CI</span>
+      </div>
+    </div>
+
+    <div class="iterations-table">
+      <div class="iter-header">
+        <div class="iter-id">ID</div>
+        <div class="iter-desc">Description</div>
+        <div class="iter-brier">Brier</div>
+        <div class="iter-acc">Acc</div>
+        <div class="iter-delta">Δ vs prev</div>
+      </div>
+      ${iterationRows}
+    </div>
+
+    <div class="ratchet-footer">
+      <strong>${summary.beatBaseline ? '✓ Beats baseline' : '✗ Did not beat baseline'}.</strong>
+      ${summary.significanceNote}
+    </div>
+  `;
+}
+
+async function loadRatchet(sport = 'nba'): Promise<RatchetArtifact | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/ratchet?sport=${sport}`);
+    const data = await res.json();
+    if ('error' in data) return null;
+    return data as RatchetArtifact;
+  } catch {
+    return null;
+  }
+}
+
 // --- Player findings (per sport, council-approved hero card pattern) ---
 
 interface PlayerFinding {
@@ -392,7 +558,7 @@ function renderFindings(container: HTMLElement, findings: Finding[]) {
 
 async function main() {
   try {
-    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts] = await Promise.all([
+    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet] = await Promise.all([
       fetchJson<Stats>('/api/stats'),
       fetchJson<{ margin: number; count: number }[]>('/api/margins'),
       fetchJson<Finding[]>('/api/findings'),
@@ -400,6 +566,7 @@ async function main() {
       fetchJson<{ blowouts: Game[]; nailBiters: Game[] }>('/api/extreme-games'),
       loadAllSportData(),
       fetch(`${API_BASE}/api/player-counts`).then(r => r.json() as Promise<Record<string, number>>),
+      loadRatchet('nba'),
     ]);
 
     const totalGames = stats.total_games;
@@ -445,6 +612,12 @@ async function main() {
     renderExtremes(document.getElementById('extremes-grid')!, extremes);
     renderStreaks(document.getElementById('streak-grid')!, sequences);
     renderFindings(document.getElementById('findings-grid')!, findings);
+    if (ratchet) {
+      renderRatchet(document.getElementById('ratchet-section')!, ratchet);
+    } else {
+      document.getElementById('ratchet-section')!.innerHTML =
+        '<p style="color: var(--text-muted)">Ratchet run not available. Run `npm run ratchet` to generate.</p>';
+    }
     renderPlayerSection(document.getElementById('players-section')!, allSportData, playerCounts);
 
   } catch (err) {

@@ -1,0 +1,159 @@
+{
+  "sport": "nba",
+  "runAt": "2026-04-07T03:58:05.938Z",
+  "trainCutoffSeason": 2023,
+  "iterations": [
+    {
+      "iterationId": "v0",
+      "version": "0",
+      "description": "Baseline: always pick home team",
+      "train": {
+        "sampleSize": 1319,
+        "brier": 0.45261561789234267,
+        "brierCI95": [
+          0.42608036391205456,
+          0.47687642153146326
+        ],
+        "accuracy": 0.5473843821076573,
+        "accuracyCI95": [
+          0.5200909780136467,
+          0.5769522365428355
+        ],
+        "homeWinRate": 0.5473843821076573
+      },
+      "test": {
+        "sampleSize": 2495,
+        "brier": 0.4529058116232465,
+        "brierCI95": [
+          0.43246492985971946,
+          0.4717434869739479
+        ],
+        "accuracy": 0.5470941883767535,
+        "accuracyCI95": [
+          0.5294589178356713,
+          0.5683366733466934
+        ],
+        "homeWinRate": 0.5470941883767535
+      }
+    },
+    {
+      "iterationId": "v1",
+      "version": "1",
+      "description": "Home unless visitor has 10+ more wins in season",
+      "train": {
+        "sampleSize": 1319,
+        "brier": 0.36584533737679875,
+        "brierCI95": [
+          0.3422213798332061,
+          0.3882107657316139
+        ],
+        "accuracy": 0.6269901440485216,
+        "accuracyCI95": [
+          0.6004548900682335,
+          0.6527672479150872
+        ],
+        "homeWinRate": 0.5473843821076573
+      },
+      "test": {
+        "sampleSize": 2495,
+        "brier": 0.3233146292585193,
+        "brierCI95": [
+          0.3083607214428876,
+          0.3386052104208442
+        ],
+        "accuracy": 0.6116232464929859,
+        "accuracyCI95": [
+          0.591182364729459,
+          0.6308617234468938
+        ],
+        "homeWinRate": 0.5470941883767535
+      },
+      "deltaVsPrevious": {
+        "brier": -0.12959118236472722,
+        "accuracy": 0.06452905811623244
+      }
+    },
+    {
+      "iterationId": "v2",
+      "version": "2",
+      "description": "v1 + flip when visitor point differential is 3+ higher",
+      "train": {
+        "sampleSize": 1319,
+        "brier": 0.23869651250948043,
+        "brierCI95": [
+          0.22863525398029047,
+          0.24844442759666757
+        ],
+        "accuracy": 0.6459438968915845,
+        "accuracyCI95": [
+          0.621683093252464,
+          0.6717210007581501
+        ],
+        "homeWinRate": 0.5473843821076573
+      },
+      "test": {
+        "sampleSize": 2495,
+        "brier": 0.24886312625250842,
+        "brierCI95": [
+          0.24192869739479397,
+          0.25570248496994324
+        ],
+        "accuracy": 0.6128256513026052,
+        "accuracyCI95": [
+          0.5935871743486973,
+          0.6332665330661322
+        ],
+        "homeWinRate": 0.5470941883767535
+      },
+      "deltaVsPrevious": {
+        "brier": -0.07445150300601086,
+        "accuracy": 0.0012024048096193063
+      }
+    },
+    {
+      "iterationId": "v3",
+      "version": "3",
+      "description": "v2 + penalize home team on 3+ game losing streak",
+      "train": {
+        "sampleSize": 1319,
+        "brier": 0.24209075056861518,
+        "brierCI95": [
+          0.23179620924943306,
+          0.2526479909022009
+        ],
+        "accuracy": 0.6444275966641395,
+        "accuracyCI95": [
+          0.6178923426838514,
+          0.6709628506444276
+        ],
+        "homeWinRate": 0.5473843821076573
+      },
+      "test": {
+        "sampleSize": 2495,
+        "brier": 0.2510314629258539,
+        "brierCI95": [
+          0.24310561122244745,
+          0.2583940280561142
+        ],
+        "accuracy": 0.6172344689378757,
+        "accuracyCI95": [
+          0.5987975951903808,
+          0.6364729458917836
+        ],
+        "homeWinRate": 0.5470941883767535
+      },
+      "deltaVsPrevious": {
+        "brier": 0.0021683366733454557,
+        "accuracy": 0.004408817635270457
+      }
+    }
+  ],
+  "summary": {
+    "bestIteration": "v2",
+    "baselineBrier": 0.4529058116232465,
+    "bestBrier": 0.24886312625250842,
+    "improvement": 0.20404268537073808,
+    "beatBaseline": true,
+    "significanceNote": "Bootstrap CIs do not overlap — improvement is statistically significant"
+  }
+}

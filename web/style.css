@@ -416,6 +416,199 @@ body {
   color: var(--spotlight);
 }
 
+/* Ratchet section */
+.ratchet-summary {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 16px;
+  align-items: center;
+  padding: 32px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 24px 0;
+}
+
+.ratchet-summary-item {
+  text-align: center;
+}
+
+.ratchet-summary-item.best {
+  border-left: 3px solid var(--spotlight);
+  padding-left: 16px;
+}
+
+.ratchet-summary-item.improvement .ratchet-value {
+  color: var(--win);
+}
+
+.ratchet-label {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.ratchet-value {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.ratchet-summary-item.best .ratchet-value {
+  color: var(--spotlight);
+}
+
+.ratchet-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+.ratchet-arrow {
+  font-size: 24px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 24px;
+  padding: 12px 0;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  justify-content: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 2px;
+}
+
+.legend-line.test {
+  background: var(--accent);
+  height: 3px;
+}
+
+.legend-line.train {
+  background: var(--text-muted);
+  border-top: 2px dashed var(--text-muted);
+}
+
+.legend-band {
+  display: inline-block;
+  width: 20px;
+  height: 12px;
+  background: var(--accent);
+  opacity: 0.15;
+  border-radius: 2px;
+}
+
+.iterations-table {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 24px 0;
+  overflow: hidden;
+}
+
+.iter-header,
+.iter-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 100px 80px 100px auto;
+  gap: 16px;
+  padding: 14px 20px;
+  align-items: center;
+}
+
+.iter-header {
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.iter-row {
+  border-bottom: 1px solid var(--border);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 13px;
+  color: var(--text-data);
+}
+
+.iter-row:last-child {
+  border-bottom: none;
+}
+
+.iter-row.best {
+  background: rgba(255, 159, 10, 0.08);
+  border-left: 3px solid var(--spotlight);
+  padding-left: 17px;
+}
+
+.iter-id {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.iter-desc {
+  font-family: 'Inter', sans-serif;
+  color: var(--text-secondary);
+}
+
+.iter-brier,
+.iter-acc,
+.iter-delta {
+  text-align: right;
+  font-weight: 700;
+}
+
+.iter-delta.delta-down {
+  color: var(--win);
+}
+
+.iter-delta.delta-up {
+  color: var(--loss);
+}
+
+.iter-winner {
+  color: var(--spotlight);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.ratchet-footer {
+  padding: 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.ratchet-footer strong {
+  color: var(--win);
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
 /* Hero card for top player per sport */
 .hero-card {
   background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);

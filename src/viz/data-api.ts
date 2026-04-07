@@ -8,6 +8,8 @@ import { getDb, closeDb } from '../storage/sqlite.js';
 import { scanForFindings, getMarginDistribution, getHomeWinTimeline } from '../analysis/interesting.js';
 import { findPlayerFindings, getSportPlayerData } from '../analysis/player-findings.js';
 import { getPlayerCount } from '../storage/sqlite.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Sport } from '../schema/provenance.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
@@ -198,6 +200,18 @@ export function startDataApi(): void {
         case '/api/players': {
           const findings = findPlayerFindings(sport);
           response = jsonResponse(findings);
+          break;
+        }
+
+        case '/api/ratchet': {
+          const ratchetDir = process.env.SQLITE_PATH ? '/app/data/ratchet' : 'data/ratchet';
+          const artifactPath = join(ratchetDir, `${sport}-ratchet.json`);
+          if (!existsSync(artifactPath)) {
+            response = jsonResponse({ error: 'No ratchet artifact for this sport' });
+          } else {
+            const data = JSON.parse(readFileSync(artifactPath, 'utf-8')) as unknown;
+            response = jsonResponse(data);
+          }
           break;
         }
 

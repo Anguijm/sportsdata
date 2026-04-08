@@ -171,6 +171,30 @@ function renderExtremes(container: HTMLElement, data: { blowouts: Game[]; nailBi
 }
 
 // --- Streak grid (per-season with diff) ---
+// Council mandate: top 5 + bottom 5 by point diff per season,
+// middle teams in nested <details>, older seasons collapsed.
+
+function renderStreakRow(team: TeamSequence, season: SeasonRow): string {
+  const segments = season.sequence.map(won =>
+    `<div class="streak-segment ${won ? 'win' : 'loss'}"></div>`
+  ).join('');
+
+  const diffSign = season.diffPg >= 0 ? '+' : '';
+  const diffClass = season.diffPg >= 0 ? 'wins' : 'losses';
+
+  return `
+    <div class="streak-row season-row">
+      <div class="streak-team">${team.abbr}</div>
+      <div class="streak-bar">${segments}</div>
+      <div class="streak-record">
+        <span class="wins">${season.wins}</span>–<span class="losses">${season.losses}</span>
+      </div>
+      <div class="streak-diff ${diffClass}">
+        ${diffSign}${season.diffPg.toFixed(1)}
+      </div>
+    </div>
+  `;
+}
 
 function renderStreaks(container: HTMLElement, sequences: TeamSequence[]) {
   // Find all unique seasons
@@ -178,44 +202,50 @@ function renderStreaks(container: HTMLElement, sequences: TeamSequence[]) {
   sequences.forEach(t => t.seasons.forEach(s => allSeasons.add(s.year)));
   const seasonList = Array.from(allSeasons).sort((a, b) => b - a);
 
-  const html = seasonList.map(year => {
+  const html = seasonList.map((year, seasonIdx) => {
     const label = `${year}-${String(year + 1).slice(2)}`;
+    // Council mandate (Researcher): sort by point differential, not winPct
     const teamsInSeason = sequences
-      .map(t => ({ team: t, season: t.seasons.find(s => s.year === year) }))
+      .map(t => ({ team: t, season: t.seasons.find(s => s.year === year)! }))
       .filter(x => x.season && x.season.sequence.length >= 50)
-      .sort((a, b) => (b.season!.winPct ?? 0) - (a.season!.winPct ?? 0));
+      .sort((a, b) => b.season.diffPg - a.season.diffPg);
 
-    const rows = teamsInSeason.map(({ team, season }) => {
-      const s = season!;
-      const segments = s.sequence.map(won =>
-        `<div class="streak-segment ${won ? 'win' : 'loss'}"></div>`
-      ).join('');
+    const total = teamsInSeason.length;
+    const top = teamsInSeason.slice(0, 5);
+    const bottom = teamsInSeason.slice(-5);
+    const middle = total > 10 ? teamsInSeason.slice(5, total - 5) : [];
 
-      const diffSign = s.diffPg >= 0 ? '+' : '';
-      const diffClass = s.diffPg >= 0 ? 'wins' : 'losses';
+    const topRows = top.map(({ team, season }) => renderStreakRow(team, season)).join('');
+    const bottomRows = bottom.map(({ team, season }) => renderStreakRow(team, season)).join('');
+    const middleRows = middle.map(({ team, season }) => renderStreakRow(team, season)).join('');
 
-      return `
-        <div class="streak-row season-row">
-          <div class="streak-team">${team.abbr}</div>
-          <div class="streak-bar">${segments}</div>
-          <div class="streak-record">
-            <span class="wins">${s.wins}</span>–<span class="losses">${s.losses}</span>
-          </div>
-          <div class="streak-diff ${diffClass}">
-            ${diffSign}${s.diffPg.toFixed(1)}
-          </div>
-        </div>
-      `;
-    }).join('');
+    const middleBlock = middle.length > 0 ? `
+      <details class="streak-middle">
+        <summary>show ${middle.length} middle teams</summary>
+        <div class="streak-grid">${middleRows}</div>
+      </details>
+    ` : '';
 
-    return `
-      <div class="season-block">
-        <div class="season-header">
-          <div class="season-label">${label}</div>
-          <div class="season-meta">${teamsInSeason.length} teams · sorted by win rate · ppg differential on the right</div>
-        </div>
-        <div class="streak-grid">${rows}</div>
+    const innerBlock = `
+      <div class="season-header">
+        <div class="season-label">${label}</div>
+        <div class="season-meta">best and worst 5 of ${total} · by point differential</div>
       </div>
+      <div class="streak-grid">${topRows}</div>
+      ${middleBlock}
+      <div class="streak-divider">— bottom 5 —</div>
+      <div class="streak-grid">${bottomRows}</div>
+    `;
+
+    // Current (most recent) season open by default; older seasons collapsed
+    if (seasonIdx === 0) {
+      return `<div class="season-block">${innerBlock}</div>`;
+    }
+    return `
+      <details class="season-block season-collapsed">
+        <summary class="season-summary">${label} <span class="season-summary-meta">— ${total} teams</span></summary>
+        ${innerBlock}
+      </details>
     `;
   }).join('');
 
@@ -693,6 +723,73 @@ function renderHeroCard(hero: PlayerHero, totalQualified: number): string {
   `;
 }
 
+function renderSportBlock(sport: string, data: SportData, totalCount: number): string {
+  const { hero, findings } = data;
+
+  // Group by category
+  const byCategory = new Map<string, PlayerFinding[]>();
+  for (const f of findings) {
+    if (!byCategory.has(f.category)) byCategory.set(f.category, []);
+    byCategory.get(f.category)!.push(f);
+  }
+
+  const categoryBlocks = Array.from(byCategory.entries()).map(([cat, list]) => {
+    const rows = list.map(f => `
+      <div class="player-row ${f.spotlight ? 'spotlight' : ''}">
+        <div class="player-rank">${f.rank}</div>
+        <div class="player-name">
+          <span class="name">${f.playerName}</span>
+          <span class="meta">${f.team} · ${f.position || '—'}</span>
+        </div>
+        <div class="player-stat">
+          <div class="stat-value">${f.headline}</div>
+          ${f.rateStatLabel ? `<div class="stat-rate"><span class="rate-label">${f.rateStatLabel}</span> ${f.rateStatValue}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <details class="player-category" ${cat === Array.from(byCategory.keys())[0] ? 'open' : ''}>
+        <summary class="player-category-label">${cat}</summary>
+        <div class="player-rows">${rows}</div>
+      </details>
+    `;
+  }).join('');
+
+  return `
+    <div class="sport-block">
+      <div class="sport-header">
+        <div class="sport-title">${SPORT_LABELS[sport] ?? sport.toUpperCase()}</div>
+        <div class="sport-meta">${totalCount} players · qualified leaders only</div>
+      </div>
+      ${hero ? renderHeroCard(hero, totalCount) : ''}
+      <div class="leaderboards">${categoryBlocks}</div>
+    </div>
+  `;
+}
+
+const SPORT_TAB_STORAGE_KEY = 'sportsdata.activeSport';
+
+function readActiveSport(available: string[]): string {
+  // Council mandate (Designer): localStorage persistence, default in-season
+  try {
+    const saved = localStorage.getItem(SPORT_TAB_STORAGE_KEY);
+    if (saved && available.includes(saved)) return saved;
+  } catch {
+    /* localStorage unavailable (private mode) — fall through */
+  }
+  // Default: NBA (in-season), or first available
+  return available.includes('nba') ? 'nba' : available[0]!;
+}
+
+function persistActiveSport(sport: string): void {
+  try {
+    localStorage.setItem(SPORT_TAB_STORAGE_KEY, sport);
+  } catch {
+    /* ignore */
+  }
+}
+
 function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, SportData>, counts: Record<string, number>) {
   const sports = SPORT_ORDER.filter(s => allPlayers.has(s));
   if (sports.length === 0) {
@@ -700,81 +797,93 @@ function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, Spo
     return;
   }
 
-  const html = sports.map(sport => {
-    const { hero, findings } = allPlayers.get(sport)!;
-    const totalCount = counts[sport] ?? 0;
+  let activeSport = readActiveSport(sports);
 
-    // Group by category, drop hero category from leaderboards (it's already shown above)
-    const byCategory = new Map<string, PlayerFinding[]>();
-    for (const f of findings) {
-      if (!byCategory.has(f.category)) byCategory.set(f.category, []);
-      byCategory.get(f.category)!.push(f);
-    }
-
-    const categoryBlocks = Array.from(byCategory.entries()).map(([cat, list]) => {
-      const rows = list.map(f => `
-        <div class="player-row ${f.spotlight ? 'spotlight' : ''}">
-          <div class="player-rank">${f.rank}</div>
-          <div class="player-name">
-            <span class="name">${f.playerName}</span>
-            <span class="meta">${f.team} · ${f.position || '—'}</span>
-          </div>
-          <div class="player-stat">
-            <div class="stat-value">${f.headline}</div>
-            ${f.rateStatLabel ? `<div class="stat-rate"><span class="rate-label">${f.rateStatLabel}</span> ${f.rateStatValue}</div>` : ''}
-          </div>
-        </div>
-      `).join('');
-
-      return `
-        <details class="player-category" ${cat === Array.from(byCategory.keys())[0] ? 'open' : ''}>
-          <summary class="player-category-label">${cat}</summary>
-          <div class="player-rows">${rows}</div>
-        </details>
-      `;
-    }).join('');
-
+  const renderTabs = (active: string): string => sports.map(sport => {
+    const count = counts[sport] ?? 0;
+    const label = (SPORT_LABELS[sport] ?? sport).split(' · ')[0];
     return `
-      <div class="sport-block">
-        <div class="sport-header">
-          <div class="sport-title">${SPORT_LABELS[sport] ?? sport.toUpperCase()}</div>
-          <div class="sport-meta">${totalCount} players · qualified leaders only</div>
-        </div>
-        ${hero ? renderHeroCard(hero, totalCount) : ''}
-        <div class="leaderboards">${categoryBlocks}</div>
-      </div>
+      <button class="sport-tab ${sport === active ? 'active' : ''}" data-sport="${sport}">
+        <span class="sport-tab-label">${label}</span>
+        <span class="sport-tab-count">${count}</span>
+      </button>
     `;
   }).join('');
 
-  container.innerHTML = html;
+  const renderActive = (sport: string): string => {
+    const data = allPlayers.get(sport)!;
+    return renderSportBlock(sport, data, counts[sport] ?? 0);
+  };
+
+  const update = () => {
+    const tabsEl = container.querySelector('.sport-tabs')!;
+    const contentEl = container.querySelector('.sport-tab-content')!;
+    tabsEl.innerHTML = renderTabs(activeSport);
+    contentEl.innerHTML = renderActive(activeSport);
+    bindTabs();
+  };
+
+  const bindTabs = () => {
+    container.querySelectorAll<HTMLButtonElement>('.sport-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const next = btn.dataset.sport;
+        if (next && next !== activeSport) {
+          activeSport = next;
+          persistActiveSport(activeSport);
+          update();
+        }
+      });
+    });
+  };
+
+  container.innerHTML = `
+    <div class="sport-tabs">${renderTabs(activeSport)}</div>
+    <div class="sport-tab-content">${renderActive(activeSport)}</div>
+  `;
+  bindTabs();
 }
 
 // --- Findings ranked list ---
 
-function renderFindings(container: HTMLElement, findings: Finding[]) {
-  const html = findings.map((f, i) => {
-    const rank = String(i + 1).padStart(2, '0');
-    const surprise = (f.surpriseScore * 100).toFixed(0);
-    const typeLabel = f.type.replace('_', ' ');
+function renderFindingCard(f: Finding, i: number): string {
+  const rank = String(i + 1).padStart(2, '0');
+  const surprise = (f.surpriseScore * 100).toFixed(0);
+  const typeLabel = f.type.replace('_', ' ');
 
-    return `
-      <div class="finding ${f.spotlight ? 'spotlight' : ''}">
-        <div class="finding-rank">${rank}</div>
-        <div class="finding-body">
-          <div class="finding-headline">${f.headline}</div>
-          <div class="finding-detail">${f.detail}</div>
-          ${f.spotlight ? `<div class="finding-hint">${f.narrativeHint}</div>` : ''}
-        </div>
-        <div class="finding-meta">
-          <div class="finding-type">${typeLabel}</div>
-          <div class="finding-surprise">${surprise}<span style="font-size: 12px">%</span></div>
-          <div class="finding-surprise-label">surprise</div>
-        </div>
+  return `
+    <div class="finding ${f.spotlight ? 'spotlight' : ''}">
+      <div class="finding-rank">${rank}</div>
+      <div class="finding-body">
+        <div class="finding-headline">${f.headline}</div>
+        <div class="finding-detail">${f.detail}</div>
+        ${f.spotlight ? `<div class="finding-hint">${f.narrativeHint}</div>` : ''}
       </div>
-    `;
-  }).join('');
+      <div class="finding-meta">
+        <div class="finding-type">${typeLabel}</div>
+        <div class="finding-surprise">${surprise}<span style="font-size: 12px">%</span></div>
+        <div class="finding-surprise-label">surprise</div>
+      </div>
+    </div>
+  `;
+}
 
-  container.innerHTML = html;
+function renderFindings(container: HTMLElement, findings: Finding[]) {
+  // Council mandate: top 10 visible, rest in <details>.
+  // Findings come pre-sorted by surpriseScore from API.
+  const top = findings.slice(0, 10);
+  const rest = findings.slice(10);
+
+  const topHtml = top.map((f, i) => renderFindingCard(f, i)).join('');
+  const restHtml = rest.length > 0 ? `
+    <details class="findings-more">
+      <summary>show ${rest.length} more findings</summary>
+      <div class="findings-grid findings-grid-rest">
+        ${rest.map((f, i) => renderFindingCard(f, i + 10)).join('')}
+      </div>
+    </details>
+  ` : '';
+
+  container.innerHTML = topHtml + restHtml;
 }
 
 // --- Boot ---

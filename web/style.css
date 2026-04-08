@@ -24,6 +24,11 @@
   box-sizing: border-box;
 }
 
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg-page);
@@ -35,8 +40,13 @@ body {
 
 .narrative {
   max-width: 920px;
+  width: 100%;
   margin: 0 auto;
   padding: 0 24px;
+}
+
+.narrative > * {
+  min-width: 0;
 }
 
 /* Hero */
@@ -219,11 +229,12 @@ body {
 
 .streak-row {
   display: grid;
-  grid-template-columns: 60px 1fr 80px 80px;
+  grid-template-columns: 60px minmax(0, 1fr) 80px 80px;
   align-items: center;
   gap: 16px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+  min-width: 0;
 }
 
 .streak-diff {
@@ -268,6 +279,93 @@ body {
 
 .streak-record .wins { color: var(--win); }
 .streak-record .losses { color: var(--loss); }
+
+/* Sprint 9: collapsed season block + middle teams toggle */
+.season-block.season-collapsed {
+  margin: 24px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 20px;
+}
+
+.season-block.season-collapsed[open] {
+  padding-bottom: 24px;
+}
+
+.season-summary {
+  cursor: pointer;
+  list-style: none;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 18px 0;
+  user-select: none;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.season-summary::-webkit-details-marker {
+  display: none;
+}
+
+.season-summary::before {
+  content: '▸ ';
+  color: var(--text-muted);
+  display: inline-block;
+  transition: transform 0.15s;
+}
+
+.season-block.season-collapsed[open] > .season-summary::before {
+  content: '▾ ';
+}
+
+.season-summary-meta {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.streak-middle {
+  margin: 16px 0;
+}
+
+.streak-middle > summary {
+  cursor: pointer;
+  list-style: none;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 12px 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  user-select: none;
+}
+
+.streak-middle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.streak-middle > summary::before {
+  content: '+ ';
+  color: var(--accent);
+}
+
+.streak-middle[open] > summary::before {
+  content: '− ';
+}
+
+.streak-divider {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 16px 0 8px;
+}
 
 /* Finding cards */
 .findings-grid {
@@ -374,6 +472,52 @@ body {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
+}
+
+/* Sprint 9: findings show-more disclosure */
+.findings-more {
+  margin-top: 16px;
+}
+
+.findings-more > summary {
+  cursor: pointer;
+  list-style: none;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  text-align: center;
+  user-select: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.findings-more > summary:hover {
+  border-color: var(--accent);
+}
+
+.findings-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.findings-more > summary::before {
+  content: '+ ';
+}
+
+.findings-more[open] > summary::before {
+  content: '− ';
+}
+
+.findings-grid-rest {
+  margin-top: 16px;
+}
+
+.finding-headline,
+.finding-detail {
+  word-break: break-word;
 }
 
 /* Margin distribution single-game callouts */
@@ -887,6 +1031,123 @@ body {
   font-size: 11px;
 }
 
+/* Sprint 9: ratchet mobile — stack summary, table → cards */
+@media (max-width: 720px) {
+  .ratchet-summary {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 24px 20px;
+  }
+
+  .ratchet-arrow {
+    display: none;
+  }
+
+  .ratchet-summary-item {
+    text-align: left;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ratchet-summary-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .ratchet-summary-item.best {
+    border-left: 3px solid var(--spotlight);
+    padding-left: 12px;
+  }
+
+  .ratchet-value {
+    font-size: 28px;
+  }
+
+  .iter-header {
+    display: none;
+  }
+
+  .iterations-table {
+    background: transparent;
+    border: none;
+  }
+
+  .iter-row,
+  .iter-row.best {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 12px;
+  }
+
+  .iter-row.best {
+    border-left: 3px solid var(--spotlight);
+  }
+
+  .iter-row .iter-id {
+    font-size: 11px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .iter-row .iter-desc {
+    font-size: 14px;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+
+  .iter-row .iter-brier::before {
+    content: 'brier ';
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .iter-row .iter-acc::before {
+    content: ' · acc ';
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .iter-row .iter-delta::before {
+    content: ' · Δ ';
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .iter-row .iter-brier,
+  .iter-row .iter-acc,
+  .iter-row .iter-delta {
+    display: inline;
+    font-size: 13px;
+    text-align: left;
+  }
+
+  .chart {
+    padding: 16px;
+    overflow-x: auto;
+  }
+
+  .chart svg {
+    min-width: 320px;
+  }
+
+  .chart-legend {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
+
 .ratchet-footer {
   padding: 20px;
   font-size: 13px;
@@ -1123,6 +1384,66 @@ body {
   margin-top: 8px;
 }
 
+/* Sprint 9: sport tab selector */
+.sport-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sport-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.sport-tab:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.sport-tab.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sport-tab-label {
+  font-weight: 700;
+}
+
+.sport-tab-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-page);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 400;
+}
+
+.sport-tab.active .sport-tab-count {
+  color: var(--accent);
+  background: rgba(100, 210, 255, 0.1);
+}
+
+.sport-tab-content {
+  margin-top: 16px;
+}
+
 /* Player section */
 .sport-block {
   margin: 56px 0;
@@ -1274,10 +1595,25 @@ body {
 }
 
 @media (max-width: 720px) {
-  .hero h1 { font-size: 42px; }
+  .hero h1 { font-size: 42px; word-break: break-word; }
+  .hero p { font-size: 17px; }
   .big-stats { grid-template-columns: repeat(2, 1fr); }
-  .section h2 { font-size: 32px; }
-  .finding { grid-template-columns: 1fr; }
+  .section { padding: 60px 0; }
+  .section h2 { font-size: 28px; word-break: break-word; }
+  .section .lead { font-size: 16px; }
+  .finding { grid-template-columns: 1fr; padding: 20px; }
   .finding-meta { text-align: left; flex-direction: row; gap: 16px; align-items: center; }
+  .finding-rank { font-size: 24px; }
   .callout-grid { grid-template-columns: 1fr; }
+  .narrative { padding: 0 16px; }
+  .streak-row { grid-template-columns: 44px minmax(0, 1fr) 64px 56px; gap: 8px; font-size: 12px; }
+  .streak-team { font-size: 12px; }
+  .streak-record, .streak-diff { font-size: 11px; }
+  .streak-bar { height: 22px; }
+}
+
+@media (max-width: 380px) {
+  .hero h1 { font-size: 36px; }
+  .section h2 { font-size: 24px; }
+  .streak-row { grid-template-columns: 40px minmax(0, 1fr) 56px 50px; gap: 6px; }
 }

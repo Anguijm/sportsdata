@@ -8,7 +8,7 @@ import { getDb, closeDb } from '../storage/sqlite.js';
 import { scanForFindings, getMarginDistribution, getHomeWinTimeline } from '../analysis/interesting.js';
 import { findPlayerFindings, getSportPlayerData } from '../analysis/player-findings.js';
 import { getPlayerCount } from '../storage/sqlite.js';
-import { getTrackRecord, getUpcomingPredictions, getRecentResolvedPredictions, resolvePredictions } from '../analysis/resolve-predictions.js';
+import { getTrackRecord, getUpcomingPredictions, getRecentResolvedPredictions, resolvePredictions, getCalibration } from '../analysis/resolve-predictions.js';
 import { predictUpcoming } from '../analysis/predict-runner.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -243,6 +243,12 @@ export function startDataApi(): void {
         case '/api/predictions/track-record': {
           const record = getTrackRecord(sport);
           response = jsonResponse(record);
+          break;
+        }
+
+        case '/api/predictions/calibration': {
+          const calibration = getCalibration(sport);
+          response = jsonResponse(calibration);
           break;
         }
 

@@ -616,6 +616,187 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
   `;
 }
 
+// --- Calibration (Sprint 10) ---
+
+interface CalibrationBin {
+  binLow: number;
+  binHigh: number;
+  n: number;
+  empty: boolean;
+  predictedAvg: number;
+  actualRate: number;
+  ciLow: number;
+  ciHigh: number;
+}
+
+interface CalibrationCohort {
+  source: 'live' | 'backfill';
+  n: number;
+  bins: CalibrationBin[];
+  populatedBins: number;
+  ece: number | null;
+  eceHighConfOnly: number | null;
+  signedResidual: number | null;
+  verdict: 'HONEST' | 'OVERCONFIDENT' | 'SHY' | 'DISCRETE' | null;
+}
+
+interface Calibration {
+  modelVersion: string;
+  sport: string;
+  binCount: number;
+  live: CalibrationCohort;
+  backfill: CalibrationCohort;
+}
+
+const LIVE_THRESHOLD = 20;
+
+function renderCalibration(container: HTMLElement, data: Calibration) {
+  const { live, backfill } = data;
+
+  if (backfill.n === 0 && live.n === 0) {
+    container.innerHTML = '<div class="empty-state">No resolved predictions yet.</div>';
+    return;
+  }
+
+  // Square chart — diagonal integrity (Designer mandate).
+  const size = 300;
+  const margin = { top: 20, right: 20, bottom: 40, left: 50 };
+  const plotW = size - margin.left - margin.right;
+  const plotH = size - margin.top - margin.bottom;
+
+  // Domain: x = predicted (0.5 → 1.0), y = actual (0.5 → 1.0). Symmetric square.
+  const xScale = (p: number) => margin.left + ((p - 0.5) / 0.5) * plotW;
+  const yScale = (p: number) => margin.top + plotH - ((p - 0.5) / 0.5) * plotH;
+  const radius = (n: number) => Math.min(16, Math.max(3, Math.sqrt(n) * 0.6));
+
+  // Diagonal: (0.5, 0.5) → (1, 1)
+  const diagonal = `
+    <line x1="${xScale(0.5)}" y1="${yScale(0.5)}"
+          x2="${xScale(1.0)}" y2="${yScale(1.0)}"
+          stroke="var(--accent-dim)" stroke-width="1" stroke-dasharray="4 4" />
+  `;
+
+  // Tick marks every 10%
+  const ticks = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+  const xTicks = ticks.map(t => `
+    <line x1="${xScale(t)}" y1="${margin.top + plotH}" x2="${xScale(t)}" y2="${margin.top + plotH + 4}" stroke="#444" />
+    <text x="${xScale(t)}" y="${margin.top + plotH + 16}" text-anchor="middle" font-size="9" fill="#666" font-family="JetBrains Mono">${(t * 100).toFixed(0)}</text>
+  `).join('');
+  const yTicks = ticks.map(t => `
+    <line x1="${margin.left - 4}" y1="${yScale(t)}" x2="${margin.left}" y2="${yScale(t)}" stroke="#444" />
+    <text x="${margin.left - 8}" y="${yScale(t) + 3}" text-anchor="end" font-size="9" fill="#666" font-family="JetBrains Mono">${(t * 100).toFixed(0)}</text>
+  `).join('');
+
+  const renderCohortMarks = (cohort: CalibrationCohort, color: string): string => {
+    if (cohort.n === 0) return '';
+    return cohort.bins.filter(b => !b.empty).map(b => {
+      const x = xScale(b.predictedAvg);
+      const yPoint = yScale(b.actualRate);
+      const yLow = yScale(b.ciLow);
+      const yHigh = yScale(b.ciHigh);
+      const r = radius(b.n);
+      const ghosted = b.n < 5;
+      const opacity = ghosted ? 0.35 : 1;
+      const ciBar = ghosted ? '' : `
+        <line x1="${x}" y1="${yLow}" x2="${x}" y2="${yHigh}" stroke="${color}" stroke-width="1" opacity="0.6" />
+        <line x1="${x - 3}" y1="${yLow}" x2="${x + 3}" y2="${yLow}" stroke="${color}" stroke-width="1" opacity="0.6" />
+        <line x1="${x - 3}" y1="${yHigh}" x2="${x + 3}" y2="${yHigh}" stroke="${color}" stroke-width="1" opacity="0.6" />
+      `;
+      return `
+        ${ciBar}
+        <circle cx="${x}" cy="${yPoint}" r="${r}" fill="${color}" fill-opacity="${0.3 * opacity}" stroke="${color}" stroke-width="2" stroke-opacity="${opacity}" />
+        <text x="${x}" y="${yPoint - r - 4}" text-anchor="middle" font-size="9" fill="#a3a3a3" font-family="JetBrains Mono">n=${b.n}</text>
+      `;
+    }).join('');
+  };
+
+  const backfillMarks = renderCohortMarks(backfill, '#64d2ff'); // --accent
+  const liveMarks = live.n >= LIVE_THRESHOLD ? renderCohortMarks(live, '#ff9f0a') : ''; // --spotlight
+
+  const verdictClass = (v: string | null): string => {
+    if (v === 'HONEST') return 'verdict-honest';
+    if (v === 'OVERCONFIDENT') return 'verdict-over';
+    if (v === 'SHY') return 'verdict-shy';
+    if (v === 'DISCRETE') return 'verdict-discrete';
+    return '';
+  };
+
+  const primary = backfill.n > 0 ? backfill : live;
+  const primaryLabel = backfill.n > 0 ? 'BACKTEST' : 'LIVE';
+  const eceText = primary.ece !== null ? primary.ece.toFixed(4) : '—';
+  const verdictText = primary.verdict ?? '—';
+  const eceHCText = primary.eceHighConfOnly !== null && primary.eceHighConfOnly !== primary.ece
+    ? primary.eceHighConfOnly.toFixed(4)
+    : null;
+  const totalBins = primary.bins.length;
+  const populatedText = `${primary.populatedBins} of ${totalBins} bins populated`;
+
+  const summaryHtml = `
+    <div class="calibration-summary">
+      <div class="calibration-hero">
+        <div class="calibration-ece-label">EXPECTED CALIBRATION ERROR</div>
+        <div class="calibration-ece-value">${eceText}</div>
+        <div class="calibration-verdict ${verdictClass(verdictText)}">${verdictText}</div>
+        <div class="calibration-cohort-label">${primaryLabel} · n=${primary.n} · ${populatedText}</div>
+      </div>
+      ${eceHCText ? `<div class="calibration-secondary">High-confidence-only ECE: <strong>${eceHCText}</strong></div>` : ''}
+    </div>
+  `;
+
+  // Council mandate (Designer + Researcher impl review): if the primary cohort
+  // is discrete (only a few bins populated), explain the chart's apparent
+  // sparseness — that IS the finding.
+  const discreteFootnote = primary.populatedBins > 0 && primary.populatedBins <= 3
+    ? `<div class="calibration-footnote">v2 model emits ${primary.populatedBins} discrete confidence value${primary.populatedBins === 1 ? '' : 's'} — ${totalBins - primary.populatedBins} of ${totalBins} bins empty by design.</div>`
+    : '';
+
+  const liveFootnote = live.n > 0 && live.n < LIVE_THRESHOLD
+    ? `<div class="calibration-footnote">Live cohort: ${live.n} resolved prediction${live.n === 1 ? '' : 's'}. Shown when n ≥ ${LIVE_THRESHOLD}.</div>`
+    : '';
+
+  const legendLive = live.n >= LIVE_THRESHOLD
+    ? '<span class="legend-item"><span class="legend-dot" style="background:#ff9f0a"></span> Live</span>'
+    : '';
+
+  container.innerHTML = `
+    ${summaryHtml}
+    <div class="chart calibration-chart">
+      <svg viewBox="0 0 ${size} ${size}" preserveAspectRatio="xMidYMid meet">
+        <!-- diagonal first so dots overlay -->
+        ${diagonal}
+        <!-- axes -->
+        <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="#444" />
+        <line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="#444" />
+        ${xTicks}
+        ${yTicks}
+        <!-- labels -->
+        <text x="${margin.left + plotW / 2}" y="${size - 5}" text-anchor="middle" font-size="10" fill="#a3a3a3" font-family="JetBrains Mono">predicted % →</text>
+        <text x="12" y="${margin.top + plotH / 2}" text-anchor="middle" font-size="10" fill="#a3a3a3" font-family="JetBrains Mono" transform="rotate(-90 12 ${margin.top + plotH / 2})">↑ actual %</text>
+        <!-- data -->
+        ${backfillMarks}
+        ${liveMarks}
+      </svg>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-line" style="background:transparent;border-top:1px dashed var(--text-muted);width:20px"></span> Perfect calibration</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#64d2ff"></span> Backtest</span>
+        ${legendLive}
+      </div>
+      ${discreteFootnote}
+      ${liveFootnote}
+    </div>
+  `;
+}
+
+async function loadCalibration(sport = 'nba'): Promise<Calibration | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/predictions/calibration?sport=${sport}`);
+    if (!res.ok) return null;
+    return await res.json() as Calibration;
+  } catch {
+    return null;
+  }
+}
+
 async function loadRatchet(sport = 'nba'): Promise<RatchetArtifact | null> {
   try {
     const res = await fetch(`${API_BASE}/api/ratchet?sport=${sport}`);
@@ -890,7 +1071,7 @@ function renderFindings(container: HTMLElement, findings: Finding[]) {
 
 async function main() {
   try {
-    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet, predictions] = await Promise.all([
+    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet, predictions, calibration] = await Promise.all([
       fetchJson<Stats>('/api/stats'),
       fetchJson<{ margin: number; count: number }[]>('/api/margins'),
       fetchJson<Finding[]>('/api/findings'),
@@ -900,6 +1081,7 @@ async function main() {
       fetch(`${API_BASE}/api/player-counts`).then(r => r.json() as Promise<Record<string, number>>),
       loadRatchet('nba'),
       loadPredictions('nba'),
+      loadCalibration('nba'),
     ]);
 
     const totalGames = stats.total_games;
@@ -954,6 +1136,12 @@ async function main() {
     } else {
       document.getElementById('ratchet-section')!.innerHTML =
         '<p style="color: var(--text-muted)">Ratchet run not available. Run `npm run ratchet` to generate.</p>';
+    }
+    if (calibration) {
+      renderCalibration(document.getElementById('calibration-section')!, calibration);
+    } else {
+      document.getElementById('calibration-section')!.innerHTML =
+        '<p style="color: var(--text-muted)">Calibration unavailable.</p>';
     }
     renderPlayerSection(document.getElementById('players-section')!, allSportData, playerCounts);
 

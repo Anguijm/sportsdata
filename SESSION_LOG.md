@@ -1,7 +1,40 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-08 (end of Sprint 8.5)
+Last updated: 2026-04-09 (end of Sprint 10, deploy infrastructure repaired)
+
+---
+
+## 🎯 Next Session Pickup
+
+> **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log before acting on it. Git history is the authoritative timeline.
+
+**Status as of 2026-04-09 06:50 JST:** Sprint 9 + 10 shipped and verified LIVE. Deploy infrastructure repaired.
+
+**Next task:** NHL ratchet + cross-sport comparison (first in priority queue after Sprint 10).
+
+**User has not yet picked a scoping option.** Before starting the Algorithm, ask:
+1. Run existing v2 iteration recipe as-is against NHL data — fast, likely weak model, simple story
+2. Design NHL-specific ratchet iterations (goalie quality, back-to-back fatigue, low-scoring) — bigger effort, better story
+3. Start with (1) to get a baseline, decide based on results
+
+**What's live right now:**
+- https://sportsdata.pages.dev — Section 07 "Does the model mean what it says?" shows ECE 0.0892, verdict DISCRETE, the v2 model's 2-value finding
+- https://sportsdata-api.fly.dev/api/predictions/calibration?sport=nba returns 200
+- Sprint 9 mobile layout fixes (streak top/bottom 5, sport tab selector, etc.) also live
+
+**Critical lesson from this session (DO NOT forget):** The Cloudflare Pages GitHub Actions workflow had been silently failing for 4 days — CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID secrets were never set. Every deploy since Sprint 6 failed. Always verify the live site actually reflects your commit, not just that git push succeeded. See `DEPLOY.md` for the full runbook.
+
+**Key finding that should not be relearned:** The v2 NBA prediction model is a DISCRETE classifier — it only emits probability 60% or 75%, nothing in between. Surfaced by Sprint 10 calibration plot, now headline content. **Full numbers + forward paths:** see PAI memory `project_v2_model_discrete_finding.md` (canonical) and the Sprint 10 entry below in this log. Don't re-derive the table.
+
+**Open council debts carrying forward** (see backlog below):
+- Ratchet media query consolidation (Sprint 9 Engineer nit)
+- Player name line-wrap in ranked list (Sprint 9 Designer nit)
+- `eceHighConfOnly` refactor to shared helper (Sprint 10 Engineer nit)
+- `canonical_game_id` schema migration (still open from Sprint 8.5, P0)
+- Stale Cloudflare direct-git deploy source (dashboard cleanup, not blocking)
+
+---
 
 ## Live URLs
 
@@ -255,45 +288,130 @@ Predictions pointed at BDL IDs but game_results were under ESPN IDs. Resolver jo
 
 ---
 
-### Sprint 9 (STARTED, INCOMPLETE) — Mobile Layout Fixes
+### Sprint 9 — Mobile Layout Fixes (SHIPPED 2026-04-08, commit `03a711e`)
 
-**User feedback:** "No need for 45 cards about streaks or a row for every team. Think about how a user might want it to work. No swiping left or right unless it's to drill down. Make sure what's rendered fits the width correctly."
+**User feedback:** "No need for 45 cards about streaks or a row for every team. Think about how a user might want it to work. No swiping left or right unless it's to drill down."
 
-**Audit completed (manual code review, BrowserAgent failed):**
-- Section 03 (streak grid): 30 teams × 3 seasons = 90 rows, each with 82-game segmented bar → overflow + overload
-- Section 04 (findings): 46 cards in one list → overload
-- Section 06 (ratchet iterations table): `grid-template-columns` with ~340px+ fixed → overflow on 375px phones
-- Section 06 (ratchet summary): 5-col grid → overflow
-- Section 07 (players): 6 sports stacked vertically → endless scroll
-- No body-level `overflow-x: hidden` guard
+**Plan council review (previous session):** 3 WARN / 1 CLEAR from Architect, Designer, Engineer, Researcher. Conditions baked into build.
 
-**Plan drafted:**
-1. Global overflow guards (`overflow-x: hidden` on body + html, `min-width: 0` on narrative children, use `100%` not `100vw`)
-2. Streak grid: top 5 + bottom 5 by point differential per season, `<details>` for older seasons, "show middle N teams" nested toggle
-3. Findings: top 10 visible, `<details>` for "show 36 more"
-4. Ratchet: stack summary vertically on mobile, iterations table → stacked cards
-5. Players: sport tab selector, one sport at a time, localStorage persistence, count badges
-6. Use native `<details>` elements throughout for consistency (Architect mandate)
+**Built:**
+1. Global overflow guards: `html, body { overflow-x: hidden; max-width: 100% }`, `.narrative > * { min-width: 0 }`
+2. Streak grid: top 5 + bottom 5 by point differential per season (sort key changed from winPct to diffPg per Researcher), middle teams in nested `<details>`, older seasons collapsed with outer `<details>`
+3. Findings: top 10 visible, remaining in `<details>` with show-more count
+4. Ratchet mobile: summary stacks vertically, iterations table → stacked cards with inline labels, arrows hidden
+5. Players: sport tab selector with count badges, localStorage persistence, default NBA, one sport visible at a time
+6. Word-break on hero h1, section h2, finding headline/detail; 380px breakpoint for narrowest devices
 
-**Council plan review:** 3 WARN / 1 CLEAR. Conditions:
-- Architect: Consolidate disclosure primitive (use `<details>` everywhere)
-- Designer: localStorage persistence, count badges on tabs, default sport = in-season
-- Engineer: `100%` not `100vw`, nested grid `minmax(0, 1fr)`, `word-break: break-word`, iOS Safari sticky quirks
-- Researcher: Rewrite headline ("Best and worst 5 by point diff"), confirm findings are ranked by surpriseScore (they are), CSS compression > truncation for streak bars
+**Verification:**
+- vite build green, tsc --noEmit clean
+- Playwright at 320/375/414/1280: zero horizontal scroll, zero JS errors, zero page errors
+- Sport tab click test: persists "nfl" to localStorage after click (confirmed programmatically)
+- Streak section renders exactly top 5 + "show 20 middle teams" toggle + bottom 5 + collapsed 2024-25 + collapsed 2023-24
 
-**STATUS: Plan approved but implementation incomplete.**
-Only `web/style.css` overflow guards were partially written and reverted. Streak grid renderer drafted (see commit history / unsaved buffer) but not applied.
-
-**CONTEXT CLEARED HERE. Next session picks up Sprint 9 build from the plan above.**
+**Council impl review:** 3× CLEAR (Architect, Designer, Engineer).
+- Architect: disclosure primitive consolidated (all `<details>`), overflow cascade sound. Flagged dead `forEach` noop → fixed before commit.
+- Designer: tab badges present, localStorage verified, NBA default correct. Nits deferred: player name truncation, ratchet delta decimal alignment.
+- Engineer: all four mandates honored (`100%`/`minmax(0,1fr)`/`word-break`/no sticky), localStorage try/catch both ways. Nit: two `@media (max-width: 720px)` ratchet blocks could consolidate.
 
 ---
 
-## Backlog (Post-Sprint 8.5)
+### Sprint 10 — Calibration Plot (SHIPPED 2026-04-09, commit `b8fd746`)
 
-### Sprint 9 In Progress: Mobile Layout Fixes
-See plan above. Drafted streak grid renderer uses top 5 + bottom 5 by diffPg, with `<details>` for older seasons and middle teams.
+**Trigger:** n=2500 backfilled predictions from Sprint 8.5 unlocked meaningful calibration analysis. First in user's priority queue.
 
-### Sprint 9/10 Debts Filed
+**Plan council review:** 3× WARN with 12 integrated fixes.
+- Researcher: bin edges `[low, high)` with terminal closed both ends, include low_conf rows in primary ECE, ghost n<5 bins, axis domain [0.5, 1.0] not [0, 1], live threshold n≥20
+- Engineer: parameterized SQL with JS-side binning, explicit Wilson formula, ECE excludes empty bins from both numerator and denominator, never-throws contract with null ECE for empty cohorts
+- Designer: headline "Does the model mean what it says?", ECE paired with verdict word (HONEST/OVERCONFIDENT/SHY/DISCRETE), square 1:1 aspect ratio, sparse-cohort footnote, `--accent-dim` dashed diagonal
+
+**Resolved conflict:** Researcher wanted `low_confidence` rows INCLUDED (calibration is the right venue); Engineer wanted EXCLUDED (matches track-record convention). Resolution: include in primary ECE, expose `eceHighConfOnly` as secondary stat so both interpretations are visible.
+
+**Built:**
+- `src/analysis/resolve-predictions.ts`: `getCalibration()` + `wilsonCI()` + `computeCohort()` + `emptyCohort()`. Wilson 95% CI, ECE, signed residual, verdict word derivation, populated-bin count.
+- `src/viz/data-api.ts`: new `/api/predictions/calibration?sport=nba` route.
+- `web/main.ts`: `renderCalibration()` with square SVG chart, diagonal reference line, Wilson CI bars, cohort split, discrete-output footnote.
+- `web/style.css`: `calibration-hero`, `calibration-verdict.verdict-*`, `calibration-chart`, `calibration-footnote`.
+- `web/index.html`: new Section 07 between Ratchet and Players.
+
+**🔥 Headline finding (surfaced by the plot itself):** the v2 NBA model is a **discrete 2-output classifier** — it only emits probability 60% or 75%, never anything in between. The 60% bin (n=1,495) actually hits 63.5% (slightly shy). The **75% bin (n=1,005) actually hits 58.1% — a 17-point overstatement**. ECE = 0.0892, signed residual +0.0466, verdict **DISCRETE** (suppressed the curve-based OVERCONFIDENT verdict because ≤2 bins populated is not a calibration curve).
+
+**Verification:**
+- vite build green, tsc --noEmit clean
+- Local API smoke test: 200, correct JSON, verdict DISCRETE, populatedBins 2 of 10
+- Playwright at 375/1280: zero horizontal scroll, zero JS errors
+- Full-section screenshot shows headline, lead copy, ECE hero, verdict badge, chart, footnote in correct order
+
+**Council impl review:** Engineer 1× CLEAR. Researcher + Designer 2× WARN with overlapping insight: the chart needed to surface the discrete-output finding explicitly (not just derive a misleading OVERCONFIDENT verdict). Fixed by:
+- New `populatedBins` field on cohort
+- New `DISCRETE` verdict word when populatedBins ≤ 2
+- Footnote: "v2 model emits 2 discrete confidence values — 8 of 10 bins empty by design"
+- "X of N bins populated" in cohort sub-label
+
+Post-fix all 3 verdicts → CLEAR.
+
+**Deferred from council nits:**
+- Refactor `eceHighConfOnly` second pass into a shared `computeECE(rows, binCount)` helper (Engineer, low priority)
+- Consider logging `populatedBins` in an API response assertion for future sprint tests (Researcher, nice-to-have)
+
+---
+
+### Sprint 10.5 — Deploy Infrastructure Repair (2026-04-09)
+
+**Discovered during Sprint 10 verification:** every Cloudflare Pages GitHub Actions deploy had been failing silently since Sprint 6 (2026-04-07). Root cause: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets were never set in the repo's GitHub Actions secrets.
+
+**Evidence:**
+```
+gh run list --workflow=deploy-pages.yml
+→ 10 consecutive failures spanning Sprint 5 through Sprint 10
+```
+
+**Error from last failed run:**
+> In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable for wrangler to work.
+
+**Mystery:** if every deploy failed, how was `sportsdata.pages.dev` serving any content? Hypothesis: a direct git integration in the Cloudflare Pages project (set up before the Actions workflow was added) was serving stale builds. Not confirmed — would require Cloudflare dashboard access.
+
+**Fix applied this session:**
+1. User set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in GitHub secrets
+2. `gh run rerun 24155529847` on the Sprint 10 commit → ✓ 37s successful deploy (first green Pages deploy in 4 days)
+3. `~/.fly/bin/fly deploy` for the Fly API (new `/api/predictions/calibration` endpoint) → ✓ smoke check passed, machine 287e392a913538 reached started state
+4. Live verification: https://sportsdata-api.fly.dev/api/predictions/calibration?sport=nba returns 200 with the DISCRETE verdict; https://sportsdata.pages.dev serves the new "Best and worst 5" (Sprint 9) and "Does the model mean" (Sprint 10) content.
+
+**Lesson captured as PAI memory `feedback_verify_live_deploy.md`:** always verify the live site reflects the commit, don't trust git push success alone. Check `gh run list` after pushes, and curl the live URL for the expected content.
+
+**New runbook: `DEPLOY.md` in repo root** — documents fly deploy path, gh run rerun for Pages, verification curl commands, secret list.
+
+**Deferred:** investigate + disable the stale Cloudflare direct-git deploy source in the dashboard (not blocking since the Actions workflow is now authoritative). Filed in backlog.
+
+---
+
+## Backlog (Post-Sprint 10)
+
+### Sprint 11 Candidates (user's next pick)
+
+**NHL ratchet + cross-sport comparison** — the #1 priority after Sprint 10. The ratchet CLI already takes `sport` as an arg, so the machinery is sport-generic, but the v2 iterations (home/away differential, point diff streaks) are tuned for NBA. Three scoping options on the table (user has not picked):
+
+1. **Same recipe, new sport** — run existing v2 iteration sequence against NHL unchanged. Fast (~1-2 hours). Story: "the recipe generalizes" or "it doesn't."
+2. **NHL-specific iterations** — design hockey-native features (goalie quality, back-to-back fatigue, low-scoring regime). Half day+. Better story.
+3. **Start (1), decide based on results** — pragmatic middle ground.
+
+**Cross-sport comparison chart** is the same regardless — once both sports have ratchet artifacts, a new section shows best-Brier-vs-baseline improvement side-by-side.
+
+### Council Debts Filed
+
+| # | Item | Source | Priority |
+|---|------|--------|----------|
+| 1 | canonical_game_id schema migration | Sprint 8.5 Skeptic | P0 |
+| 2 | MLB doubleheader handling | Sprint 8.5 Pragmatist | Before generalizing beyond NBA |
+| 3 | Test fixture covering both ID shapes | Sprint 8.5 Tester | With canonical migration |
+| 4 | Vegas frontend rendering | Sprint 8 deferred | Quick win |
+| 5 | Ratchet media query consolidation | Sprint 9 Engineer | Low (cosmetic) |
+| 6 | Player name line-wrap in ranked list | Sprint 9 Designer | Low (cosmetic) |
+| 7 | eceHighConfOnly → shared computeECE helper | Sprint 10 Engineer | Low (refactor) |
+| 8 | Disable stale Cloudflare direct-git deploy source | Sprint 10.5 ops | Dashboard only |
+| 9 | ESPN per-call retry jitter | Sprint 8 Engineer | Low |
+| 10 | Seed-stability test for v2 winning margin | Sprint 6 Skeptic | Low |
+| 11 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
+| 12 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After live cohort grows |
 
 | # | Item | Source | Priority |
 |---|------|--------|----------|

@@ -2,6 +2,13 @@
 
 US sports data analytics platform with automated scraping, council-governed analysis, and Jon Bois-inspired visualization.
 
+## 🌐 Live
+
+- **Site:** https://sportsdata.pages.dev
+- **API:** https://sportsdata-api.fly.dev
+- **Health:** https://sportsdata-api.fly.dev/api/health
+- **Deploy runbook:** [`DEPLOY.md`](./DEPLOY.md)
+
 ## Architecture
 
 ```

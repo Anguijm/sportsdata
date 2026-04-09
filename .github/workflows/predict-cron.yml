@@ -15,11 +15,16 @@ jobs:
       - name: Trigger scrape on Fly.io
         # Sprint 10.6: failures here are NOT silently swallowed. If this
         # curl fails the whole workflow fails and we find out on the same
-        # day rather than four days later.
+        # day rather than four days later. `sport=all` explicitly scrapes
+        # every league (nfl/nba/mlb/nhl/mls/epl) — this replaces the
+        # deleted scrape-cron.yml which was *supposed* to cover every
+        # league but had been hitting a dead /api/trigger-cycle route.
+        # The endpoint returns 502 if any ESPN fetch fail-closes, so -f
+        # will turn a silent upstream outage into a red workflow run.
         run: |
-          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/scrape" \
+          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/scrape?sport=all" \
             -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
-            --max-time 300
+            --max-time 600
 
       - name: Trigger predict on Fly.io
         run: |

@@ -8,7 +8,8 @@ import { fetchTeams, fetchScoreboard } from '../scrapers/espn.js';
 import { fetchOdds } from '../scrapers/odds-api.js';
 import { sqliteRepository, closeDb, resolveGameOutcomes } from '../storage/sqlite.js';
 import { formatScrapeSummary } from '../cli/tables.js';
-import { appendLog } from '../storage/json-log.js';
+import { appendLog, readLog } from '../storage/json-log.js';
+import type { ScrapeLogEntry } from '../storage/json-log.js';
 import type { Sport } from '../schema/provenance.js';
 
 export interface ScheduleConfig {
@@ -121,13 +122,27 @@ async function scrapeOdds(sport: Sport, config: ScheduleConfig): Promise<number>
   return odds.length;
 }
 
+export interface CycleResult {
+  results: { sport: Sport; teams: number; games: number }[];
+  /**
+   * FAIL entries written to the scrape log during this cycle. Non-empty means
+   * upstream (ESPN schema drift, network outage, etc.) hit at least one
+   * fail-closed path — `scrapedFetch` returns `[]` instead of throwing per
+   * council mandate, so the only signal that a fetch failed is in the log.
+   * Callers (notably `/api/trigger/scrape`) MUST check this and return a
+   * non-2xx status, otherwise crons stay green while data goes stale.
+   */
+  failures: { sport: string; dataType: string; error?: string; timestamp: string }[];
+}
+
 /** Run a full scrape cycle for all configured sports. */
 export async function runCycle(
   overrides: Partial<ScheduleConfig> = {},
-): Promise<{ sport: Sport; teams: number; games: number }[]> {
+): Promise<CycleResult> {
   const config: ScheduleConfig = { ...DEFAULT_CONFIG, ...overrides };
   const startTime = Date.now();
-  console.log(`\n━━━ Scrape Cycle @ ${new Date().toISOString()} (backfillDays=${config.backfillDays}) ━━━`);
+  const startIso = new Date(startTime).toISOString();
+  console.log(`\n━━━ Scrape Cycle @ ${startIso} (backfillDays=${config.backfillDays}) ━━━`);
 
   const results: { sport: Sport; teams: number; games: number }[] = [];
 
@@ -176,17 +191,38 @@ export async function runCycle(
 
   formatScrapeSummary(results);
 
+  // Collect fail-closed ESPN failures that occurred during this cycle. The
+  // scraper writes `gate: 'FAIL'` log entries but does NOT throw, so this
+  // log sweep is the only reliable way to detect upstream breakage. Scoped
+  // to entries whose timestamp is >= startIso so we don't count stale
+  // failures from prior runs.
+  const logEntries = readLog<ScrapeLogEntry>('scrape');
+  const failures = logEntries
+    .filter((e) => e.source === 'espn' && e.gate === 'FAIL' && e.timestamp >= startIso)
+    .filter((e) => config.sports.includes(e.sport as Sport))
+    .map((e) => ({ sport: e.sport, dataType: e.dataType, error: e.error, timestamp: e.timestamp }));
+
+  if (failures.length > 0) {
+    console.log(`\n⚠ ${failures.length} scrape failure(s) detected:`);
+    for (const f of failures) console.log(`  ✗ ${f.sport}/${f.dataType}: ${f.error ?? 'unknown'}`);
+  }
+
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n━━━ Cycle complete in ${elapsed}s ━━━\n`);
 
-  return results;
+  return { results, failures };
 }
 
 // --- CLI entry point ---
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   runCycle()
-    .then(() => closeDb())
+    .then(({ failures }) => {
+      closeDb();
+      // Exit non-zero if any fail-closed ESPN failures were detected so that
+      // `npm run cycle` from a shell / cron reflects reality.
+      if (failures.length > 0) process.exit(1);
+    })
     .catch((err) => {
       console.error('Cycle failed:', err);
       closeDb();

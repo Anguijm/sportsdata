@@ -1087,12 +1087,32 @@ async function main() {
     const totalGames = stats.total_games;
     const homeWinPct = ((stats.home_wins / totalGames) * 100).toFixed(1);
 
+    // Derive season range from sequences (SeasonRow.year is the starting year,
+    // e.g. 2023 → "2023-24"). Used by the hero and the footer.
+    const allSeasons = new Set<number>();
+    sequences.forEach(t => t.seasons.forEach(s => allSeasons.add(s.year)));
+    const sortedSeasons = Array.from(allSeasons).sort((a, b) => a - b);
+    const firstSeason = sortedSeasons[0];
+    const lastSeason = sortedSeasons[sortedSeasons.length - 1];
+    const seasonCount = sortedSeasons.length;
+    const seasonRangeLabel = firstSeason === lastSeason
+      ? `${firstSeason}-${String(firstSeason + 1).slice(-2)} season`
+      : `${firstSeason}-${String(firstSeason + 1).slice(-2)} through ${lastSeason}-${String(lastSeason + 1).slice(-2)}`;
+
     // Hero
     document.getElementById('hero-title')!.innerHTML =
       `${totalGames.toLocaleString()}<br>NBA games.`;
 
+    // Footer (dynamic — was hardcoded and drifted stale)
+    document.getElementById('footer-stats')!.textContent =
+      `${totalGames.toLocaleString()} NBA games · ${seasonRangeLabel}`;
+
+    const seasonWord = seasonCount === 1 ? 'One season' :
+      seasonCount === 2 ? 'Two seasons' :
+      seasonCount === 3 ? 'Three seasons' :
+      `${seasonCount} seasons`;
     document.getElementById('hero-text')!.innerHTML = `
-      Three seasons. Every game scraped, every result resolved.
+      ${seasonWord}. Every game scraped, every result resolved.
       <span class="number">${findings.filter(f => f.spotlight).length}</span> spotlight findings,
       including a <span class="highlight">${stats.max_margin}-point blowout</span>
       and a <span class="highlight">28-game losing streak</span>.
@@ -1103,7 +1123,7 @@ async function main() {
       <div class="big-stat">
         <div class="big-stat-label">Total games</div>
         <div class="big-stat-value">${totalGames.toLocaleString()}</div>
-        <div class="big-stat-detail">3 seasons · 30 teams</div>
+        <div class="big-stat-detail">${seasonCount} seasons · 30 teams</div>
       </div>
       <div class="big-stat">
         <div class="big-stat-label">Avg margin</div>

@@ -242,6 +242,20 @@ export function startDataApi(): void {
             res.end(JSON.stringify({ error: 'Unauthorized' }));
             return;
           }
+          // Sport selection: explicit `?sport=<code>` scrapes just that
+          // league; missing or `?sport=all` scrapes every league in
+          // DEFAULT_CONFIG.sports. All-sports is the intended cron mode
+          // (replaces the deleted scrape-cron.yml which was supposed to
+          // cover every league but had been hitting a dead route).
+          // NOTE: this endpoint deliberately does NOT use the handler-level
+          // `sport` default (which coerces missing → nba) because that
+          // default is wrong for a multi-league scrape trigger.
+          const rawSport = url.searchParams.get('sport');
+          const allSports: Sport[] = ['nfl', 'nba', 'mlb', 'nhl', 'mls', 'epl'];
+          const targetSports: Sport[] = (!rawSport || rawSport === 'all')
+            ? allSports
+            : [rawSport as Sport];
+
           // backfillDays default = 3: today + 3 prior days. Covers a missed
           // cron run without hammering ESPN. Callers may override via
           // `?backfillDays=N`.
@@ -249,13 +263,28 @@ export function startDataApi(): void {
           const backfillDays = backfillParam !== null
             ? Math.max(0, Math.min(14, parseInt(backfillParam, 10) || 0))
             : 3;
-          const results = await runCycle({ sports: [sport], backfillDays });
-          response = jsonResponse({
-            sport,
+          const { results, failures } = await runCycle({ sports: targetSports, backfillDays });
+          const body = {
+            sports: targetSports,
             backfillDays,
             results,
+            failures,
             triggeredAt: new Date().toISOString(),
-          });
+          };
+          // Fail-closed surfacing: scrapedFetch returns [] on ESPN schema
+          // drift / outage rather than throwing (council mandate), so the
+          // only signal that upstream broke is in `failures`. Return 502
+          // when any failures are present so predict-cron fails loudly
+          // instead of masking stale data.
+          if (failures.length > 0) {
+            res.writeHead(502, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            });
+            res.end(JSON.stringify(body));
+            return;
+          }
+          response = jsonResponse(body);
           break;
         }
 

@@ -16,6 +16,14 @@ export interface ScheduleConfig {
   oddsEnabled: boolean;
   maxRetries: number;
   retryDelayMs: number;
+  /**
+   * Number of days prior to today to re-scrape, inclusive of today.
+   * - `0` (default): today only, using ESPN's default scoreboard window.
+   * - `N > 0`: loop from `today - N` through `today`, hitting the ESPN
+   *   scoreboard with `?dates=YYYYMMDD` for each day. Lets the system
+   *   self-heal after a missed cron run.
+   */
+  backfillDays: number;
 }
 
 const DEFAULT_CONFIG: ScheduleConfig = {
@@ -23,7 +31,16 @@ const DEFAULT_CONFIG: ScheduleConfig = {
   oddsEnabled: !!process.env.THE_ODDS_API_KEY,
   maxRetries: 3,
   retryDelayMs: 5000,
+  backfillDays: 0,
 };
+
+/** Format a Date as `YYYYMMDD` (UTC) — ESPN scoreboard date parameter format. */
+function toEspnDateStr(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -57,15 +74,41 @@ async function scrapeEspn(sport: Sport, config: ScheduleConfig): Promise<{ teams
   );
   for (const t of teams) await sqliteRepository.upsertTeam(t);
 
-  const games = await withRetry(
-    () => fetchScoreboard(sport),
-    `${sport} scoreboard`,
-    config.maxRetries,
-    config.retryDelayMs
-  );
-  for (const g of games) await sqliteRepository.upsertGame(g);
+  // Build the list of dates to fetch. Default (backfillDays=0) is a single
+  // no-date fetch, preserving the previous behavior. When backfillDays > 0,
+  // iterate from (today - N) through today and hit the scoreboard once per
+  // day with an explicit `?dates=YYYYMMDD` parameter so we catch games that
+  // fell outside ESPN's default "current day" window.
+  const dateQueries: (string | undefined)[] = [];
+  if (config.backfillDays > 0) {
+    const today = new Date();
+    for (let offset = config.backfillDays; offset >= 0; offset--) {
+      const d = new Date(today);
+      d.setUTCDate(d.getUTCDate() - offset);
+      dateQueries.push(toEspnDateStr(d));
+    }
+  } else {
+    dateQueries.push(undefined);
+  }
 
-  return { teams: teams.length, games: games.length };
+  const seen = new Set<string>();
+  let gamesUpserted = 0;
+  for (const dateQuery of dateQueries) {
+    const games = await withRetry(
+      () => fetchScoreboard(sport, dateQuery),
+      `${sport} scoreboard${dateQuery ? ` (${dateQuery})` : ''}`,
+      config.maxRetries,
+      config.retryDelayMs
+    );
+    for (const g of games) {
+      if (seen.has(g.id)) continue;
+      seen.add(g.id);
+      await sqliteRepository.upsertGame(g);
+      gamesUpserted++;
+    }
+  }
+
+  return { teams: teams.length, games: gamesUpserted };
 }
 
 async function scrapeOdds(sport: Sport, config: ScheduleConfig): Promise<number> {
@@ -78,10 +121,13 @@ async function scrapeOdds(sport: Sport, config: ScheduleConfig): Promise<number>
   return odds.length;
 }
 
-/** Run a full scrape cycle for all configured sports */
-export async function runCycle(config: ScheduleConfig = DEFAULT_CONFIG): Promise<void> {
+/** Run a full scrape cycle for all configured sports. */
+export async function runCycle(
+  overrides: Partial<ScheduleConfig> = {},
+): Promise<{ sport: Sport; teams: number; games: number }[]> {
+  const config: ScheduleConfig = { ...DEFAULT_CONFIG, ...overrides };
   const startTime = Date.now();
-  console.log(`\n━━━ Scrape Cycle @ ${new Date().toISOString()} ━━━`);
+  console.log(`\n━━━ Scrape Cycle @ ${new Date().toISOString()} (backfillDays=${config.backfillDays}) ━━━`);
 
   const results: { sport: Sport; teams: number; games: number }[] = [];
 
@@ -132,6 +178,8 @@ export async function runCycle(config: ScheduleConfig = DEFAULT_CONFIG): Promise
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n━━━ Cycle complete in ${elapsed}s ━━━\n`);
+
+  return results;
 }
 
 // --- CLI entry point ---

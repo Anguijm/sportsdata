@@ -1,0 +1,46 @@
+name: Deploy API to Fly.io
+
+# Sprint 10.6: auto-deploy the API on push to main, mirroring how
+# deploy-pages.yml already handles the frontend. Before this workflow,
+# Fly deploys required running `fly deploy` from a terminal — documented
+# in DEPLOY.md as a hazard. Now push-to-main ships the API.
+#
+# Prerequisite GH secret: FLY_API_TOKEN
+#   Create at https://fly.io/user/personal_access_tokens (scope to
+#   sportsdata-api app) and add via `gh secret set FLY_API_TOKEN`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'fly.toml'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify API is reachable
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -sSf "https://sportsdata-api.fly.dev/api/health" > /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health check failed after 5 attempts" >&2
+          exit 1

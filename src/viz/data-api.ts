@@ -10,6 +10,8 @@ import { findPlayerFindings, getSportPlayerData } from '../analysis/player-findi
 import { getPlayerCount } from '../storage/sqlite.js';
 import { getTrackRecord, getUpcomingPredictions, getRecentResolvedPredictions, resolvePredictions, getCalibration } from '../analysis/resolve-predictions.js';
 import { predictUpcoming } from '../analysis/predict-runner.js';
+import { getLastScrapeTime } from '../storage/sqlite.js';
+import { runCycle } from '../orchestration/scheduler.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Sport } from '../schema/provenance.js';
@@ -28,7 +30,7 @@ function jsonResponse(data: unknown): { body: string; headers: Record<string, st
 }
 
 export function startDataApi(): void {
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     // CORS preflight
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
@@ -228,6 +230,35 @@ export function startDataApi(): void {
           break;
         }
 
+        case '/api/trigger/scrape': {
+          // Sprint 10.6: unblock stale NBA predictions.
+          // Runs an ESPN scrape + resolver sweep over a rolling window so the
+          // system self-heals after a missed cron. Same bearer-token auth as
+          // /api/trigger/predict.
+          const auth = req.headers['authorization'];
+          const expected = process.env.PREDICT_TRIGGER_TOKEN;
+          if (!expected || auth !== `Bearer ${expected}`) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Unauthorized' }));
+            return;
+          }
+          // backfillDays default = 3: today + 3 prior days. Covers a missed
+          // cron run without hammering ESPN. Callers may override via
+          // `?backfillDays=N`.
+          const backfillParam = url.searchParams.get('backfillDays');
+          const backfillDays = backfillParam !== null
+            ? Math.max(0, Math.min(14, parseInt(backfillParam, 10) || 0))
+            : 3;
+          const results = await runCycle({ sports: [sport], backfillDays });
+          response = jsonResponse({
+            sport,
+            backfillDays,
+            results,
+            triggeredAt: new Date().toISOString(),
+          });
+          break;
+        }
+
         case '/api/predictions/upcoming': {
           const preds = getUpcomingPredictions(sport);
           response = jsonResponse(preds);
@@ -284,11 +315,16 @@ export function startDataApi(): void {
           const db = getDb();
           const gameCount = (db.prepare('SELECT COUNT(*) as c FROM games').get() as { c: number }).c;
           const resultCount = (db.prepare('SELECT COUNT(*) as c FROM game_results').get() as { c: number }).c;
+          // last_scrape_at: MAX(games.updated_at). If this stops advancing for
+          // >24h while crons are green, the scrape→resolve pipeline is broken
+          // (see Sprint 10.6 / DEPLOY.md staleness check).
+          const lastScrapeAt = getLastScrapeTime();
           response = jsonResponse({
             status: 'ok',
             timestamp: new Date().toISOString(),
             games: gameCount,
             results: resultCount,
+            last_scrape_at: lastScrapeAt,
           });
           break;
         }

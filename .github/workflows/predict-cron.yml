@@ -12,15 +12,17 @@ jobs:
   predict:
     runs-on: ubuntu-latest
     steps:
+      - name: Trigger scrape on Fly.io
+        # Sprint 10.6: failures here are NOT silently swallowed. If this
+        # curl fails the whole workflow fails and we find out on the same
+        # day rather than four days later.
+        run: |
+          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/scrape" \
+            -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
+            --max-time 300
+
       - name: Trigger predict on Fly.io
         run: |
-          # First refresh game data
-          curl -sf -X POST "https://sportsdata-api.fly.dev/api/trigger/scrape" \
+          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/predict" \
             -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
-            || echo "Scrape trigger failed (non-fatal)"
-
-          # Then run predictions
-          curl -sf -X POST "https://sportsdata-api.fly.dev/api/trigger/predict" \
-            -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
-            || echo "Predict trigger failed"
-        continue-on-error: true
+            --max-time 300

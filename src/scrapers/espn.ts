@@ -112,9 +112,10 @@ async function scrapedFetch<TRaw, TResult>(
   endpoint: string,
   dataType: string,
   validator: (raw: unknown) => ValidationResult<TRaw>,
-  normalize: (raw: TRaw, sport: Sport, url: string) => TResult[]
+  normalize: (raw: TRaw, sport: Sport, url: string) => TResult[],
+  query?: string,
 ): Promise<TResult[]> {
-  const url = `${ESPN_BASE}/${SPORT_PATHS[sport]}/${endpoint}`;
+  const url = `${ESPN_BASE}/${SPORT_PATHS[sport]}/${endpoint}${query ? `?${query}` : ''}`;
   const start = Date.now();
 
   const logEntry = (overrides: Partial<ScrapeLogEntry>): ScrapeLogEntry => ({
@@ -142,9 +143,17 @@ async function scrapedFetch<TRaw, TResult>(
   return results;
 }
 
-/** Fetch current scoreboard for a sport */
-export function fetchScoreboard(sport: Sport): Promise<Game[]> {
-  return scrapedFetch(sport, 'scoreboard', 'scoreboard', validateScoreboard, normalizeScoreboard);
+/**
+ * Fetch scoreboard for a sport.
+ *
+ * @param sport — league code
+ * @param dates — optional ESPN `?dates=` parameter. Accepts `YYYYMMDD` for a
+ *   single day or `YYYYMMDD-YYYYMMDD` for a range. When omitted, ESPN returns
+ *   the current day's scoreboard window (default behavior).
+ */
+export function fetchScoreboard(sport: Sport, dates?: string): Promise<Game[]> {
+  const query = dates ? `dates=${dates}` : undefined;
+  return scrapedFetch(sport, 'scoreboard', 'scoreboard', validateScoreboard, normalizeScoreboard, query);
 }
 
 /** Fetch teams for a sport */

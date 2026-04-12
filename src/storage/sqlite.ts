@@ -265,7 +265,8 @@ export const sqliteRepository: Repository = {
       INSERT INTO games (id, sport, season, date, home_team_id, away_team_id, venue, status, score_json, odds_json, weather_json, pitchers_json, provenance_json, updated_at)
       VALUES (@id, @sport, @season, @date, @home_team_id, @away_team_id, @venue, @status, @score_json, @odds_json, @weather_json, @pitchers_json, @provenance_json, @updated_at)
       ON CONFLICT(id) DO UPDATE SET
-        status=@status, score_json=@score_json, odds_json=@odds_json, weather_json=@weather_json, pitchers_json=COALESCE(@pitchers_json, pitchers_json),
+        status=@status, score_json=@score_json, odds_json=@odds_json, weather_json=@weather_json,
+        pitchers_json=COALESCE(@pitchers_json, pitchers_json),
         provenance_json=@provenance_json, updated_at=@updated_at
     `).run(row);
   },

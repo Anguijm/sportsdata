@@ -202,12 +202,14 @@ export function predictMargin(game: GameForPrediction, ctx: PredictionContext, p
   if (awayHotStreak) margin -= homeAdv * 0.3;  // further reduce for hot visitor
 
   // MLB pitcher ERA differential: lower ERA = better pitcher.
-  // League average ERA ≈ 4.0. A 1.0 ERA gap maps to roughly ±0.5 runs of margin
-  // adjustment (conservative, based on ~1 run per 9 IP ERA difference scaled down
-  // because run support, bullpen, and defense matter too).
+  // Council review (Statistical Validity + Domain Expert convergence):
+  // Starters average ~5 IP, so ERA explains roughly half the game's run
+  // prevention. Bullpen, defense, and park effects dilute the signal further.
+  // A 1.0 ERA gap historically maps to ~0.3-0.4 run differential per game.
+  // Coefficient: 0.3 (conservative — will recalibrate when N > 200).
   if (sport === 'mlb' && pitchers && pitchers.homeEra > 0 && pitchers.awayEra > 0) {
     const eraGap = pitchers.awayEra - pitchers.homeEra; // positive = home pitcher better
-    margin += eraGap * 0.5; // ±0.5 runs per 1.0 ERA gap
+    margin += eraGap * 0.3;
   }
 
   return Math.max(-clamp, Math.min(clamp, margin));

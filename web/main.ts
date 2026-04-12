@@ -561,9 +561,10 @@ function renderSpreadPicks(
   // Disclaimer — council mandate: no "safe to bet" language, unbacktested
   const disclaimerHtml = `
     <div class="spread-disclaimer">
-      Experimental model — no backtesting, no proven edge. Break-even at -110 vig is 52.4%.
-      Track record accumulates live and may not be statistically meaningful until 100+ picks resolve.
-      ${term.leagueName === 'MLB' ? 'Does not account for starting pitchers. '
+      Experimental model (v4-spread, launched 2026-04-12) — no backtesting, no proven edge.
+      Break-even at -110 vig is 52.4%. Track record accumulates live and may not be statistically
+      meaningful until 100+ picks resolve. All picks prior to this version are invalidated.
+      ${term.leagueName === 'MLB' ? 'Uses starting pitcher ERA (conservative 0.3 runs/ERA gap). Does not model bullpen or park factors. '
         : term.leagueName === 'NHL' ? 'Does not account for goalie matchups. '
         : term.leagueName === 'MLS' || term.leagueName === 'Premier League' ? 'Draw probability is not modeled. '
         : ''}This is not financial advice.

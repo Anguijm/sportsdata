@@ -209,12 +209,18 @@ function normalizeScoreboard(data: EspnScoreboardResponse, sport: Sport, url: st
         if (isHome) pitchers.home = pitcher;
         else if (isAway) pitchers.away = pitcher;
         else {
-          // Fallback: first probable is away, second is home (ESPN convention)
+          // Fallback: ESPN convention is first=away, second=home.
+          // Council (Data Quality): log when fallback fires so misassignment
+          // is auditable rather than silent.
+          console.warn(`  ⚠ Pitcher ${pitcher.name}: team.id ${teamId} didn't match home(${home?.id}) or away(${away?.id}), using positional fallback`);
           if (!pitchers.away) pitchers.away = pitcher;
           else if (!pitchers.home) pitchers.home = pitcher;
         }
       }
-      if (pitchers.home || pitchers.away) game.probablePitchers = pitchers;
+      if (pitchers.home || pitchers.away) {
+        pitchers.fetchedAt = new Date().toISOString();
+        game.probablePitchers = pitchers;
+      }
     }
 
     return game;

@@ -16,6 +16,9 @@ export interface Game {
   probablePitchers?: {
     home?: ProbablePitcher;
     away?: ProbablePitcher;
+    /** ISO timestamp when pitcher data was last fetched. Enables staleness
+     *  detection — probables can change up to game time. */
+    fetchedAt?: string;
   };
   provenance: Provenance;
 }

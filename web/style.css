@@ -1533,6 +1533,25 @@ body {
   margin-top: 8px;
 }
 
+/* Sprint 10.6: global sport selector — sticky at top of page */
+.global-sport-selector {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg-page);
+  padding: 12px 0 0;
+  border-bottom: 1px solid var(--border);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.global-sport-selector .sport-tabs.global-tabs {
+  margin: 0;
+  padding-bottom: 12px;
+  justify-content: center;
+  border-bottom: none;
+}
+
 /* Sprint 9: sport tab selector */
 .sport-tabs {
   display: flex;

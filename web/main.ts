@@ -6,7 +6,58 @@ import * as Plot from '@observablehq/plot';
 import { getTeamColor } from './team-colors.js';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
-const SPORT = 'nba';
+
+// --- Global sport state ---
+
+const SPORT_ORDER = ['nba', 'nfl', 'mlb', 'nhl', 'epl', 'mls'];
+
+const SPORT_LABELS: Record<string, string> = {
+  nba: 'NBA · Basketball',
+  nfl: 'NFL · Football',
+  mlb: 'MLB · Baseball',
+  nhl: 'NHL · Hockey',
+  mls: 'MLS · Soccer',
+  epl: 'Premier League',
+};
+
+const SPORT_TERMINOLOGY: Record<string, {
+  unit: string;
+  unitSingular: string;
+  gameNoun: string;
+  leagueName: string;
+  minGamesFilter: number;
+  teamCount: string;
+  diffLabel: string;
+}> = {
+  nba: { unit: 'points', unitSingular: 'point', gameNoun: 'games', leagueName: 'NBA', minGamesFilter: 50, teamCount: '30 teams', diffLabel: 'point diff' },
+  nfl: { unit: 'points', unitSingular: 'point', gameNoun: 'games', leagueName: 'NFL', minGamesFilter: 12, teamCount: '32 teams', diffLabel: 'point diff' },
+  mlb: { unit: 'runs', unitSingular: 'run', gameNoun: 'games', leagueName: 'MLB', minGamesFilter: 100, teamCount: '30 teams', diffLabel: 'run diff' },
+  nhl: { unit: 'goals', unitSingular: 'goal', gameNoun: 'games', leagueName: 'NHL', minGamesFilter: 50, teamCount: '32 teams', diffLabel: 'goal diff' },
+  mls: { unit: 'goals', unitSingular: 'goal', gameNoun: 'matches', leagueName: 'MLS', minGamesFilter: 20, teamCount: '30 teams', diffLabel: 'goal diff' },
+  epl: { unit: 'goals', unitSingular: 'goal', gameNoun: 'matches', leagueName: 'Premier League', minGamesFilter: 25, teamCount: '20 teams', diffLabel: 'goal diff' },
+};
+
+const GLOBAL_SPORT_KEY = 'sportsdata.activeSport';
+
+function readGlobalSport(): string {
+  try {
+    const saved = localStorage.getItem(GLOBAL_SPORT_KEY);
+    if (saved && SPORT_ORDER.includes(saved)) return saved;
+  } catch { /* private mode fallback */ }
+  return 'nba';
+}
+
+function persistGlobalSport(sport: string): void {
+  try {
+    localStorage.setItem(GLOBAL_SPORT_KEY, sport);
+  } catch { /* ignore */ }
+}
+
+let currentSport: string = readGlobalSport();
+
+function sportTerm() {
+  return SPORT_TERMINOLOGY[currentSport] ?? SPORT_TERMINOLOGY['nba'];
+}
 
 interface Stats {
   total_games: number;
@@ -55,7 +106,7 @@ interface Game {
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}?sport=${SPORT}`);
+  const res = await fetch(`${API_BASE}${path}?sport=${currentSport}`);
   return res.json() as Promise<T>;
 }
 
@@ -135,7 +186,7 @@ function renderExtremes(container: HTMLElement, data: { blowouts: Game[]; nailBi
       <div class="callout spotlight">
         <div class="callout-label">★ Biggest blowout</div>
         <div class="callout-headline">${w} ${biggest.home_score}, ${l} ${biggest.away_score}</div>
-        <div class="callout-detail">${biggest.date.slice(0, 10)} · ${w} won by <strong>${biggest.margin}</strong> points. The biggest margin in three seasons.</div>
+        <div class="callout-detail">${biggest.date.slice(0, 10)} · ${w} won by <strong>${biggest.margin}</strong> ${sportTerm().unit}. The biggest margin in the dataset.</div>
       </div>
     `);
   }
@@ -207,7 +258,7 @@ function renderStreaks(container: HTMLElement, sequences: TeamSequence[]) {
     // Council mandate (Researcher): sort by point differential, not winPct
     const teamsInSeason = sequences
       .map(t => ({ team: t, season: t.seasons.find(s => s.year === year)! }))
-      .filter(x => x.season && x.season.sequence.length >= 50)
+      .filter(x => x.season && x.season.sequence.length >= sportTerm().minGamesFilter)
       .sort((a, b) => b.season.diffPg - a.season.diffPg);
 
     const total = teamsInSeason.length;
@@ -391,7 +442,7 @@ function renderPredictions(
   `;
 
   const upcomingHtml = upcoming.length === 0
-    ? '<div class="empty-state">No upcoming NBA games scheduled.</div>'
+    ? `<div class="empty-state">No upcoming ${sportTerm().leagueName} ${sportTerm().gameNoun} scheduled.</div>`
     : upcoming.map(p => {
         const homeAbbr = p.home_team_id.split(':')[1] ?? p.home_team_id;
         const awayAbbr = p.away_team_id.split(':')[1] ?? p.away_team_id;
@@ -452,7 +503,7 @@ function renderPredictions(
   `;
 }
 
-async function loadPredictions(sport = 'nba'): Promise<{ upcoming: PredictionRow[]; recent: PredictionRow[]; trackRecord: TrackRecordRow }> {
+async function loadPredictions(sport = currentSport): Promise<{ upcoming: PredictionRow[]; recent: PredictionRow[]; trackRecord: TrackRecordRow }> {
   const [upcoming, recent, trackRecord] = await Promise.all([
     fetch(`${API_BASE}/api/predictions/upcoming?sport=${sport}`).then(r => r.json() as Promise<PredictionRow[]>),
     fetch(`${API_BASE}/api/predictions/recent?sport=${sport}`).then(r => r.json() as Promise<PredictionRow[]>),
@@ -787,7 +838,7 @@ function renderCalibration(container: HTMLElement, data: Calibration) {
   `;
 }
 
-async function loadCalibration(sport = 'nba'): Promise<Calibration | null> {
+async function loadCalibration(sport = currentSport): Promise<Calibration | null> {
   try {
     const res = await fetch(`${API_BASE}/api/predictions/calibration?sport=${sport}`);
     if (!res.ok) return null;
@@ -797,7 +848,7 @@ async function loadCalibration(sport = 'nba'): Promise<Calibration | null> {
   }
 }
 
-async function loadRatchet(sport = 'nba'): Promise<RatchetArtifact | null> {
+async function loadRatchet(sport = currentSport): Promise<RatchetArtifact | null> {
   try {
     const res = await fetch(`${API_BASE}/api/ratchet?sport=${sport}`);
     const data = await res.json();
@@ -843,17 +894,6 @@ interface SportData {
   hero: PlayerHero | null;
   findings: PlayerFinding[];
 }
-
-const SPORT_LABELS: Record<string, string> = {
-  nba: 'NBA · Basketball',
-  nfl: 'NFL · Football',
-  mlb: 'MLB · Baseball',
-  nhl: 'NHL · Hockey',
-  mls: 'MLS · Soccer',
-  epl: 'Premier League',
-};
-
-const SPORT_ORDER = ['nba', 'nfl', 'mlb', 'nhl', 'epl', 'mls'];
 
 async function loadAllSportData(): Promise<Map<string, SportData>> {
   const map = new Map<string, SportData>();
@@ -949,28 +989,6 @@ function renderSportBlock(sport: string, data: SportData, totalCount: number): s
   `;
 }
 
-const SPORT_TAB_STORAGE_KEY = 'sportsdata.activeSport';
-
-function readActiveSport(available: string[]): string {
-  // Council mandate (Designer): localStorage persistence, default in-season
-  try {
-    const saved = localStorage.getItem(SPORT_TAB_STORAGE_KEY);
-    if (saved && available.includes(saved)) return saved;
-  } catch {
-    /* localStorage unavailable (private mode) — fall through */
-  }
-  // Default: NBA (in-season), or first available
-  return available.includes('nba') ? 'nba' : available[0]!;
-}
-
-function persistActiveSport(sport: string): void {
-  try {
-    localStorage.setItem(SPORT_TAB_STORAGE_KEY, sport);
-  } catch {
-    /* ignore */
-  }
-}
-
 function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, SportData>, counts: Record<string, number>) {
   const sports = SPORT_ORDER.filter(s => allPlayers.has(s));
   if (sports.length === 0) {
@@ -978,7 +996,7 @@ function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, Spo
     return;
   }
 
-  let activeSport = readActiveSport(sports);
+  let activeSport = sports.includes(currentSport) ? currentSport : sports[0]!;
 
   const renderTabs = (active: string): string => sports.map(sport => {
     const count = counts[sport] ?? 0;
@@ -1010,7 +1028,6 @@ function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, Spo
         const next = btn.dataset.sport;
         if (next && next !== activeSport) {
           activeSport = next;
-          persistActiveSport(activeSport);
           update();
         }
       });
@@ -1067,9 +1084,70 @@ function renderFindings(container: HTMLElement, findings: Finding[]) {
   container.innerHTML = topHtml + restHtml;
 }
 
+// --- Global sport selector ---
+
+function renderGlobalSportSelector(): void {
+  const hero = document.querySelector('.hero')!;
+  const selectorDiv = document.createElement('div');
+  selectorDiv.className = 'global-sport-selector';
+  selectorDiv.id = 'global-sport-selector';
+  hero.parentElement!.insertBefore(selectorDiv, hero);
+  updateGlobalSportSelector();
+}
+
+function updateGlobalSportSelector(): void {
+  const container = document.getElementById('global-sport-selector')!;
+  const tabs = SPORT_ORDER.map(sport => {
+    const label = (SPORT_LABELS[sport] ?? sport).split(' · ')[0];
+    return `
+      <button class="sport-tab ${sport === currentSport ? 'active' : ''}" data-sport="${sport}">
+        <span class="sport-tab-label">${label}</span>
+      </button>
+    `;
+  }).join('');
+
+  container.innerHTML = `<div class="sport-tabs global-tabs">${tabs}</div>`;
+
+  container.querySelectorAll<HTMLButtonElement>('.sport-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.sport;
+      if (next && next !== currentSport) {
+        currentSport = next;
+        persistGlobalSport(currentSport);
+        updateGlobalSportSelector();
+        loadAndRenderAll();
+      }
+    });
+  });
+}
+
 // --- Boot ---
 
-async function main() {
+/** Generation counter — prevents stale fetches from overwriting fresh renders
+ *  when the user switches sports rapidly. */
+let renderGeneration = 0;
+
+async function loadAndRenderAll() {
+  const gen = ++renderGeneration;
+  const term = sportTerm();
+
+  // Update dynamic text that doesn't depend on fetched data
+  document.title = `sportsdata — ${term.leagueName}`;
+  document.getElementById('hero-eyebrow')!.textContent = `sportsdata · ${term.leagueName}`;
+  document.getElementById('hero-title')!.innerHTML = 'Loading...';
+  document.getElementById('hero-text')!.textContent = '';
+
+  // Update section lead text
+  const histLead = document.getElementById('histogram-lead');
+  if (histLead) histLead.textContent =
+    `The shape of normal. Most ${term.leagueName} ${term.gameNoun} are decided by single digits. A handful are decided by much more. Here's the histogram.`;
+  const streakLead = document.getElementById('streak-lead');
+  if (streakLead) streakLead.textContent =
+    `The cleanest signal in ${term.leagueName}: ${term.diffLabel} per ${term.gameNoun === 'matches' ? 'match' : 'game'}. Top 5 and bottom 5 each season — the rest hidden by default. Wins green, losses red, read left-to-right. Older seasons collapsed.`;
+  const predLead = document.getElementById('predictions-lead');
+  if (predLead) predLead.textContent =
+    `The v2 ratchet model — the same one that beat baseline by 45% Brier on a held-out test set — applied to upcoming ${term.leagueName} ${term.gameNoun}. Track record updates as ${term.gameNoun} complete. Picks are reasoned, not vibes. Confidence is honest.`;
+
   try {
     const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet, predictions, calibration] = await Promise.all([
       fetchJson<Stats>('/api/stats'),
@@ -1079,16 +1157,20 @@ async function main() {
       fetchJson<{ blowouts: Game[]; nailBiters: Game[] }>('/api/extreme-games'),
       loadAllSportData(),
       fetch(`${API_BASE}/api/player-counts`).then(r => r.json() as Promise<Record<string, number>>),
-      loadRatchet('nba'),
-      loadPredictions('nba'),
-      loadCalibration('nba'),
+      loadRatchet(),
+      loadPredictions(),
+      loadCalibration(),
     ]);
 
-    const totalGames = stats.total_games;
-    const homeWinPct = ((stats.home_wins / totalGames) * 100).toFixed(1);
+    // Bail if the user switched sport while we were fetching
+    if (gen !== renderGeneration) return;
 
-    // Derive season range from sequences (SeasonRow.year is the starting year,
-    // e.g. 2023 → "2023-24"). Used by the hero and the footer.
+    const totalGames = stats.total_games;
+    const homeWinPct = totalGames > 0
+      ? ((stats.home_wins / totalGames) * 100).toFixed(1)
+      : '0.0';
+
+    // Derive season range from sequences
     const allSeasons = new Set<number>();
     sequences.forEach(t => t.seasons.forEach(s => allSeasons.add(s.year)));
     const sortedSeasons = Array.from(allSeasons).sort((a, b) => a - b);
@@ -1100,75 +1182,122 @@ async function main() {
       : `${firstSeason}-${String(firstSeason + 1).slice(-2)} through ${lastSeason}-${String(lastSeason + 1).slice(-2)}`;
 
     // Hero
-    document.getElementById('hero-title')!.innerHTML =
-      `${totalGames.toLocaleString()}<br>NBA games.`;
+    if (totalGames === 0) {
+      document.getElementById('hero-title')!.innerHTML = `No ${term.leagueName} data yet.`;
+      document.getElementById('hero-text')!.textContent = 'Run a scrape cycle to populate this sport.';
+    } else {
+      document.getElementById('hero-title')!.innerHTML =
+        `${totalGames.toLocaleString()}<br>${term.leagueName} ${term.gameNoun}.`;
 
-    // Footer (dynamic — was hardcoded and drifted stale)
+      const seasonWord = seasonCount === 1 ? 'One season' :
+        seasonCount === 2 ? 'Two seasons' :
+        seasonCount === 3 ? 'Three seasons' :
+        `${seasonCount} seasons`;
+      const spotlightCount = findings.filter(f => f.spotlight).length;
+      document.getElementById('hero-text')!.innerHTML = `
+        ${seasonWord}. Every ${term.gameNoun === 'matches' ? 'match' : 'game'} scraped, every result resolved.
+        ${spotlightCount > 0
+          ? `<span class="number">${spotlightCount}</span> spotlight findings, including a <span class="highlight">${stats.max_margin}-${term.unitSingular} blowout</span>.`
+          : ''}
+      `;
+    }
+
+    // Footer
     document.getElementById('footer-stats')!.textContent =
-      `${totalGames.toLocaleString()} NBA games · ${seasonRangeLabel}`;
-
-    const seasonWord = seasonCount === 1 ? 'One season' :
-      seasonCount === 2 ? 'Two seasons' :
-      seasonCount === 3 ? 'Three seasons' :
-      `${seasonCount} seasons`;
-    document.getElementById('hero-text')!.innerHTML = `
-      ${seasonWord}. Every game scraped, every result resolved.
-      <span class="number">${findings.filter(f => f.spotlight).length}</span> spotlight findings,
-      including a <span class="highlight">${stats.max_margin}-point blowout</span>
-      and a <span class="highlight">28-game losing streak</span>.
-    `;
+      `${totalGames.toLocaleString()} ${term.leagueName} ${term.gameNoun} · ${seasonRangeLabel}`;
 
     // Big stats
-    document.getElementById('big-stats')!.innerHTML = `
-      <div class="big-stat">
-        <div class="big-stat-label">Total games</div>
-        <div class="big-stat-value">${totalGames.toLocaleString()}</div>
-        <div class="big-stat-detail">${seasonCount} seasons · 30 teams</div>
-      </div>
-      <div class="big-stat">
-        <div class="big-stat-label">Avg margin</div>
-        <div class="big-stat-value">${stats.avg_margin.toFixed(1)}</div>
-        <div class="big-stat-detail">points</div>
-      </div>
-      <div class="big-stat">
-        <div class="big-stat-label">Home wins</div>
-        <div class="big-stat-value">${homeWinPct}<span style="font-size: 24px">%</span></div>
-        <div class="big-stat-detail">${stats.home_wins.toLocaleString()} of ${totalGames.toLocaleString()}</div>
-      </div>
-      <div class="big-stat">
-        <div class="big-stat-label">Biggest blowout</div>
-        <div class="big-stat-value">${stats.max_margin}</div>
-        <div class="big-stat-detail">points · OKC vs POR</div>
-      </div>
-    `;
+    if (totalGames > 0) {
+      const biggest = extremes.blowouts[0];
+      const biggestDetail = biggest
+        ? `${term.unit} · ${biggest.winner.split(':')[1]} vs ${biggest.loser.split(':')[1]}`
+        : term.unit;
+      document.getElementById('big-stats')!.innerHTML = `
+        <div class="big-stat">
+          <div class="big-stat-label">Total ${term.gameNoun}</div>
+          <div class="big-stat-value">${totalGames.toLocaleString()}</div>
+          <div class="big-stat-detail">${seasonCount} seasons · ${term.teamCount}</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-stat-label">Avg margin</div>
+          <div class="big-stat-value">${stats.avg_margin.toFixed(1)}</div>
+          <div class="big-stat-detail">${term.unit}</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-stat-label">Home wins</div>
+          <div class="big-stat-value">${homeWinPct}<span style="font-size: 24px">%</span></div>
+          <div class="big-stat-detail">${stats.home_wins.toLocaleString()} of ${totalGames.toLocaleString()}</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-stat-label">Biggest blowout</div>
+          <div class="big-stat-value">${stats.max_margin}</div>
+          <div class="big-stat-detail">${biggestDetail}</div>
+        </div>
+      `;
+    } else {
+      document.getElementById('big-stats')!.innerHTML = '';
+    }
 
-    // Charts
-    renderHistogram(document.getElementById('histogram-chart')!, margins, stats.avg_margin);
-    renderExtremes(document.getElementById('extremes-grid')!, extremes);
-    renderStreaks(document.getElementById('streak-grid')!, sequences);
-    renderFindings(document.getElementById('findings-grid')!, findings);
+    // Charts — with empty-state guards
+    if (margins.length > 0) {
+      renderHistogram(document.getElementById('histogram-chart')!, margins, stats.avg_margin);
+    } else {
+      document.getElementById('histogram-chart')!.innerHTML =
+        `<div class="empty-state">No margin data for ${term.leagueName} yet.</div>`;
+    }
+
+    if (extremes.blowouts.length > 0 || extremes.nailBiters.length > 0) {
+      renderExtremes(document.getElementById('extremes-grid')!, extremes);
+    } else {
+      document.getElementById('extremes-grid')!.innerHTML =
+        `<div class="empty-state">No extreme ${term.gameNoun} found for ${term.leagueName}.</div>`;
+    }
+
+    if (sequences.length > 0) {
+      renderStreaks(document.getElementById('streak-grid')!, sequences);
+    } else {
+      document.getElementById('streak-grid')!.innerHTML =
+        `<div class="empty-state">No team sequence data for ${term.leagueName}.</div>`;
+    }
+
+    if (findings.length > 0) {
+      renderFindings(document.getElementById('findings-grid')!, findings);
+    } else {
+      document.getElementById('findings-grid')!.innerHTML =
+        `<div class="empty-state">No findings available for ${term.leagueName} yet.</div>`;
+    }
+
     renderPredictions(
       document.getElementById('predictions-section')!,
       predictions.upcoming, predictions.recent, predictions.trackRecord
     );
+
     if (ratchet) {
       renderRatchet(document.getElementById('ratchet-section')!, ratchet);
     } else {
       document.getElementById('ratchet-section')!.innerHTML =
-        '<p style="color: var(--text-muted)">Ratchet run not available. Run `npm run ratchet` to generate.</p>';
+        `<p style="color: var(--text-muted)">Ratchet run not available for ${term.leagueName}.</p>`;
     }
+
     if (calibration) {
       renderCalibration(document.getElementById('calibration-section')!, calibration);
     } else {
       document.getElementById('calibration-section')!.innerHTML =
-        '<p style="color: var(--text-muted)">Calibration unavailable.</p>';
+        `<p style="color: var(--text-muted)">Calibration unavailable for ${term.leagueName}.</p>`;
     }
+
     renderPlayerSection(document.getElementById('players-section')!, allSportData, playerCounts);
 
   } catch (err) {
+    if (gen !== renderGeneration) return;
     document.getElementById('hero-title')!.textContent = 'Failed to load data';
     document.getElementById('hero-text')!.textContent = err instanceof Error ? err.message : String(err);
   }
+}
+
+async function main() {
+  renderGlobalSportSelector();
+  await loadAndRenderAll();
 }
 
 main();

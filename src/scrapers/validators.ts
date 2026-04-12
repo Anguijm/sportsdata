@@ -18,7 +18,7 @@ export interface EspnScoreboardResponse {
     id: string;
     date: string;
     name: string;
-    status: { type: { state: string; completed: boolean } };
+    status: { type: { state: string; completed: boolean; detail?: string; description?: string } };
     competitions: Array<{
       venue?: { fullName: string };
       competitors: Array<{

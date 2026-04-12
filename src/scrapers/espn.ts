@@ -184,10 +184,13 @@ function normalizeScoreboard(data: EspnScoreboardResponse, sport: Sport, url: st
     };
 
     if (home?.score && away?.score) {
+      // P1-6: Detect overtime from ESPN status detail (e.g., "Final/OT", "Final/2OT")
+      const statusDetail = event.status.type.detail ?? event.status.type.description ?? '';
+      const isOvertime = /\bOT\b|overtime|shootout/i.test(statusDetail);
       game.score = {
         home: parseInt(home.score, 10),
         away: parseInt(away.score, 10),
-        overtime: false,
+        overtime: isOvertime,
       };
     }
 

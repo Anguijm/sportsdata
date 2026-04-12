@@ -178,9 +178,18 @@ export function findStreaks(sport: Sport, minLength = 7): Finding[] {
   const deduped = Array.from(seen.values()).sort((a, b) => b.length - a.length);
 
   return deduped.slice(0, 15).map((s, i) => {
-    // Calibrated surprise: probability against ANY team having a streak of length N
-    // Across 30 teams × 82 games × 3 seasons, longer streaks become rarer
-    const expectedFreq = 30 * 82 * 3 * Math.pow(0.5, s.length);
+    // P1-8: Sport-specific surprise calibration
+    const SPORT_PARAMS: Record<string, { teams: number; gamesPerSeason: number }> = {
+      nba: { teams: 30, gamesPerSeason: 82 },
+      nfl: { teams: 32, gamesPerSeason: 17 },
+      mlb: { teams: 30, gamesPerSeason: 162 },
+      nhl: { teams: 32, gamesPerSeason: 82 },
+      mls: { teams: 30, gamesPerSeason: 34 },
+      epl: { teams: 20, gamesPerSeason: 38 },
+    };
+    const sp = SPORT_PARAMS[sport] ?? SPORT_PARAMS['nba'];
+    const seasonCount = Math.max(1, new Set(deduped.map(x => x.seasonYear)).size);
+    const expectedFreq = sp.teams * sp.gamesPerSeason * seasonCount * Math.pow(0.5, s.length);
     const surpriseScore = Math.max(0, Math.min(1, 1 - expectedFreq));
 
     const teamAbbr = s.teamId.split(':')[1] ?? s.teamId;

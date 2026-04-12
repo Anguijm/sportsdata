@@ -52,6 +52,10 @@ function logPath(type: LogType): string {
 export function appendLog(type: LogType, entry: LogEntry): void {
   const line = JSON.stringify(entry) + '\n';
   appendFileSync(logPath(type), line, 'utf-8');
+  // Track rate-limit counter in memory (P1-2)
+  if (type === 'scrape' && 'source' in entry) {
+    recordRequest((entry as ScrapeLogEntry).source);
+  }
 }
 
 export function readLog<T extends LogEntry>(type: LogType, lastN?: number): T[] {
@@ -67,11 +71,30 @@ export function readLog<T extends LogEntry>(type: LogType, lastN?: number): T[] 
   return lastN ? entries.slice(-lastN) : entries;
 }
 
-export function countRecentRequests(source: string, windowMinutes: number): number {
-  const entries = readLog<ScrapeLogEntry>('scrape');
-  const cutoff = Date.now() - windowMinutes * 60 * 1000;
+/**
+ * In-memory rate-limit counter. Replaces the old approach of reading the
+ * entire JSONL file on every call (P1-2: OOM risk on 512MB Fly VM).
+ *
+ * Node.js is single-threaded so no data races, but rapid bursts can briefly
+ * inflate counts before pruning runs. This is conservative (overcount = slower,
+ * not faster). Counter resets on process restart, which is acceptable since
+ * Fly machine rolls reset the rate-limit window anyway.
+ */
+const recentTimestamps = new Map<string, number[]>();
 
-  return entries.filter(
-    (e) => e.source === source && new Date(e.timestamp).getTime() > cutoff
-  ).length;
+function recordRequest(source: string): void {
+  if (!recentTimestamps.has(source)) recentTimestamps.set(source, []);
+  const arr = recentTimestamps.get(source)!;
+  arr.push(Date.now());
+  // Prune entries older than 5 minutes to prevent memory growth
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  const firstValid = arr.findIndex(t => t > cutoff);
+  if (firstValid > 0) arr.splice(0, firstValid);
+}
+
+export function countRecentRequests(source: string, windowMinutes: number): number {
+  const arr = recentTimestamps.get(source);
+  if (!arr) return 0;
+  const cutoff = Date.now() - windowMinutes * 60 * 1000;
+  return arr.filter(t => t > cutoff).length;
 }

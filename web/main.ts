@@ -7,6 +7,20 @@ import { getTeamColor } from './team-colors.js';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
 
+/**
+ * P1-1: Escape HTML entities in API-sourced strings before innerHTML interpolation.
+ * Prevents XSS if any upstream data contains <script> or HTML entities.
+ * WARNING: Do NOT use escaped strings in unquoted HTML attributes.
+ */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // --- Global sport state ---
 
 const SPORT_ORDER = ['nba', 'nfl', 'mlb', 'nhl', 'epl', 'mls'];
@@ -180,8 +194,8 @@ function renderExtremes(container: HTMLElement, data: { blowouts: Game[]; nailBi
   // Biggest blowout (spotlight)
   const biggest = data.blowouts[0];
   if (biggest) {
-    const w = biggest.winner.split(':')[1];
-    const l = biggest.loser.split(':')[1];
+    const w = esc(biggest.winner.split(':')[1] ?? biggest.winner);
+    const l = esc(biggest.loser.split(':')[1] ?? biggest.loser);
     cards.push(`
       <div class="callout spotlight">
         <div class="callout-label">★ Biggest blowout</div>
@@ -194,21 +208,26 @@ function renderExtremes(container: HTMLElement, data: { blowouts: Game[]; nailBi
   // Closest game
   const closest = data.nailBiters[0];
   if (closest) {
-    const w = closest.winner.split(':')[1];
-    const l = closest.loser.split(':')[1];
+    const w = esc(closest.winner.split(':')[1] ?? closest.winner);
+    const l = esc(closest.loser.split(':')[1] ?? closest.loser);
     cards.push(`
       <div class="callout">
         <div class="callout-label">Closest game</div>
         <div class="callout-headline">${w} ${closest.home_score}, ${l} ${closest.away_score}</div>
-        <div class="callout-detail">${closest.date.slice(0, 10)} · One point. One possession. One moment.</div>
+        <div class="callout-detail">${closest.date.slice(0, 10)} · ${
+          currentSport === 'mlb' ? 'One run. That\'s all that separated them.'
+          : currentSport === 'nfl' ? 'Decided by a single point — rarer than you\'d think.'
+          : currentSport === 'mls' || currentSport === 'epl' ? 'One goal. The most common winning margin in the sport.'
+          : 'One point. One possession. One moment.'
+        }</div>
       </div>
     `);
   }
 
   // Other blowouts
   for (const b of data.blowouts.slice(1, 4)) {
-    const w = b.winner.split(':')[1];
-    const l = b.loser.split(':')[1];
+    const w = esc(b.winner.split(':')[1] ?? b.winner);
+    const l = esc(b.loser.split(':')[1] ?? b.loser);
     cards.push(`
       <div class="callout">
         <div class="callout-label">Big blowout</div>
@@ -464,7 +483,7 @@ function renderPredictions(
               <div class="pick-text">Model pick: <strong>${winnerAbbr}</strong></div>
               <div class="pick-confidence">${confidence}%</div>
             </div>
-            <div class="prediction-reasoning">${p.reasoning_text}</div>
+            <div class="prediction-reasoning">${esc(p.reasoning_text)}</div>
           </div>
         `;
       }).join('');
@@ -1127,11 +1146,11 @@ function renderSportBlock(sport: string, data: SportData, totalCount: number): s
       <div class="player-row ${f.spotlight ? 'spotlight' : ''}">
         <div class="player-rank">${f.rank}</div>
         <div class="player-name">
-          <span class="name">${f.playerName}</span>
+          <span class="name">${esc(f.playerName)}</span>
           <span class="meta">${f.team} · ${f.position || '—'}</span>
         </div>
         <div class="player-stat">
-          <div class="stat-value">${f.headline}</div>
+          <div class="stat-value">${esc(f.headline)}</div>
           ${f.rateStatLabel ? `<div class="stat-rate"><span class="rate-label">${f.rateStatLabel}</span> ${f.rateStatValue}</div>` : ''}
         </div>
       </div>
@@ -1228,9 +1247,9 @@ function renderFindingCard(f: Finding, i: number): string {
     <div class="finding ${f.spotlight ? 'spotlight' : ''}">
       <div class="finding-rank">${rank}</div>
       <div class="finding-body">
-        <div class="finding-headline">${f.headline}</div>
-        <div class="finding-detail">${f.detail}</div>
-        ${f.spotlight ? `<div class="finding-hint">${f.narrativeHint}</div>` : ''}
+        <div class="finding-headline">${esc(f.headline)}</div>
+        <div class="finding-detail">${esc(f.detail)}</div>
+        ${f.spotlight ? `<div class="finding-hint">${esc(f.narrativeHint)}</div>` : ''}
       </div>
       <div class="finding-meta">
         <div class="finding-type">${typeLabel}</div>

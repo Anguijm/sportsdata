@@ -1552,6 +1552,133 @@ body {
   border-bottom: none;
 }
 
+/* Sprint 10.6: spread picks */
+.spread-disclaimer {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: rgba(230, 57, 70, 0.05);
+  border: 1px solid rgba(230, 57, 70, 0.15);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.spread-track-record {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.spread-track-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.spread-track-stats {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.spread-stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.spread-stat-value.positive { color: var(--win); }
+.spread-stat-value.negative { color: var(--loss); }
+
+.spread-stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.spread-picks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.spread-card {
+  padding: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  border-left: 3px solid var(--neutral);
+}
+
+.spread-card.tier-strong {
+  border-left-color: var(--win);
+}
+
+.spread-card.tier-lean {
+  border-left-color: #f0ad4e;
+}
+
+.spread-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.edge-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 3px;
+  color: white;
+}
+
+.edge-badge.tier-strong {
+  background: var(--win);
+}
+
+.edge-badge.tier-lean {
+  background: #f0ad4e;
+}
+
+.spread-details {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.spread-detail-row {
+  display: contents;
+}
+
+.spread-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.spread-value {
+  color: var(--text-primary);
+}
+
+.edge-value {
+  font-weight: 700;
+  color: var(--win);
+}
+
 /* Sprint 9: sport tab selector */
 .sport-tabs {
   display: flex;

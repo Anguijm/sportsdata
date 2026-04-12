@@ -8,8 +8,9 @@ import { getDb, closeDb } from '../storage/sqlite.js';
 import { scanForFindings, getMarginDistribution, getHomeWinTimeline } from '../analysis/interesting.js';
 import { findPlayerFindings, getSportPlayerData } from '../analysis/player-findings.js';
 import { getPlayerCount } from '../storage/sqlite.js';
-import { getTrackRecord, getUpcomingPredictions, getRecentResolvedPredictions, resolvePredictions, getCalibration } from '../analysis/resolve-predictions.js';
+import { getTrackRecord, getUpcomingPredictions, getRecentResolvedPredictions, resolvePredictions, getCalibration, getUpcomingSpreadPicks, getSpreadTrackRecord } from '../analysis/resolve-predictions.js';
 import { predictUpcoming } from '../analysis/predict-runner.js';
+import { predictUpcomingSpreads } from '../analysis/spread-runner.js';
 import { getLastScrapeTime } from '../storage/sqlite.js';
 import { runCycle } from '../orchestration/scheduler.js';
 import { readFileSync, existsSync } from 'node:fs';
@@ -219,12 +220,15 @@ export function startDataApi(): void {
           }
           const resolved = resolvePredictions(sport);
           const generated = predictUpcoming(sport);
+          const spreadGenerated = predictUpcomingSpreads(sport);
           response = jsonResponse({
             sport,
             resolved: resolved.resolved,
             correct: resolved.correct,
             generated: generated.predictions.length,
             skipped: generated.skipped,
+            spreadGenerated: spreadGenerated.predictions.length,
+            spreadSkipped: spreadGenerated.skipped,
             triggeredAt: new Date().toISOString(),
           });
           break;
@@ -309,6 +313,18 @@ export function startDataApi(): void {
         case '/api/predictions/calibration': {
           const calibration = getCalibration(sport);
           response = jsonResponse(calibration);
+          break;
+        }
+
+        case '/api/spread-picks/upcoming': {
+          const picks = getUpcomingSpreadPicks(sport);
+          response = jsonResponse(picks);
+          break;
+        }
+
+        case '/api/spread-picks/track-record': {
+          const record = getSpreadTrackRecord(sport);
+          response = jsonResponse(record);
           break;
         }
 

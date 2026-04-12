@@ -512,6 +512,174 @@ async function loadPredictions(sport = currentSport): Promise<{ upcoming: Predic
   return { upcoming, recent, trackRecord };
 }
 
+// --- Spread picks ---
+
+interface SpreadPickRow {
+  id: string;
+  game_id: string;
+  sport: string;
+  predicted_winner: string;
+  reasoning_text: string;
+  reasoning_json: string;
+  resolved_at: string | null;
+  was_correct: number | null;
+  low_confidence: number;
+  game_date: string;
+  home_team_id: string;
+  away_team_id: string;
+  game_status: string;
+}
+
+interface SpreadTrackRecord {
+  sport: string;
+  totalPicks: number;
+  correct: number;
+  accuracy: number;
+  roi: number;
+  strongPicks: { total: number; correct: number; accuracy: number };
+  leanPicks: { total: number; correct: number; accuracy: number };
+}
+
+interface SpreadReasoning {
+  spread?: {
+    predicted_margin: number;
+    spread_line: number;
+    edge: number;
+    abs_edge: number;
+    confidence_tier: string;
+    pick_side: string;
+  };
+}
+
+function renderSpreadPicks(
+  container: HTMLElement,
+  picks: SpreadPickRow[],
+  trackRecord: SpreadTrackRecord,
+) {
+  const term = sportTerm();
+
+  // Disclaimer — council mandate: no "safe to bet" language, unbacktested
+  const disclaimerHtml = `
+    <div class="spread-disclaimer">
+      Experimental model (v4-spread, launched 2026-04-12) — no backtesting, no proven edge.
+      Break-even at -110 vig is 52.4%. Track record accumulates live and may not be statistically
+      meaningful until 100+ picks resolve. All picks prior to this version are invalidated.
+      ${term.leagueName === 'MLB' ? 'Uses starting pitcher ERA (conservative 0.3 runs/ERA gap). Does not model bullpen or park factors. '
+        : term.leagueName === 'NHL' ? 'Does not account for goalie matchups. '
+        : term.leagueName === 'MLS' || term.leagueName === 'Premier League' ? 'Draw probability is not modeled. '
+        : ''}This is not financial advice.
+    </div>
+  `;
+
+  // Track record summary — gated at N >= 30 per council statistical validity mandate
+  const trackHtml = trackRecord.totalPicks >= 30
+    ? `<div class="spread-track-record">
+         <div class="spread-track-title">Spread Track Record (${trackRecord.totalPicks} picks resolved)</div>
+         <div class="spread-track-stats">
+           <div class="spread-stat">
+             <div class="spread-stat-value">${trackRecord.correct}-${trackRecord.totalPicks - trackRecord.correct}</div>
+             <div class="spread-stat-label">ATS Record</div>
+           </div>
+           <div class="spread-stat">
+             <div class="spread-stat-value">${(trackRecord.accuracy * 100).toFixed(1)}%</div>
+             <div class="spread-stat-label">Accuracy</div>
+           </div>
+           <div class="spread-stat">
+             <div class="spread-stat-value ${trackRecord.roi >= 0 ? 'positive' : 'negative'}">${trackRecord.roi >= 0 ? '+' : ''}${(trackRecord.roi * 100).toFixed(1)}%</div>
+             <div class="spread-stat-label">ROI at -110</div>
+           </div>
+           ${trackRecord.strongPicks.total > 0 ? `
+           <div class="spread-stat">
+             <div class="spread-stat-value">${(trackRecord.strongPicks.accuracy * 100).toFixed(0)}%</div>
+             <div class="spread-stat-label">Strong picks (${trackRecord.strongPicks.total})</div>
+           </div>` : ''}
+         </div>
+       </div>`
+    : '';
+
+  // Filter to strong + lean only (skip 'skip' tier)
+  const actionablePicks = picks.filter(p => {
+    try {
+      const rj = JSON.parse(p.reasoning_json) as SpreadReasoning;
+      return rj.spread?.confidence_tier !== 'skip';
+    } catch { return true; }
+  });
+
+  const picksHtml = actionablePicks.length === 0
+    ? `<div class="empty-state">No actionable spread picks for upcoming ${term.leagueName} ${term.gameNoun}. Picks require odds data and a meaningful edge vs the line.</div>`
+    : actionablePicks.map(p => {
+        const homeAbbr = p.home_team_id.split(':')[1] ?? p.home_team_id;
+        const awayAbbr = p.away_team_id.split(':')[1] ?? p.away_team_id;
+        const dateLabel = formatGameDate(p.game_date);
+
+        let spread: SpreadReasoning['spread'] | undefined;
+        try {
+          const rj = JSON.parse(p.reasoning_json) as SpreadReasoning;
+          spread = rj.spread;
+        } catch { /* ignore */ }
+
+        const tier = spread?.confidence_tier ?? 'skip';
+        const pickAbbr = spread?.pick_side === 'home' ? homeAbbr : awayAbbr;
+        const marginStr = spread
+          ? (spread.predicted_margin >= 0
+              ? `${homeAbbr} by ${spread.predicted_margin.toFixed(1)}`
+              : `${awayAbbr} by ${(-spread.predicted_margin).toFixed(1)}`)
+          : '';
+        const lineStr = spread
+          ? (spread.spread_line < 0
+              ? `${homeAbbr} ${spread.spread_line.toFixed(1)}`
+              : `${awayAbbr} ${(-spread.spread_line).toFixed(1)}`)
+          : '';
+        const edgeStr = spread ? Math.abs(spread.edge).toFixed(1) : '?';
+
+        return `
+          <div class="spread-card tier-${tier}">
+            <div class="spread-card-header">
+              <div class="prediction-date">${dateLabel}</div>
+              <div class="edge-badge tier-${tier}">${tier === 'strong' ? 'STRONG' : 'LEAN'}</div>
+            </div>
+            <div class="prediction-matchup">
+              <div class="matchup-team ${spread?.pick_side === 'away' ? 'pick' : ''}">${awayAbbr}</div>
+              <div class="matchup-at">@</div>
+              <div class="matchup-team ${spread?.pick_side === 'home' ? 'pick' : ''}">${homeAbbr}</div>
+            </div>
+            <div class="spread-details">
+              <div class="spread-detail-row">
+                <span class="spread-label">Pick</span>
+                <span class="spread-value"><strong>${pickAbbr}</strong> to cover</span>
+              </div>
+              <div class="spread-detail-row">
+                <span class="spread-label">Line</span>
+                <span class="spread-value">${lineStr}</span>
+              </div>
+              <div class="spread-detail-row">
+                <span class="spread-label">Model</span>
+                <span class="spread-value">${marginStr}</span>
+              </div>
+              <div class="spread-detail-row">
+                <span class="spread-label">Edge</span>
+                <span class="spread-value edge-value">${edgeStr} ${term.unit}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+  container.innerHTML = `
+    ${disclaimerHtml}
+    ${trackHtml}
+    <div class="spread-picks-grid">${picksHtml}</div>
+  `;
+}
+
+async function loadSpreadPicks(sport = currentSport): Promise<{ picks: SpreadPickRow[]; trackRecord: SpreadTrackRecord }> {
+  const [picks, trackRecord] = await Promise.all([
+    fetch(`${API_BASE}/api/spread-picks/upcoming?sport=${sport}`).then(r => r.json() as Promise<SpreadPickRow[]>),
+    fetch(`${API_BASE}/api/spread-picks/track-record?sport=${sport}`).then(r => r.json() as Promise<SpreadTrackRecord>),
+  ]);
+  return { picks, trackRecord };
+}
+
 // --- Ratchet loop results ---
 
 interface RatchetArtifact {
@@ -996,7 +1164,15 @@ function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, Spo
     return;
   }
 
-  let activeSport = sports.includes(currentSport) ? currentSport : sports[0]!;
+  // If the globally selected sport has no player data, show an empty state
+  // for that sport rather than silently displaying another sport's data.
+  if (!sports.includes(currentSport)) {
+    const term = sportTerm();
+    container.innerHTML = `<p style="color: var(--text-muted)">No player data for ${term.leagueName} yet. Data accumulates as games are scraped.</p>`;
+    return;
+  }
+
+  let activeSport = currentSport;
 
   const renderTabs = (active: string): string => sports.map(sport => {
     const count = counts[sport] ?? 0;
@@ -1147,9 +1323,12 @@ async function loadAndRenderAll() {
   const predLead = document.getElementById('predictions-lead');
   if (predLead) predLead.textContent =
     `The v2 ratchet model — the same one that beat baseline by 45% Brier on a held-out test set — applied to upcoming ${term.leagueName} ${term.gameNoun}. Track record updates as ${term.gameNoun} complete. Picks are reasoned, not vibes. Confidence is honest.`;
+  const spreadLead = document.getElementById('spread-lead');
+  if (spreadLead) spreadLead.textContent =
+    `The v4-spread model predicts expected margin and compares it against the bookmaker's line. When the model disagrees with the spread by a meaningful amount, that's an edge signal. This is experimental — no backtesting, no proven edge. Track record accumulates live.`;
 
   try {
-    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet, predictions, calibration] = await Promise.all([
+    const [stats, margins, findings, sequences, extremes, allSportData, playerCounts, ratchet, predictions, calibration, spreadData] = await Promise.all([
       fetchJson<Stats>('/api/stats'),
       fetchJson<{ margin: number; count: number }[]>('/api/margins'),
       fetchJson<Finding[]>('/api/findings'),
@@ -1160,6 +1339,7 @@ async function loadAndRenderAll() {
       loadRatchet(),
       loadPredictions(),
       loadCalibration(),
+      loadSpreadPicks(),
     ]);
 
     // Bail if the user switched sport while we were fetching
@@ -1177,9 +1357,11 @@ async function loadAndRenderAll() {
     const firstSeason = sortedSeasons[0];
     const lastSeason = sortedSeasons[sortedSeasons.length - 1];
     const seasonCount = sortedSeasons.length;
-    const seasonRangeLabel = firstSeason === lastSeason
-      ? `${firstSeason}-${String(firstSeason + 1).slice(-2)} season`
-      : `${firstSeason}-${String(firstSeason + 1).slice(-2)} through ${lastSeason}-${String(lastSeason + 1).slice(-2)}`;
+    const seasonRangeLabel = seasonCount === 0
+      ? 'no season data'
+      : firstSeason === lastSeason
+        ? `${firstSeason}-${String(firstSeason! + 1).slice(-2)} season`
+        : `${firstSeason}-${String(firstSeason! + 1).slice(-2)} through ${lastSeason}-${String(lastSeason! + 1).slice(-2)}`;
 
     // Hero
     if (totalGames === 0) {
@@ -1270,6 +1452,11 @@ async function loadAndRenderAll() {
     renderPredictions(
       document.getElementById('predictions-section')!,
       predictions.upcoming, predictions.recent, predictions.trackRecord
+    );
+
+    renderSpreadPicks(
+      document.getElementById('spread-section')!,
+      spreadData.picks, spreadData.trackRecord
     );
 
     if (ratchet) {

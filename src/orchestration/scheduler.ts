@@ -6,7 +6,7 @@
 
 import { fetchTeams, fetchScoreboard } from '../scrapers/espn.js';
 import { fetchOdds } from '../scrapers/odds-api.js';
-import { sqliteRepository, closeDb, resolveGameOutcomes } from '../storage/sqlite.js';
+import { sqliteRepository, closeDb, resolveGameOutcomes, writeOddsToGames } from '../storage/sqlite.js';
 import { formatScrapeSummary } from '../cli/tables.js';
 import { appendLog, readLog } from '../storage/json-log.js';
 import type { ScrapeLogEntry } from '../storage/json-log.js';
@@ -119,6 +119,11 @@ async function scrapeOdds(sport: Sport, config: ScheduleConfig): Promise<number>
     config.maxRetries,
     config.retryDelayMs
   );
+  // Sprint 10.6: write odds back to games table so spread predictions can use them
+  if (odds.length > 0) {
+    const matched = writeOddsToGames(sport, odds);
+    if (matched > 0) console.log(`  ↳ wrote odds to ${matched} games`);
+  }
   return odds.length;
 }
 

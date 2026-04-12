@@ -123,6 +123,13 @@ function initTables(db: Database.Database): void {
     // Column already exists, ignore
   }
 
+  // Sprint 10.6 migration: add pitchers_json column for MLB probable starters.
+  try {
+    db.exec('ALTER TABLE games ADD COLUMN pitchers_json TEXT');
+  } catch {
+    // Column already exists, ignore
+  }
+
   db.exec(`
     -- Sprint 8.5 council mandate (Architect): filtered queries by source
     CREATE INDEX IF NOT EXISTS idx_predictions_source_model ON predictions(prediction_source, model_version);
@@ -202,6 +209,7 @@ function gameToRow(game: Game) {
     score_json: game.score ? JSON.stringify(game.score) : null,
     odds_json: game.odds ? JSON.stringify(game.odds) : null,
     weather_json: game.weather ? JSON.stringify(game.weather) : null,
+    pitchers_json: game.probablePitchers ? JSON.stringify(game.probablePitchers) : null,
     provenance_json: JSON.stringify(game.provenance),
     updated_at: new Date().toISOString(),
   };
@@ -220,6 +228,7 @@ function rowToGame(row: Record<string, unknown>): Game {
     score: row.score_json ? JSON.parse(row.score_json as string) : undefined,
     odds: row.odds_json ? JSON.parse(row.odds_json as string) : undefined,
     weather: row.weather_json ? JSON.parse(row.weather_json as string) : undefined,
+    probablePitchers: row.pitchers_json ? JSON.parse(row.pitchers_json as string) : undefined,
     provenance: JSON.parse(row.provenance_json as string),
   };
 }
@@ -253,10 +262,11 @@ export const sqliteRepository: Repository = {
   async upsertGame(game: Game): Promise<void> {
     const row = gameToRow(game);
     getDb().prepare(`
-      INSERT INTO games (id, sport, season, date, home_team_id, away_team_id, venue, status, score_json, odds_json, weather_json, provenance_json, updated_at)
-      VALUES (@id, @sport, @season, @date, @home_team_id, @away_team_id, @venue, @status, @score_json, @odds_json, @weather_json, @provenance_json, @updated_at)
+      INSERT INTO games (id, sport, season, date, home_team_id, away_team_id, venue, status, score_json, odds_json, weather_json, pitchers_json, provenance_json, updated_at)
+      VALUES (@id, @sport, @season, @date, @home_team_id, @away_team_id, @venue, @status, @score_json, @odds_json, @weather_json, @pitchers_json, @provenance_json, @updated_at)
       ON CONFLICT(id) DO UPDATE SET
         status=@status, score_json=@score_json, odds_json=@odds_json, weather_json=@weather_json,
+        pitchers_json=COALESCE(@pitchers_json, pitchers_json),
         provenance_json=@provenance_json, updated_at=@updated_at
     `).run(row);
   },
@@ -299,6 +309,92 @@ export function storeRawOdds(sport: string, response: string): void {
   getDb().prepare(`
     INSERT INTO odds_raw (sport, fetched_at, api_response) VALUES (?, ?, ?)
   `).run(sport, new Date().toISOString(), response);
+}
+
+/**
+ * Sprint 10.6: Write odds data back to games.odds_json by matching team names.
+ *
+ * The odds API returns full team names ("Boston Celtics") while games use
+ * canonical IDs ("nba:BOS"). This function builds a name→id lookup from the
+ * teams table and matches odds events to scheduled games by team names + date.
+ * Called by the scheduler after odds are scraped.
+ */
+export function writeOddsToGames(sport: string, oddsEvents: Array<{
+  homeTeam: string;
+  awayTeam: string;
+  commenceTime: string;
+  odds: unknown | null;
+}>): number {
+  const db = getDb();
+
+  // Build name → id lookup. Match on full name, city+name variants, and abbreviation.
+  const teams = db.prepare(
+    'SELECT id, name, abbreviation, city FROM teams WHERE sport = ?'
+  ).all(sport) as { id: string; name: string; abbreviation: string; city: string }[];
+
+  const nameToId = new Map<string, string>();
+  for (const t of teams) {
+    nameToId.set(t.name.toLowerCase(), t.id);
+    nameToId.set(t.abbreviation.toLowerCase(), t.id);
+    if (t.city) {
+      nameToId.set(`${t.city} ${t.name}`.toLowerCase(), t.id);
+      // Handle cases like "LA Clippers" vs "Los Angeles Clippers"
+      nameToId.set(t.city.toLowerCase(), t.id);
+    }
+  }
+
+  function resolveTeamId(name: string): string | null {
+    const lower = name.toLowerCase();
+    if (nameToId.has(lower)) return nameToId.get(lower)!;
+    // Fuzzy: check if any known name is a substring of the odds name
+    for (const [key, id] of nameToId) {
+      if (lower.includes(key) || key.includes(lower)) return id;
+    }
+    return null;
+  }
+
+  // Use julianday for date comparison so full ISO timestamps (e.g.,
+  // '2026-04-13T01:00:00Z') are correctly matched against the ±1 day
+  // window. Plain string comparison fails because 'T' > end-of-string.
+  const updateStmt = db.prepare(`
+    UPDATE games SET odds_json = ?, updated_at = ?
+    WHERE sport = ? AND home_team_id = ? AND away_team_id = ?
+      AND julianday(date) >= julianday(?)
+      AND julianday(date) <= julianday(?)
+      AND odds_json IS NULL
+  `);
+
+  let matched = 0;
+  const now = new Date().toISOString();
+
+  for (const event of oddsEvents) {
+    if (!event.odds) continue;
+    const homeId = resolveTeamId(event.homeTeam);
+    const awayId = resolveTeamId(event.awayTeam);
+    if (!homeId || !awayId) continue;
+
+    // Match within ±1 day of commence time — full ISO timestamps for julianday()
+    const commence = new Date(event.commenceTime);
+    const dayBefore = new Date(commence.getTime() - 86400000).toISOString();
+    const dayAfter = new Date(commence.getTime() + 86400000).toISOString();
+
+    // Also remap the favorite field from full name to canonical ID
+    const oddsObj = event.odds as Record<string, unknown>;
+    const spread = oddsObj.spread as { favorite: string; line: number } | undefined;
+    if (spread?.favorite) {
+      const favId = resolveTeamId(spread.favorite);
+      if (favId) spread.favorite = favId;
+    }
+
+    const result = updateStmt.run(
+      JSON.stringify(event.odds), now,
+      sport, homeId, awayId,
+      dayBefore, dayAfter,
+    );
+    if (result.changes > 0) matched++;
+  }
+
+  return matched;
 }
 
 // --- Query helpers ---

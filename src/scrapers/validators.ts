@@ -28,6 +28,22 @@ export interface EspnScoreboardResponse {
         score?: string;
       }>;
       odds?: Array<{ details: string; overUnder: number }>;
+      /** MLB probable starting pitchers — present on scheduled games. */
+      probables?: Array<{
+        athlete: {
+          id: number;
+          fullName: string;
+          displayName: string;
+          shortName: string;
+          team?: { id: number };
+        };
+        statistics?: Array<{
+          name: string;
+          abbreviation: string;
+          displayValue: string;
+        }>;
+        record?: string;
+      }>;
     }>;
   }>;
 }

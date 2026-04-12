@@ -14,12 +14,16 @@ interface UnresolvedPrediction {
   id: string;
   game_id: string;
   sport: Sport;
+  model_version: string;
   predicted_winner: string;
   predicted_prob: number;
   low_confidence: number;
+  reasoning_json: string;
   /** SQL aliases gr.winner as actual_winner */
   actual_winner: string;
   resolved_at: string;
+  /** From game_results — 'cover'|'miss'|'push' or null */
+  spread_result: string | null;
 }
 
 export interface ResolveResult {
@@ -48,8 +52,9 @@ export function resolvePredictions(sport?: Sport): ResolveResult {
   // Allow ±1 day on date match because ESPN dates are UTC of game start;
   // a 7pm PT game becomes 3am UTC next day, but BDL labels it as the local date.
   const candidates = db.prepare(`
-    SELECT p.id, p.game_id, p.sport, p.predicted_winner, p.predicted_prob, p.low_confidence,
-           gr.winner as actual_winner, gr.resolved_at
+    SELECT p.id, p.game_id, p.sport, p.model_version, p.predicted_winner, p.predicted_prob,
+           p.low_confidence, p.reasoning_json,
+           gr.winner as actual_winner, gr.resolved_at, gr.spread_result
     FROM predictions p
     JOIN games pg ON p.game_id = pg.id
     JOIN games gg ON gg.sport = pg.sport
@@ -94,10 +99,30 @@ export function resolvePredictions(sport?: Sport): ResolveResult {
     let correct = 0;
     const resolveTime = new Date().toISOString();
     for (const c of items) {
-      const wasCorrect = c.predicted_winner === c.actual_winner ? 1 : 0;
-      // Brier score for this single prediction:
-      // outcome = 1 if predicted side won, 0 otherwise
-      // brier = (predicted_prob - outcome)^2
+      let wasCorrect: number;
+
+      if (c.model_version === 'v4-spread') {
+        // Spread model: "correct" means the picked side covered the spread.
+        // pick_side is stored in reasoning_json.spread.pick_side.
+        // spread_result is from game_results: 'cover' = home covered, 'miss' = away covered.
+        if (!c.spread_result || c.spread_result === 'push') {
+          wasCorrect = 0; // push = conservative incorrect
+        } else {
+          let pickSide: string = 'home';
+          try {
+            const rj = JSON.parse(c.reasoning_json) as { spread?: { pick_side?: string } };
+            pickSide = rj.spread?.pick_side ?? 'home';
+          } catch { /* default home */ }
+          // 'cover' means home covered; 'miss' means away covered
+          const homeCovered = c.spread_result === 'cover';
+          wasCorrect = (pickSide === 'home' && homeCovered) || (pickSide === 'away' && !homeCovered) ? 1 : 0;
+        }
+      } else {
+        // Standard winner prediction
+        wasCorrect = c.predicted_winner === c.actual_winner ? 1 : 0;
+      }
+
+      // Brier score: outcome = 1 if correct, 0 otherwise
       const outcome = wasCorrect;
       const brier = (c.predicted_prob - outcome) ** 2;
 
@@ -462,7 +487,7 @@ export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWith
            g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status
     FROM predictions p
     JOIN games g ON p.game_id = g.id
-    WHERE p.sport = ? AND p.resolved_at IS NULL
+    WHERE p.sport = ? AND p.model_version = 'v2' AND p.resolved_at IS NULL
     ORDER BY g.date
     LIMIT ?
   `).all(sport, limit) as PredictionWithGame[];
@@ -477,8 +502,123 @@ export function getRecentResolvedPredictions(sport: Sport, limit = 20): Predicti
            g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status
     FROM predictions p
     JOIN games g ON p.game_id = g.id
-    WHERE p.sport = ? AND p.resolved_at IS NOT NULL
+    WHERE p.sport = ? AND p.model_version = 'v2' AND p.resolved_at IS NOT NULL
     ORDER BY p.resolved_at DESC
     LIMIT ?
   `).all(sport, limit) as PredictionWithGame[];
+}
+
+// =============================================================================
+// SPREAD PICKS (Phase 2 — Sprint 10.6)
+// =============================================================================
+
+export interface SpreadPickRow {
+  id: string;
+  game_id: string;
+  sport: string;
+  predicted_winner: string;
+  predicted_prob: number;
+  reasoning_text: string;
+  reasoning_json: string;
+  made_at: string;
+  resolved_at: string | null;
+  was_correct: number | null;
+  low_confidence: number;
+  game_date: string;
+  home_team_id: string;
+  away_team_id: string;
+  game_status: string;
+}
+
+export function getUpcomingSpreadPicks(sport: Sport, limit = 30): SpreadPickRow[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT p.id, p.game_id, p.sport, p.predicted_winner,
+           p.predicted_prob, p.reasoning_text, p.reasoning_json,
+           p.made_at, p.resolved_at, p.was_correct, p.low_confidence,
+           g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status
+    FROM predictions p
+    JOIN games g ON p.game_id = g.id
+    WHERE p.sport = ? AND p.model_version = 'v4-spread' AND p.resolved_at IS NULL
+    ORDER BY g.date
+    LIMIT ?
+  `).all(sport, limit) as SpreadPickRow[];
+}
+
+export interface SpreadTrackRecord {
+  sport: string;
+  totalPicks: number;
+  correct: number;
+  pushes: number;
+  accuracy: number;
+  /** ROI at standard -110 vig: (wins * 100 - losses * 110) / (total * 110) */
+  roi: number;
+  strongPicks: { total: number; correct: number; accuracy: number };
+  leanPicks: { total: number; correct: number; accuracy: number };
+}
+
+export function getSpreadTrackRecord(sport: Sport): SpreadTrackRecord {
+  const db = getDb();
+
+  // Fetch resolved spread predictions along with the matched game's spread_result
+  // to detect pushes (which the resolver marks as was_correct=0 but are different
+  // from outright losses for ROI purposes).
+  const all = db.prepare(`
+    SELECT p.was_correct, p.reasoning_json, gr.spread_result
+    FROM predictions p
+    JOIN games pg ON p.game_id = pg.id
+    JOIN games gg ON gg.sport = pg.sport
+                 AND gg.home_team_id = pg.home_team_id
+                 AND gg.away_team_id = pg.away_team_id
+                 AND ABS(julianday(gg.date) - julianday(pg.date)) <= 1
+                 AND gg.id != pg.id
+    LEFT JOIN game_results gr ON gr.game_id = gg.id
+    WHERE p.sport = ? AND p.model_version = 'v4-spread' AND p.resolved_at IS NOT NULL
+  `).all(sport) as { was_correct: number; reasoning_json: string; spread_result: string | null }[];
+
+  let totalPicks = 0;
+  let correct = 0;
+  let pushes = 0;
+  const tierStats = { strong: { total: 0, correct: 0 }, lean: { total: 0, correct: 0 } };
+
+  for (const row of all) {
+    totalPicks++;
+    if (row.was_correct === 1) correct++;
+    if (row.spread_result === 'push') pushes++;
+
+    try {
+      const rj = JSON.parse(row.reasoning_json) as { spread?: { confidence_tier?: string } };
+      const tier = rj.spread?.confidence_tier;
+      if (tier === 'strong' || tier === 'lean') {
+        tierStats[tier].total++;
+        if (row.was_correct === 1) tierStats[tier].correct++;
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  const losses = totalPicks - correct - pushes;
+  // ROI at -110 vig: wins pay 100/110, losses cost 110/110, pushes refunded
+  const betsAtRisk = totalPicks - pushes;
+  const roi = betsAtRisk > 0
+    ? (correct * 100 - losses * 110) / (betsAtRisk * 110)
+    : 0;
+
+  return {
+    sport,
+    totalPicks,
+    correct,
+    pushes,
+    accuracy: totalPicks > 0 ? correct / totalPicks : 0,
+    roi,
+    strongPicks: {
+      total: tierStats.strong.total,
+      correct: tierStats.strong.correct,
+      accuracy: tierStats.strong.total > 0 ? tierStats.strong.correct / tierStats.strong.total : 0,
+    },
+    leanPicks: {
+      total: tierStats.lean.total,
+      correct: tierStats.lean.correct,
+      accuracy: tierStats.lean.total > 0 ? tierStats.lean.correct / tierStats.lean.total : 0,
+    },
+  };
 }

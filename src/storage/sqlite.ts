@@ -130,6 +130,13 @@ function initTables(db: Database.Database): void {
     // Column already exists, ignore
   }
 
+  // P0-2 migration: add is_draw column for MLS/EPL draw handling.
+  try {
+    db.exec('ALTER TABLE game_results ADD COLUMN is_draw INTEGER NOT NULL DEFAULT 0');
+  } catch {
+    // Column already exists, ignore
+  }
+
   db.exec(`
     -- Sprint 8.5 council mandate (Architect): filtered queries by source
     CREATE INDEX IF NOT EXISTS idx_predictions_source_model ON predictions(prediction_source, model_version);
@@ -447,8 +454,8 @@ export function resolveGameOutcomes(): number {
   if (unresolvedGames.length === 0) return 0;
 
   const insertStmt = db.prepare(`
-    INSERT OR IGNORE INTO game_results (game_id, sport, date, winner, loser, home_score, away_score, margin, home_win, spread_result, over_under_result, resolved_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO game_results (game_id, sport, date, winner, loser, home_score, away_score, margin, home_win, is_draw, spread_result, over_under_result, resolved_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const resolveAll = db.transaction(() => {
@@ -461,9 +468,12 @@ export function resolveGameOutcomes(): number {
 
       const homeScore = game.score.home;
       const awayScore = game.score.away;
+      const isDraw = homeScore === awayScore;
+      // For draws: home listed as "winner" by convention (column is NOT NULL).
+      // Downstream code MUST check is_draw before using winner/loser fields.
       const homeWin = homeScore > awayScore;
-      const winner = homeWin ? game.homeTeamId : game.awayTeamId;
-      const loser = homeWin ? game.awayTeamId : game.homeTeamId;
+      const winner = homeWin || isDraw ? game.homeTeamId : game.awayTeamId;
+      const loser = homeWin || isDraw ? game.awayTeamId : game.homeTeamId;
       const margin = Math.abs(homeScore - awayScore);
 
       let spreadResult: string | null = null;
@@ -485,7 +495,7 @@ export function resolveGameOutcomes(): number {
         else spreadResult = 'push';
       }
 
-      insertStmt.run(game.id, game.sport, game.date, winner, loser, homeScore, awayScore, margin, homeWin ? 1 : 0, spreadResult, overUnderResult, now);
+      insertStmt.run(game.id, game.sport, game.date, winner, loser, homeScore, awayScore, margin, homeWin ? 1 : 0, isDraw ? 1 : 0, spreadResult, overUnderResult, now);
       resolved++;
     }
     return resolved;

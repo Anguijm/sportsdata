@@ -24,6 +24,8 @@ interface UnresolvedPrediction {
   resolved_at: string;
   /** From game_results — 'cover'|'miss'|'push' or null */
   spread_result: string | null;
+  /** From game_results — 1 if draw (MLS/EPL), 0 otherwise */
+  is_draw: number;
 }
 
 export interface ResolveResult {
@@ -51,40 +53,68 @@ export function resolvePredictions(sport?: Sport): ResolveResult {
 
   // Allow ±1 day on date match because ESPN dates are UTC of game start;
   // a 7pm PT game becomes 3am UTC next day, but BDL labels it as the local date.
+  // P0-3: Two resolution paths — direct match (ESPN→ESPN) and cross-namespace
+  // (BDL→ESPN). UNION with DISTINCT on prediction ID prevents double-counting.
   const candidates = db.prepare(`
-    SELECT p.id, p.game_id, p.sport, p.model_version, p.predicted_winner, p.predicted_prob,
-           p.low_confidence, p.reasoning_json,
-           gr.winner as actual_winner, gr.resolved_at, gr.spread_result
-    FROM predictions p
-    JOIN games pg ON p.game_id = pg.id
-    JOIN games gg ON gg.sport = pg.sport
-                 AND gg.home_team_id = pg.home_team_id
-                 AND gg.away_team_id = pg.away_team_id
-                 AND ABS(julianday(gg.date) - julianday(pg.date)) <= 1
-                 AND gg.id != pg.id
-    JOIN game_results gr ON gr.game_id = gg.id
-    WHERE p.resolved_at IS NULL
-      AND gr.resolved_at < ?
-      ${sportFilter}
-    LIMIT 500
-  `).all(...params) as UnresolvedPrediction[];
+    SELECT DISTINCT p_id as id, game_id, sport, model_version, predicted_winner,
+           predicted_prob, low_confidence, reasoning_json,
+           actual_winner, resolved_at, spread_result, is_draw
+    FROM (
+      -- Branch 1: Direct game_id match (ESPN predictions → ESPN results)
+      SELECT p.id as p_id, p.game_id, p.sport, p.model_version, p.predicted_winner,
+             p.predicted_prob, p.low_confidence, p.reasoning_json,
+             gr.winner as actual_winner, gr.resolved_at, gr.spread_result, gr.is_draw
+      FROM predictions p
+      JOIN game_results gr ON gr.game_id = p.game_id
+      WHERE p.resolved_at IS NULL
+        AND gr.resolved_at < ?
+        ${sportFilter}
 
-  // Count still-pending predictions (game not yet final or too fresh)
+      UNION
+
+      -- Branch 2: Cross-namespace match (BDL predictions → ESPN results)
+      SELECT p.id as p_id, p.game_id, p.sport, p.model_version, p.predicted_winner,
+             p.predicted_prob, p.low_confidence, p.reasoning_json,
+             gr.winner as actual_winner, gr.resolved_at, gr.spread_result, gr.is_draw
+      FROM predictions p
+      JOIN games pg ON p.game_id = pg.id
+      JOIN games gg ON gg.sport = pg.sport
+                   AND gg.home_team_id = pg.home_team_id
+                   AND gg.away_team_id = pg.away_team_id
+                   AND ABS(julianday(gg.date) - julianday(pg.date)) <= 1
+                   AND gg.id != pg.id
+      JOIN game_results gr ON gr.game_id = gg.id
+      WHERE p.resolved_at IS NULL
+        AND gr.resolved_at < ?
+        ${sportFilter}
+    )
+    LIMIT 500
+  `).all(...params, ...params) as UnresolvedPrediction[];
+
+  // Count still-pending predictions — must check BOTH resolution paths (P0-3)
   const pendingParams: unknown[] = [];
   if (sport) pendingParams.push(sport);
   const pendingResult = db.prepare(`
-    SELECT COUNT(DISTINCT p.id) as count FROM predictions p
-    JOIN games pg ON p.game_id = pg.id
-    LEFT JOIN games gg ON gg.sport = pg.sport
-                       AND gg.home_team_id = pg.home_team_id
-                       AND gg.away_team_id = pg.away_team_id
-                       AND ABS(julianday(gg.date) - julianday(pg.date)) <= 1
-                       AND gg.id != pg.id
-    LEFT JOIN game_results gr ON gr.game_id = gg.id
+    SELECT COUNT(*) as count FROM predictions p
     WHERE p.resolved_at IS NULL
-      AND (gr.game_id IS NULL OR gr.resolved_at >= ?)
       ${sportFilter}
-  `).get(cutoffTime, ...pendingParams) as { count: number };
+      AND NOT EXISTS (
+        -- Direct match
+        SELECT 1 FROM game_results gr
+        WHERE gr.game_id = p.game_id AND gr.resolved_at < ?
+      )
+      AND NOT EXISTS (
+        -- Cross-namespace match
+        SELECT 1 FROM games pg
+        JOIN games gg ON gg.sport = pg.sport
+                     AND gg.home_team_id = pg.home_team_id
+                     AND gg.away_team_id = pg.away_team_id
+                     AND ABS(julianday(gg.date) - julianday(pg.date)) <= 1
+                     AND gg.id != pg.id
+        JOIN game_results gr ON gr.game_id = gg.id
+        WHERE pg.id = p.game_id AND gr.resolved_at < ?
+      )
+  `).get(...pendingParams, cutoffTime, cutoffTime) as { count: number };
 
   const updateStmt = db.prepare(`
     UPDATE predictions
@@ -99,30 +129,33 @@ export function resolvePredictions(sport?: Sport): ResolveResult {
     let correct = 0;
     const resolveTime = new Date().toISOString();
     for (const c of items) {
+      // Council mandate (P0-2): draws in MLS/EPL are excluded from
+      // winner-prediction accuracy. The model doesn't predict draws,
+      // so treating them as "wrong" unfairly penalizes soccer predictions.
+      // Set was_correct=NULL and brier_score=NULL — excluded from metrics.
+      if (c.is_draw === 1 && c.model_version !== 'v4-spread') {
+        updateStmt.run(resolveTime, c.actual_winner, null, null, c.id);
+        continue;
+      }
+
       let wasCorrect: number;
 
       if (c.model_version === 'v4-spread') {
-        // Spread model: "correct" means the picked side covered the spread.
-        // pick_side is stored in reasoning_json.spread.pick_side.
-        // spread_result is from game_results: 'cover' = home covered, 'miss' = away covered.
         if (!c.spread_result || c.spread_result === 'push') {
-          wasCorrect = 0; // push = conservative incorrect
+          wasCorrect = 0;
         } else {
           let pickSide: string = 'home';
           try {
             const rj = JSON.parse(c.reasoning_json) as { spread?: { pick_side?: string } };
             pickSide = rj.spread?.pick_side ?? 'home';
           } catch { /* default home */ }
-          // 'cover' means home covered; 'miss' means away covered
           const homeCovered = c.spread_result === 'cover';
           wasCorrect = (pickSide === 'home' && homeCovered) || (pickSide === 'away' && !homeCovered) ? 1 : 0;
         }
       } else {
-        // Standard winner prediction
         wasCorrect = c.predicted_winner === c.actual_winner ? 1 : 0;
       }
 
-      // Brier score: outcome = 1 if correct, 0 otherwise
       const outcome = wasCorrect;
       const brier = (c.predicted_prob - outcome) ** 2;
 

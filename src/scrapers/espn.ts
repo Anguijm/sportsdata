@@ -9,6 +9,7 @@ import type { ProbablePitcher } from '../schema/game.js';
 import type { Sport } from '../schema/provenance.js';
 import type { ScrapeLogEntry } from '../storage/json-log.js';
 import { appendLog, countRecentRequests } from '../storage/json-log.js';
+import { formatSeasonLabel, getSeasonYear } from '../analysis/season.js';
 import { createProvenance } from './normalizer.js';
 import {
   validateScoreboard, validateTeams,
@@ -173,7 +174,7 @@ function normalizeScoreboard(data: EspnScoreboardResponse, sport: Sport, url: st
     const game: Game = {
       id: `${sport}:${event.id}`,
       sport,
-      season: '',
+      season: formatSeasonLabel(sport, getSeasonYear(sport, event.date)),
       date: event.date,
       homeTeamId: `${sport}:${home?.team.abbreviation ?? 'UNK'}`,
       awayTeamId: `${sport}:${away?.team.abbreviation ?? 'UNK'}`,

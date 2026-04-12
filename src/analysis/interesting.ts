@@ -6,6 +6,7 @@
 
 import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
+import { getSeasonYear } from './season.js';
 
 // --- Finding Interface (Council-Enriched) ---
 
@@ -105,7 +106,7 @@ export function findStreaks(sport: Sport, minLength = 7): Finding[] {
   const teamSeasonGames = new Map<string, Map<number, { date: string; won: boolean; gameId: string }[]>>();
 
   for (const r of results) {
-    const season = sportSeasonYear(sport, r.date);
+    const season = getSeasonYear(sport, r.date);
     for (const teamId of [r.winner, r.loser]) {
       if (!teamSeasonGames.has(teamId)) teamSeasonGames.set(teamId, new Map());
       const seasons = teamSeasonGames.get(teamId)!;
@@ -227,7 +228,7 @@ function computeSeasonRecords(sport: Sport): Map<string, SeasonRecord> {
 
   const records = new Map<string, SeasonRecord>();
   for (const r of rows) {
-    const season = sportSeasonYear(sport, r.date);
+    const season = getSeasonYear(sport, r.date);
     const winnerKey = `${r.winner}-${season}`;
     const loserKey = `${r.loser}-${season}`;
     if (!records.has(winnerKey)) records.set(winnerKey, { wins: 0, losses: 0 });
@@ -239,19 +240,6 @@ function computeSeasonRecords(sport: Sport): Map<string, SeasonRecord> {
 }
 
 /** Compute per-season league pace (average total points per game) */
-/** Determine season year. NBA/NHL/MLS/EPL: Oct-Jun. MLB: Apr-Oct. NFL: Sep-Feb. */
-function sportSeasonYear(sport: Sport, date: string): number {
-  const d = new Date(date);
-  const month = d.getUTCMonth(); // 0-indexed
-  const year = d.getUTCFullYear();
-  if (sport === 'mlb') {
-    // MLB: April-October, season = calendar year
-    return year;
-  }
-  // All others: season starts in fall, spans two calendar years
-  return month >= 8 ? year : year - 1; // Sep+ = this year's season
-}
-
 function computeSeasonPace(sport: Sport): Map<number, number> {
   const db = getDb();
   const rows = db.prepare(`
@@ -260,7 +248,7 @@ function computeSeasonPace(sport: Sport): Map<number, number> {
 
   const totals = new Map<number, { sum: number; count: number }>();
   for (const r of rows) {
-    const season = sportSeasonYear(sport, r.date);
+    const season = getSeasonYear(sport, r.date);
     if (!totals.has(season)) totals.set(season, { sum: 0, count: 0 });
     const t = totals.get(season)!;
     t.sum += r.home_score + r.away_score;
@@ -305,7 +293,7 @@ export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[
   const defaultTotal = SPORT_AVG_TOTAL[sport] ?? 220;
 
   const marginsWithPct = margins.map(m => {
-    const season = sportSeasonYear(sport, m.date);
+    const season = getSeasonYear(sport, m.date);
     const avgTotal = seasonPace.get(season) ?? defaultTotal;
     const actualTotal = m.home_score + m.away_score;
     const denom = actualTotal > 0 ? actualTotal : avgTotal;
@@ -326,7 +314,7 @@ export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[
     const pacePct = (b.marginPct * 100).toFixed(1);
     // Winner scored this fraction of all points in the game
     const winnerSharePct = totalPoints > 0 ? ((winnerScore / totalPoints) * 100).toFixed(1) : '?';
-    const seasonYear = sportSeasonYear(sport, b.date);
+    const seasonYear = getSeasonYear(sport, b.date);
     const winnerRec = seasonRecords.get(`${b.winner}-${seasonYear}`);
     const loserRec = seasonRecords.get(`${b.loser}-${seasonYear}`);
 
@@ -369,7 +357,7 @@ export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[
     const totalPoints = n.home_score + n.away_score;
     const winnerScore = n.home_win === 1 ? n.home_score : n.away_score;
     const loserScore = n.home_win === 1 ? n.away_score : n.home_score;
-    const seasonYear = sportSeasonYear(sport, n.date);
+    const seasonYear = getSeasonYear(sport, n.date);
     const winnerRec = seasonRecords.get(`${n.winner}-${seasonYear}`);
     const loserRec = seasonRecords.get(`${n.loser}-${seasonYear}`);
 
@@ -416,7 +404,7 @@ export function findMediocrity(sport: Sport): Finding[] {
   // Map<teamId, Map<seasonYear, sequence[]>>
   const teamSeasons = new Map<string, Map<number, boolean[]>>();
   for (const r of results) {
-    const season = sportSeasonYear(sport, r.date);
+    const season = getSeasonYear(sport, r.date);
     for (const teamId of [r.winner, r.loser]) {
       if (!teamSeasons.has(teamId)) teamSeasons.set(teamId, new Map());
       const seasons = teamSeasons.get(teamId)!;
@@ -534,7 +522,7 @@ export function findDifferentialOutliers(sport: Sport): Finding[] {
   const teamSeasons = new Map<string, TeamSeason>();
 
   for (const g of games) {
-    const seasonYear = sportSeasonYear(sport, g.date);
+    const seasonYear = getSeasonYear(sport, g.date);
     const homeIsWinner = g.home_win === 1;
     const homeTeam = homeIsWinner ? g.winner : g.loser;
     const awayTeam = homeIsWinner ? g.loser : g.winner;
@@ -671,7 +659,7 @@ export function findClutchOutliers(sport: Sport): Finding[] {
   const records = new Map<string, ClutchRecord>();
 
   for (const g of games) {
-    const seasonYear = sportSeasonYear(sport, g.date);
+    const seasonYear = getSeasonYear(sport, g.date);
     for (const [teamId, won] of [[g.winner, true], [g.loser, false]] as const) {
       const key = `${teamId}-${seasonYear}`;
       if (!records.has(key)) {

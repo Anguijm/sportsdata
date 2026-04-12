@@ -51,12 +51,24 @@ export interface Iteration {
   predict: Predictor;
 }
 
-/** v0: Baseline. Always pick home. */
+/** Empirical home-win rates by sport. v0 uses these as its "always pick home"
+ *  probability — an honest baseline, not a certainty.
+ *  Council mandate (P0-4): using 1.0 inflated all improvement claims. */
+const SPORT_HOME_WIN_RATE: Record<string, number> = {
+  nba: 0.57,
+  nfl: 0.57,
+  mlb: 0.54,
+  nhl: 0.55,
+  mls: 0.49,
+  epl: 0.46,
+};
+
+/** v0: Baseline. Always pick home at the sport's empirical home-win rate. */
 export const v0: Iteration = {
   id: 'v0',
   version: '0',
-  description: 'Baseline: always pick home team',
-  predict: () => 1.0,
+  description: 'Baseline: always pick home team at empirical home-win rate',
+  predict: (game) => SPORT_HOME_WIN_RATE[game.sport] ?? 0.55,
 };
 
 /** v1: v0 + flip to visitor if visitor has 10+ more wins */
@@ -64,11 +76,11 @@ export const v1: Iteration = {
   id: 'v1',
   version: '1',
   description: 'Home unless visitor has 10+ more wins in season',
-  predict: (_game, ctx) => {
-    if (ctx.home.games < 5 || ctx.away.games < 5) return 1.0; // no reliable record
+  predict: (game, ctx) => {
+    if (ctx.home.games < 5 || ctx.away.games < 5) return SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
     const winGap = ctx.away.wins - ctx.home.wins;
     if (winGap >= 10) return 0.3;
-    return 1.0;
+    return SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
   },
 };
 
@@ -77,8 +89,9 @@ export const v2: Iteration = {
   id: 'v2',
   version: '2',
   description: 'v1 + flip when visitor point differential is 3+ higher',
-  predict: (_game, ctx) => {
-    if (ctx.home.games < 5 || ctx.away.games < 5) return 1.0;
+  predict: (game, ctx) => {
+    const baseRate = SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
+    if (ctx.home.games < 5 || ctx.away.games < 5) return baseRate;
 
     const homeDiff = (ctx.home.pointsFor - ctx.home.pointsAgainst) / ctx.home.games;
     const awayDiff = (ctx.away.pointsFor - ctx.away.pointsAgainst) / ctx.away.games;
@@ -89,7 +102,7 @@ export const v2: Iteration = {
     if (winGap >= 10) return 0.25;
     if (diffGap >= 5) return 0.30;
     if (diffGap >= 3) return 0.42;
-    return 0.60; // slight home edge (league average is 54.7%, so 0.60 is above base rate)
+    return baseRate + 0.03; // slight home edge above sport base rate
   },
 };
 
@@ -98,23 +111,22 @@ export const v3: Iteration = {
   id: 'v3',
   version: '3',
   description: 'v2 + penalize home team on 3+ game losing streak',
-  predict: (_game, ctx) => {
-    if (ctx.home.games < 5 || ctx.away.games < 5) return 1.0;
+  predict: (game, ctx) => {
+    const baseRate = SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
+    if (ctx.home.games < 5 || ctx.away.games < 5) return baseRate;
 
     const homeDiff = (ctx.home.pointsFor - ctx.home.pointsAgainst) / ctx.home.games;
     const awayDiff = (ctx.away.pointsFor - ctx.away.pointsAgainst) / ctx.away.games;
     const diffGap = awayDiff - homeDiff;
     const winGap = ctx.away.wins - ctx.home.wins;
 
-    // Check if home team on cold streak (last 3 games all losses)
     const homeColdStreak = ctx.home.lastNResults.length >= 3 &&
       ctx.home.lastNResults.slice(-3).every(r => !r);
 
-    // Check if away team hot (last 3 games all wins)
     const awayHotStreak = ctx.away.lastNResults.length >= 3 &&
       ctx.away.lastNResults.slice(-3).every(r => r);
 
-    let base = 0.60;
+    let base = baseRate + 0.03;
     if (winGap >= 10) base = 0.25;
     else if (diffGap >= 5) base = 0.30;
     else if (diffGap >= 3) base = 0.42;

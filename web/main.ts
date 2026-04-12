@@ -1322,7 +1322,7 @@ async function loadAndRenderAll() {
     `The cleanest signal in ${term.leagueName}: ${term.diffLabel} per ${term.gameNoun === 'matches' ? 'match' : 'game'}. Top 5 and bottom 5 each season — the rest hidden by default. Wins green, losses red, read left-to-right. Older seasons collapsed.`;
   const predLead = document.getElementById('predictions-lead');
   if (predLead) predLead.textContent =
-    `The v2 ratchet model — the same one that beat baseline by 45% Brier on a held-out test set — applied to upcoming ${term.leagueName} ${term.gameNoun}. Track record updates as ${term.gameNoun} complete. Picks are reasoned, not vibes. Confidence is honest.`;
+    `The v2 ratchet model, validated against a held-out test set, applied to upcoming ${term.leagueName} ${term.gameNoun}. Track record updates as ${term.gameNoun} complete. Picks are reasoned, not vibes. Confidence is honest.`;
   const spreadLead = document.getElementById('spread-lead');
   if (spreadLead) spreadLead.textContent =
     `The v4-spread model predicts expected margin and compares it against the bookmaker's line. When the model disagrees with the spread by a meaningful amount, that's an edge signal. This is experimental — no backtesting, no proven edge. Track record accumulates live.`;

@@ -218,17 +218,43 @@ export function startDataApi(): void {
             res.end(JSON.stringify({ error: 'Unauthorized' }));
             return;
           }
-          const resolved = resolvePredictions(sport);
-          const generated = predictUpcoming(sport);
-          const spreadGenerated = predictUpcomingSpreads(sport);
+          // Support sport=all to generate predictions for every league,
+          // matching how /api/trigger/scrape works. The cron should call
+          // with sport=all so all sports get predictions, not just NBA.
+          const rawPredictSport = url.searchParams.get('sport');
+          const allSports: Sport[] = ['nfl', 'nba', 'mlb', 'nhl', 'mls', 'epl'];
+          const predictSports: Sport[] = (!rawPredictSport || rawPredictSport === 'all')
+            ? allSports
+            : [rawPredictSport as Sport];
+
+          const perSport: Array<{
+            sport: Sport;
+            resolved: number;
+            correct: number;
+            generated: number;
+            skipped: number;
+            spreadGenerated: number;
+            spreadSkipped: number;
+          }> = [];
+
+          for (const s of predictSports) {
+            const resolved = resolvePredictions(s);
+            const generated = predictUpcoming(s);
+            const spreadGenerated = predictUpcomingSpreads(s);
+            perSport.push({
+              sport: s,
+              resolved: resolved.resolved,
+              correct: resolved.correct,
+              generated: generated.predictions.length,
+              skipped: generated.skipped,
+              spreadGenerated: spreadGenerated.predictions.length,
+              spreadSkipped: spreadGenerated.skipped,
+            });
+          }
+
           response = jsonResponse({
-            sport,
-            resolved: resolved.resolved,
-            correct: resolved.correct,
-            generated: generated.predictions.length,
-            skipped: generated.skipped,
-            spreadGenerated: spreadGenerated.predictions.length,
-            spreadSkipped: spreadGenerated.skipped,
+            sports: predictSports,
+            results: perSport,
             triggeredAt: new Date().toISOString(),
           });
           break;

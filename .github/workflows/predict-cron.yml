@@ -27,7 +27,9 @@ jobs:
             --max-time 600
 
       - name: Trigger predict on Fly.io
+        # sport=all generates v2 winner + v4-spread predictions for every
+        # league, not just NBA. Without this, only NBA got predictions.
         run: |
-          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/predict" \
+          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/predict?sport=all" \
             -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
-            --max-time 300
+            --max-time 600

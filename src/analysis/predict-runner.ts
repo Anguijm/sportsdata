@@ -282,12 +282,12 @@ export function predictUpcoming(sport: Sport): { predictions: PredictionRecord[]
   // Persist via UPSERT (council: idempotent on conflict)
   const insertStmt = db.prepare(`
     INSERT INTO predictions (
-      id, game_id, sport, model_version,
+      id, game_id, sport, model_version, prediction_source,
       predicted_winner, predicted_prob,
       reasoning_json, reasoning_text,
       made_at, team_state_as_of, low_confidence
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (game_id, model_version) DO NOTHING
+    ) VALUES (?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (game_id, model_version, prediction_source) DO NOTHING
   `);
 
   const insertAll = db.transaction((items: PredictionRecord[]) => {

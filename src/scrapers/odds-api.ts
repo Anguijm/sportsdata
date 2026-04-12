@@ -137,30 +137,56 @@ export interface ParsedOddsEvent {
   odds: GameOdds | null;
 }
 
+/** Return the median of a sorted numeric array. */
+function median(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * P1-5: Compute consensus odds across all bookmakers instead of using only the first.
+ * Median is used (robust to sharp-line outliers from small books).
+ */
 function normalizeOdds(events: OddsApiResponse): ParsedOddsEvent[] {
   return events.map((event) => {
-    const bookmaker = event.bookmakers[0]; // Use first bookmaker
     let odds: GameOdds | null = null;
+    const books = event.bookmakers;
 
-    if (bookmaker) {
-      const h2h = bookmaker.markets.find(m => m.key === 'h2h');
-      const spreads = bookmaker.markets.find(m => m.key === 'spreads');
-      const totals = bookmaker.markets.find(m => m.key === 'totals');
+    if (books.length > 0) {
+      // Collect all bookmakers' values
+      const homeMLs: number[] = [];
+      const awayMLs: number[] = [];
+      const homeSpreadPts: number[] = [];
+      const totalOvers: number[] = [];
 
-      const homeML = h2h?.outcomes.find(o => o.name === event.home_team)?.price ?? 0;
-      const awayML = h2h?.outcomes.find(o => o.name === event.away_team)?.price ?? 0;
+      for (const book of books) {
+        const h2h = book.markets.find(m => m.key === 'h2h');
+        const spreads = book.markets.find(m => m.key === 'spreads');
+        const totals = book.markets.find(m => m.key === 'totals');
 
-      const spreadOutcome = spreads?.outcomes.find(o => o.name === event.home_team);
-      const totalOver = totals?.outcomes.find(o => o.name === 'Over');
+        const hml = h2h?.outcomes.find(o => o.name === event.home_team)?.price;
+        const aml = h2h?.outcomes.find(o => o.name === event.away_team)?.price;
+        const sp = spreads?.outcomes.find(o => o.name === event.home_team)?.point;
+        const to = totals?.outcomes.find(o => o.name === 'Over')?.point;
+
+        if (hml != null) homeMLs.push(hml);
+        if (aml != null) awayMLs.push(aml);
+        if (sp != null) homeSpreadPts.push(sp);
+        if (to != null) totalOvers.push(to);
+      }
+
+      const medianSpread = median(homeSpreadPts);
 
       odds = {
         spread: {
-          favorite: (spreadOutcome?.point ?? 0) < 0 ? event.home_team : event.away_team,
-          line: Math.abs(spreadOutcome?.point ?? 0),
+          favorite: medianSpread < 0 ? event.home_team : event.away_team,
+          line: Math.abs(medianSpread),
         },
-        overUnder: totalOver?.point ?? 0,
-        moneyline: { home: homeML, away: awayML },
-        source: bookmaker.title,
+        overUnder: median(totalOvers),
+        moneyline: { home: median(homeMLs), away: median(awayMLs) },
+        source: `consensus (${books.length} books)`,
         asOf: new Date().toISOString(),
         provenance: createProvenance('odds-api'),
       };

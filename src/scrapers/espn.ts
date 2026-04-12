@@ -184,10 +184,15 @@ function normalizeScoreboard(data: EspnScoreboardResponse, sport: Sport, url: st
     };
 
     if (home?.score && away?.score) {
+      // P1-6: Detect overtime from ESPN status detail (e.g., "Final/OT", "Final/2OT")
+      const statusDetail = event.status.type.detail ?? event.status.type.description ?? '';
+      // Match OT, 2OT, 3OT, overtime, shootout — \bOT\b misses "2OT" because
+      // the word boundary fails after a digit. Use looser pattern instead.
+      const isOvertime = /OT\b|overtime|shootout/i.test(statusDetail);
       game.score = {
         home: parseInt(home.score, 10),
         away: parseInt(away.score, 10),
-        overtime: false,
+        overtime: isOvertime,
       };
     }
 

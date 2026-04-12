@@ -58,6 +58,8 @@ export interface WeatherConditions {
 export interface GameResult {
   gameId: string;
   winner: string;
+  /** True for MLS/EPL draws. When true, winner=home by convention — check isDraw first. */
+  isDraw?: boolean;
   spreadResult: 'cover' | 'push' | 'miss';
   overUnderResult: 'over' | 'push' | 'under';
   provenance: Provenance;

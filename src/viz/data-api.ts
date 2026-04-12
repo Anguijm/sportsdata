@@ -45,7 +45,16 @@ export function startDataApi(): void {
 
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
     const path = url.pathname;
-    const sport = (url.searchParams.get('sport') ?? 'nba') as Sport;
+
+    // P1-4: Validate sport param instead of blindly casting
+    const VALID_SPORTS = new Set(['nba', 'nfl', 'mlb', 'nhl', 'mls', 'epl']);
+    const rawSportParam = url.searchParams.get('sport');
+    if (rawSportParam && rawSportParam !== 'all' && !VALID_SPORTS.has(rawSportParam)) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: `Invalid sport: ${rawSportParam}. Valid: nba, nfl, mlb, nhl, mls, epl` }));
+      return;
+    }
+    const sport = (rawSportParam ?? 'nba') as Sport;
 
     try {
       let response: { body: string; headers: Record<string, string> };
@@ -237,26 +246,44 @@ export function startDataApi(): void {
             spreadSkipped: number;
           }> = [];
 
+          // P1-12: Track completed sports individually. If one sport throws,
+          // the others still have their results recorded. Prevents partial
+          // computation from corrupting downstream state.
+          const errors: Array<{ sport: Sport; error: string }> = [];
           for (const s of predictSports) {
-            const resolved = resolvePredictions(s);
-            const generated = predictUpcoming(s);
-            const spreadGenerated = predictUpcomingSpreads(s);
-            perSport.push({
-              sport: s,
-              resolved: resolved.resolved,
-              correct: resolved.correct,
-              generated: generated.predictions.length,
-              skipped: generated.skipped,
-              spreadGenerated: spreadGenerated.predictions.length,
-              spreadSkipped: spreadGenerated.skipped,
-            });
+            try {
+              const resolved = resolvePredictions(s);
+              const generated = predictUpcoming(s);
+              const spreadGenerated = predictUpcomingSpreads(s);
+              perSport.push({
+                sport: s,
+                resolved: resolved.resolved,
+                correct: resolved.correct,
+                generated: generated.predictions.length,
+                skipped: generated.skipped,
+                spreadGenerated: spreadGenerated.predictions.length,
+                spreadSkipped: spreadGenerated.skipped,
+              });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              console.error(`Predict failed for ${s}:`, msg);
+              errors.push({ sport: s, error: msg });
+            }
           }
 
-          response = jsonResponse({
+          const predictBody = {
             sports: predictSports,
             results: perSport,
+            errors: errors.length > 0 ? errors : undefined,
             triggeredAt: new Date().toISOString(),
-          });
+          };
+          // Return 502 when any sport failed so cron's curl -f catches it
+          if (errors.length > 0) {
+            res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify(predictBody));
+            return;
+          }
+          response = jsonResponse(predictBody);
           break;
         }
 
@@ -410,9 +437,11 @@ export function startDataApi(): void {
       res.writeHead(200, response.headers);
       res.end(response.body);
     } catch (err) {
+      // P1-10: Don't expose internal error details to clients
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`API error on ${path}:`, msg);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: msg }));
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
   });
 

@@ -61,15 +61,6 @@ interface StreakRun {
   seasonFinalRecord: { wins: number; losses: number };
 }
 
-/** NBA season runs October-June, so determine season from date */
-function nbaSeasonYear(date: string): number {
-  const d = new Date(date);
-  const month = d.getUTCMonth(); // 0-indexed
-  const year = d.getUTCFullYear();
-  // October-December → that year. January-June → previous year.
-  return month >= 9 ? year : year - 1;
-}
-
 function formatStreakNarrative(s: StreakRun, teamAbbr: string): string {
   const seasonLabel = `${s.seasonYear}-${String(s.seasonYear + 1).slice(2)}`;
   const seasonProgress = (s.seasonGameStart / s.totalSeasonGames * 100).toFixed(0);
@@ -114,7 +105,7 @@ export function findStreaks(sport: Sport, minLength = 7): Finding[] {
   const teamSeasonGames = new Map<string, Map<number, { date: string; won: boolean; gameId: string }[]>>();
 
   for (const r of results) {
-    const season = nbaSeasonYear(r.date);
+    const season = sportSeasonYear(sport, r.date);
     for (const teamId of [r.winner, r.loser]) {
       if (!teamSeasonGames.has(teamId)) teamSeasonGames.set(teamId, new Map());
       const seasons = teamSeasonGames.get(teamId)!;
@@ -236,7 +227,7 @@ function computeSeasonRecords(sport: Sport): Map<string, SeasonRecord> {
 
   const records = new Map<string, SeasonRecord>();
   for (const r of rows) {
-    const season = nbaSeasonYear(r.date);
+    const season = sportSeasonYear(sport, r.date);
     const winnerKey = `${r.winner}-${season}`;
     const loserKey = `${r.loser}-${season}`;
     if (!records.has(winnerKey)) records.set(winnerKey, { wins: 0, losses: 0 });
@@ -248,6 +239,19 @@ function computeSeasonRecords(sport: Sport): Map<string, SeasonRecord> {
 }
 
 /** Compute per-season league pace (average total points per game) */
+/** Determine season year. NBA/NHL/MLS/EPL: Oct-Jun. MLB: Apr-Oct. NFL: Sep-Feb. */
+function sportSeasonYear(sport: Sport, date: string): number {
+  const d = new Date(date);
+  const month = d.getUTCMonth(); // 0-indexed
+  const year = d.getUTCFullYear();
+  if (sport === 'mlb') {
+    // MLB: April-October, season = calendar year
+    return year;
+  }
+  // All others: season starts in fall, spans two calendar years
+  return month >= 8 ? year : year - 1; // Sep+ = this year's season
+}
+
 function computeSeasonPace(sport: Sport): Map<number, number> {
   const db = getDb();
   const rows = db.prepare(`
@@ -256,7 +260,7 @@ function computeSeasonPace(sport: Sport): Map<number, number> {
 
   const totals = new Map<number, { sum: number; count: number }>();
   for (const r of rows) {
-    const season = nbaSeasonYear(r.date);
+    const season = sportSeasonYear(sport, r.date);
     if (!totals.has(season)) totals.set(season, { sum: 0, count: 0 });
     const t = totals.get(season)!;
     t.sum += r.home_score + r.away_score;
@@ -291,13 +295,21 @@ export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[
   const seasonPace = computeSeasonPace(sport);
   const findings: Finding[] = [];
 
-  // Pace-adjusted re-ranking: compute margin as percentage of typical total score
-  // Council mandate: a 62-point margin in a 216-total-point game is different than in a 160-total game
+  // Pace-adjusted re-ranking: compute margin as fraction of the game's actual total score.
+  // Council mandate: a 62-point margin in a 216-total-point game is different than in a 160-total game.
+  // Using the ACTUAL game total (not season average) for the ratio — season pace is used
+  // only as a fallback denominator when actual total is zero.
+  const SPORT_AVG_TOTAL: Record<string, number> = {
+    nba: 220, nfl: 46, mlb: 9, nhl: 6, mls: 3, epl: 3,
+  };
+  const defaultTotal = SPORT_AVG_TOTAL[sport] ?? 220;
+
   const marginsWithPct = margins.map(m => {
-    const season = nbaSeasonYear(m.date);
-    const avgTotal = seasonPace.get(season) ?? 220; // fallback NBA pace
+    const season = sportSeasonYear(sport, m.date);
+    const avgTotal = seasonPace.get(season) ?? defaultTotal;
     const actualTotal = m.home_score + m.away_score;
-    const marginPct = m.margin / avgTotal;
+    const denom = actualTotal > 0 ? actualTotal : avgTotal;
+    const marginPct = m.margin / denom;
     return { ...m, season, avgTotal, actualTotal, marginPct };
   }).sort((a, b) => b.marginPct - a.marginPct);
 
@@ -312,27 +324,25 @@ export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[
     const winnerScore = b.home_win === 1 ? b.home_score : b.away_score;
     const loserScore = b.home_win === 1 ? b.away_score : b.home_score;
     const pacePct = (b.marginPct * 100).toFixed(1);
-    const seasonYear = nbaSeasonYear(b.date);
+    // Winner scored this fraction of all points in the game
+    const winnerSharePct = totalPoints > 0 ? ((winnerScore / totalPoints) * 100).toFixed(1) : '?';
+    const seasonYear = sportSeasonYear(sport, b.date);
     const winnerRec = seasonRecords.get(`${b.winner}-${seasonYear}`);
     const loserRec = seasonRecords.get(`${b.loser}-${seasonYear}`);
 
-    // Pace-adjusted narrative: express margin as percentage of total points
-    // This is the council-mandated fix for "140-130 vs 95-85 both look like 10pt games"
+    // Narrative: express dominance using the margin-to-total ratio (marginPct).
+    // marginPct = margin / actualTotal — "what fraction of total scoring was the gap."
+    // A 62-point margin in a 248-total game = 25%, meaning the gap alone was a quarter
+    // of all scoring. This is sport-neutral (works for runs, goals, points).
     let narrative: string;
     if (b.marginPct >= 0.25) {
-      narrative = `Pace-adjusted dominance. ${winnerAbbr} won by ${b.margin} points in a ${totalPoints}-total-point game — ${pacePct}% of all points scored went to the winner. That's not a rout, that's annihilation.`;
-    } else if (b.margin >= 60) {
-      narrative = `Sixty points. In an NBA game. ${winnerAbbr} scored ${winnerScore}, ${loserAbbr} scored ${loserScore}. The kind of result that gets discussed in front offices the next morning.`;
+      narrative = `Dominant. ${winnerAbbr} won by ${b.margin} in a ${totalPoints}-total game. The margin alone was ${pacePct}% of all scoring — ${winnerAbbr} took ${winnerSharePct}% of every point on the board.`;
     } else if (winnerRec && loserRec && winnerRec.wins / (winnerRec.wins + winnerRec.losses) < 0.5) {
-      narrative = `${winnerAbbr} finished the season ${winnerRec.wins}-${winnerRec.losses} — under .500 — but on this night they did THIS. Against a ${loserRec.wins}-${loserRec.losses} ${loserAbbr} team (pace-adjusted margin: ${pacePct}%).`;
+      narrative = `${winnerAbbr} finished the season ${winnerRec.wins}-${winnerRec.losses} — under .500 — but on this night they did THIS. Against a ${loserRec.wins}-${loserRec.losses} ${loserAbbr} team. Margin was ${pacePct}% of total scoring.`;
     } else if (loserRec && loserRec.wins / (loserRec.wins + loserRec.losses) > 0.55) {
-      narrative = `Worth noting: ${loserAbbr} was a winning team that season (${loserRec.wins}-${loserRec.losses}). They still got beat by ${b.margin} (${pacePct}% of total points).`;
-    } else if (totalPoints >= 250) {
-      narrative = `High-pace game: ${totalPoints} total points. ${winnerAbbr} outscored the opponent by ${pacePct}% — in a slow game that would have meant ${(b.marginPct * 210).toFixed(0)} points.`;
-    } else if (totalPoints <= 200) {
-      narrative = `Low-scoring game. Only ${totalPoints} total points — ${winnerAbbr} took ${winnerScore}. Pace-adjusted, this ${b.margin}-point margin is worth about ${(b.marginPct * 220).toFixed(0)} in an average-pace game.`;
+      narrative = `Worth noting: ${loserAbbr} was a winning team that season (${loserRec.wins}-${loserRec.losses}). They still lost by ${b.margin} — ${pacePct}% of the game's total scoring.`;
     } else {
-      narrative = `${zScore.toFixed(1)}σ above average. Pace-adjusted margin: ${pacePct}% of total points scored — a true blowout regardless of tempo.`;
+      narrative = `${zScore.toFixed(1)}σ above average. The ${b.margin}-point margin was ${pacePct}% of the game's ${totalPoints} total — a true blowout regardless of tempo.`;
     }
 
     findings.push({
@@ -359,7 +369,7 @@ export function findMarginOutliers(sport: Sport, sigmaThreshold = 2.5): Finding[
     const totalPoints = n.home_score + n.away_score;
     const winnerScore = n.home_win === 1 ? n.home_score : n.away_score;
     const loserScore = n.home_win === 1 ? n.away_score : n.home_score;
-    const seasonYear = nbaSeasonYear(n.date);
+    const seasonYear = sportSeasonYear(sport, n.date);
     const winnerRec = seasonRecords.get(`${n.winner}-${seasonYear}`);
     const loserRec = seasonRecords.get(`${n.loser}-${seasonYear}`);
 
@@ -406,7 +416,7 @@ export function findMediocrity(sport: Sport): Finding[] {
   // Map<teamId, Map<seasonYear, sequence[]>>
   const teamSeasons = new Map<string, Map<number, boolean[]>>();
   for (const r of results) {
-    const season = nbaSeasonYear(r.date);
+    const season = sportSeasonYear(sport, r.date);
     for (const teamId of [r.winner, r.loser]) {
       if (!teamSeasons.has(teamId)) teamSeasons.set(teamId, new Map());
       const seasons = teamSeasons.get(teamId)!;
@@ -524,7 +534,7 @@ export function findDifferentialOutliers(sport: Sport): Finding[] {
   const teamSeasons = new Map<string, TeamSeason>();
 
   for (const g of games) {
-    const seasonYear = nbaSeasonYear(g.date);
+    const seasonYear = sportSeasonYear(sport, g.date);
     const homeIsWinner = g.home_win === 1;
     const homeTeam = homeIsWinner ? g.winner : g.loser;
     const awayTeam = homeIsWinner ? g.loser : g.winner;
@@ -661,7 +671,7 @@ export function findClutchOutliers(sport: Sport): Finding[] {
   const records = new Map<string, ClutchRecord>();
 
   for (const g of games) {
-    const seasonYear = nbaSeasonYear(g.date);
+    const seasonYear = sportSeasonYear(sport, g.date);
     for (const [teamId, won] of [[g.winner, true], [g.loser, false]] as const) {
       const key = `${teamId}-${seasonYear}`;
       if (!records.has(key)) {

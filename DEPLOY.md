@@ -108,10 +108,21 @@ curl -s https://sportsdata-api.fly.dev/api/health | python3 -m json.tool
 
 The `/api/health` response now includes a `last_scrape_at` field (MAX of `games.updated_at`). **If `last_scrape_at` is more than 24 hours old while the `predict-cron` is green, the scrape→resolve pipeline is broken** — that's exactly the failure mode that caused Sprint 10.6. Add this to your on-call / weekly-check ritual.
 
-Spot-check the newest endpoint you added:
+Spot-check endpoints:
 ```
 curl -s https://sportsdata-api.fly.dev/api/predictions/calibration?sport=nba | python3 -m json.tool | head
+curl -s https://sportsdata-api.fly.dev/api/spread-picks/upcoming?sport=nba | python3 -m json.tool | head
+curl -s https://sportsdata-api.fly.dev/api/spread-picks/track-record?sport=nba | python3 -m json.tool
 ```
+
+### Spread model (v4-spread)
+
+The API generates spread predictions alongside v2 winner predictions when `/api/trigger/predict` is called. Spread picks require odds data on the game (`odds_json IS NOT NULL`). The cron handles this automatically: `/api/trigger/scrape` writes odds to games via `writeOddsToGames()`, then `/api/trigger/predict` generates both v2 and v4-spread predictions.
+
+**If spread picks are empty**, check:
+1. Does `/api/health` show `last_scrape_at` within 24h? (scrape pipeline working)
+2. Do games have odds data? `curl .../api/games?sport=nba | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for g in d if g.get('odds_json')))"` — should be > 0
+3. Is `THE_ODDS_API_KEY` set on Fly? `~/.fly/bin/fly secrets list` — odds scraper is skipped without it
 
 ### Manually trigger a scrape + resolver sweep
 

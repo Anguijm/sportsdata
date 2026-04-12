@@ -112,3 +112,34 @@ Accumulated patterns, anti-patterns, and insights from scraping, analysis, and p
 - **IMPROVE**: Native `<details>` element beats bespoke JS toggles — scroll position preserved, one primitive everywhere (Architect mandate)
 - **INSIGHT**: 3 sections have overflow bugs (streak grid, ratchet iterations, ratchet summary). 3 sections have cognitive overload (90 streak rows, 46 findings, 6 stacked sports).
 - **BLOCKED**: Context cleared mid-build. Next session picks up from SESSION_LOG.md Sprint 9 plan.
+
+### sprint10-6-scrape-pipeline-repair (2026-04-09)
+- **KEEP**: `runCycle()` returning `{ results, failures }` — the scrape log sweep at end of cycle catches fail-closed ESPN errors that scrapedFetch returns as `[]`
+- **KEEP**: `/api/trigger/scrape` with `backfillDays=3` default — system self-heals after missed cron runs
+- **KEEP**: `sport=all` on scrape trigger covers all 6 leagues in one cron call
+- **KEEP**: `deploy-fly.yml` auto-deploy mirrors `deploy-pages.yml` pattern — push to main ships both
+- **IMPROVE**: `/api/trigger/scrape` didn't exist for months — `|| echo "non-fatal"` + `continue-on-error` hid the 404. Never mask cron failures.
+- **IMPROVE**: `last_scrape_at` on `/api/health` makes staleness visible without reading logs — should have existed from day one
+- **INSIGHT**: Three stacked bugs (missing route + dead backup cron + no backfill) = silent data staleness for days. Any ONE of these would have been caught immediately if failures weren't swallowed.
+- **CRITICAL**: Codex review caught that `/api/trigger/scrape` returned 200 even when ESPN fail-closed — same silent failure mode at a different layer. Fixed with 502 on `failures.length > 0`.
+
+### sprint10-6-sport-selector (2026-04-12)
+- **KEEP**: Global `currentSport` + `localStorage` persistence + generation counter for race conditions — clean pattern for framework-less sport switching
+- **KEEP**: `SPORT_TERMINOLOGY` lookup (points/runs/goals, games/matches, team counts, minGamesFilter) — avoids dozens of inline conditionals
+- **KEEP**: Empty-state guards on every section — sports with no data degrade gracefully
+- **IMPROVE**: Players section was silently falling back to wrong sport when global sport had no data (Codex caught this)
+- **IMPROVE**: Season range formatting crashed on empty data (`undefined-aN`) — guard for `seasonCount === 0`
+- **INSIGHT**: Council review on UI-only changes is lightweight (Data Quality + Domain Expert only) but still caught MLS team count error (29→30, San Diego FC)
+
+### sprint10-6-spread-model (2026-04-12) Council Review
+- **Verdict**: WARN → all findings addressed
+- **KEEP**: `predictMargin()` as a continuous output from the same features (team diff + HCA) — clean separation from v2's probability buckets
+- **KEEP**: Separate model_version='v4-spread' in existing predictions table — no schema migration needed
+- **KEEP**: `writeOddsToGames()` bridging odds_raw → games.odds_json — fixes a pipeline gap that existed since odds scraper was added
+- **IMPROVE**: Edge formula was inverted (`predictedMargin - signedSpread` should be `+ signedSpread`) — Codex caught this. Cover logic must match resolution logic exactly.
+- **IMPROVE**: ERA coefficient was too aggressive (0.5 → 0.3 per council convergence). Starters average ~5 IP; bullpen/defense dilute the signal.
+- **IMPROVE**: `!odds.spread?.line` falsely excluded pick'em (line=0) games. Use `== null` for missing checks.
+- **IMPROVE**: String date comparison missed cross-midnight games. Use `julianday()` for ISO timestamp matching.
+- **INSIGHT**: Prediction Accuracy expert rightly demanded renaming "What's safe to bet?" → "Where the model disagrees with the line" — framing without backtesting is irresponsible
+- **INSIGHT**: Track record must be gated at N≥30 — displaying 3/5 (60%) accuracy is statistically meaningless
+- **INSIGHT**: Probable pitchers are in ESPN's scoreboard response but were never parsed — one normalizer change unlocks MLB-specific modeling

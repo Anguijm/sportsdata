@@ -22,14 +22,16 @@ Four-layer system combining Karpathy's auto-research ratchet loop, Yolo-projects
 
 ## Sports Covered
 
-| League | Source | Teams | Games |
-|--------|--------|-------|-------|
-| NFL | ESPN | 32 | Live (offseason) |
-| NBA | ESPN + BallDontLie | 30 | 3,883 (3 seasons historical) |
-| MLB | ESPN | 30 | Live |
-| NHL | ESPN | 32 | Live |
-| MLS | ESPN | 30 | Live |
-| EPL | ESPN | 20 | Live |
+| League | Source | Teams | Games | Spread Model |
+|--------|--------|-------|-------|-------------|
+| NFL | ESPN | 32 | Live (offseason) | v4-spread (team diff) |
+| NBA | ESPN + BallDontLie | 30 | 4,100+ (3 seasons) | v4-spread (team diff) |
+| MLB | ESPN | 30 | Live | v4-spread (team diff + pitcher ERA) |
+| NHL | ESPN | 32 | Live | v4-spread (team diff) |
+| MLS | ESPN | 30 | Live | v4-spread (team diff) |
+| EPL | ESPN | 20 | Live | v4-spread (team diff) |
+
+All 6 leagues are selectable from the global sport selector on the frontend.
 
 ## Data Sources
 
@@ -114,8 +116,13 @@ src/
     ratchet.ts      Karpathy ratchet loop (hypothesize/evaluate/keep/revert)
     gates.ts        Evaluation gates (idea, plan, build, prediction, data quality)
 
-  analysis/         "Interesting Things" detector
+  analysis/         Analysis + prediction models
     interesting.ts  3 algorithms: streaks, margin outliers, mediocrity
+    predict.ts      Prediction model ladder (v0-v3 winner, v4-spread margin)
+    predict-runner.ts  v2 winner prediction runner
+    spread-runner.ts   v4-spread margin prediction runner (ATS picks)
+    resolve-predictions.ts  Resolver (winner + spread-aware) + track record queries
+    vegas-baseline.ts  Vegas implied probability comparison
 
   viz/              Visualization backend
     data-api.ts     HTTP JSON endpoints for chart data (port 3001)
@@ -127,9 +134,10 @@ src/
     tables.ts       Formatted terminal table rendering
 
 web/                Jon Bois-style scroll narrative (Vite, port 4000)
-  index.html        Single scroll page
-  main.ts           Observable Plot charts + scroll orchestration
+  index.html        Single scroll page with global sport selector
+  main.ts           Observable Plot charts + sport switching + spread picks
   style.css         White/Roboto aesthetic (council-approved)
+  team-colors.ts    Per-sport team color lookup
 
 .harness/           Governance
   council/          Expert review personas (data quality, stats, prediction, domain)
@@ -202,19 +210,23 @@ flyctl deploy                         # Deploy
 - `FLY_API_TOKEN` — Fly.io deploy token
 - `PREDICT_TRIGGER_TOKEN` — Bearer token for `/api/trigger/predict` cron
 
-Auto-deploys: push to `main` triggers Cloudflare Pages build (web/ changes).
-Daily crons: scrape backup (6am UTC), predictions (5am + 22:00 UTC).
+Auto-deploys on push to `main`:
+- `deploy-pages.yml` — frontend to Cloudflare Pages (web/ changes)
+- `deploy-fly.yml` — API to Fly.io (src/, Dockerfile, fly.toml, package* changes)
 
-## Current Stats (as of Sprint 8.5)
+Daily cron (`predict-cron.yml`, 05:00 + 22:00 UTC):
+1. `POST /api/trigger/scrape?sport=all` — scrapes all 6 leagues + writes odds to games
+2. `POST /api/trigger/predict` — generates v2 winner + v4-spread predictions, resolves outcomes
 
-- **6 leagues**: NFL, NBA, MLB, NHL, MLS, EPL
+## Current Stats (as of Sprint 10.6)
+
+- **6 leagues**: NFL, NBA, MLB, NHL, MLS, EPL — all selectable from the frontend
 - **174 teams** normalized across providers
-- **3,946 games** in DB · **3,876 resolved** with outcomes
-- **5,049 player stats** (all 6 sports via ESPN core API)
-- **2,500 backfilled v2 predictions** · 61.4% accuracy · 0.249 Brier
-- **50 live predictions** awaiting game resolution
-- **90 NBA team mappings** (30 teams × 3 providers)
-- ~4,500 lines of TypeScript across 40+ files
+- **4,100+ games** in DB · outcomes resolved automatically via cron
+- **5,000+ player stats** (all 6 sports via ESPN core API)
+- **v2 predictions** (winner): 2,500+ backfilled · 61.4% accuracy · 0.249 Brier
+- **v4-spread predictions** (ATS): accumulating live — track record displays at N≥30
+- **MLB pitcher data**: probable starters + ERA extracted from ESPN scoreboard
 
 ## Live URLs
 
@@ -222,9 +234,38 @@ Daily crons: scrape backup (6am UTC), predictions (5am + 22:00 UTC).
 - **API**: https://sportsdata-api.fly.dev
 - **Health**: https://sportsdata-api.fly.dev/api/health
 
-## Model: v2 Ratchet (NBA)
+## API Endpoints
 
-The predictive model was built via a Karpathy-style ratchet loop:
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/api/health` | GET | No | Health check with `last_scrape_at` staleness field |
+| `/api/stats` | GET | No | Per-sport aggregate stats |
+| `/api/games` | GET | No | All games with scores and odds |
+| `/api/margins` | GET | No | Margin distribution data |
+| `/api/home-timeline` | GET | No | Home win rate over time |
+| `/api/extreme-games` | GET | No | Top 5 blowouts + closest games |
+| `/api/team-sequences` | GET | No | Per-team win/loss sequences by season |
+| `/api/findings` | GET | No | Interesting patterns ranked by surprise |
+| `/api/predictions/upcoming` | GET | No | v2 upcoming winner predictions |
+| `/api/predictions/recent` | GET | No | v2 recently resolved predictions |
+| `/api/predictions/track-record` | GET | No | v2 accuracy + Brier by cohort |
+| `/api/predictions/calibration` | GET | No | v2 calibration bins + ECE |
+| `/api/spread-picks/upcoming` | GET | No | v4-spread ATS picks with edge/tier |
+| `/api/spread-picks/track-record` | GET | No | v4-spread ATS record + ROI |
+| `/api/ratchet` | GET | No | Ratchet iteration artifact |
+| `/api/players` | GET | No | Player findings |
+| `/api/sport-data` | GET | No | Per-sport hero + findings |
+| `/api/player-counts` | GET | No | Player counts across all sports |
+| `/api/trigger/scrape` | POST | Bearer | Scrape ESPN + odds, resolve outcomes |
+| `/api/trigger/predict` | POST | Bearer | Generate v2 + v4-spread predictions |
+
+All GET endpoints accept `?sport=nba|nfl|mlb|nhl|mls|epl`. Trigger endpoints accept `?sport=all` for multi-league scraping.
+
+## Models
+
+### v2 Ratchet (Winner Prediction)
+
+Built via a Karpathy-style ratchet loop. Predicts which team wins.
 
 | Version | Description | Test Brier | Δ |
 |---------|-------------|------------|---|
@@ -233,4 +274,27 @@ The predictive model was built via a Karpathy-style ratchet loop:
 | **v2** | **+ Flip on 3+ point differential** | **0.2486** | **−0.0745** |
 | v3 | + Cold streak penalty | 0.2510 | +0.0022 (rejected) |
 
-**45% Brier improvement over baseline**, bootstrap 95% CIs non-overlapping (statistically significant). Validated on 2,500 held-out games (2024-25 + 2025-26 seasons) with point-in-time team state (no future leakage).
+45% Brier improvement over baseline. Validated on 2,500 held-out games.
+
+### v4-spread (Against the Spread)
+
+Predicts expected margin and compares against the bookmaker's spread line. Experimental — no backtesting, accumulating live track record.
+
+| Feature | Source |
+|---------|--------|
+| Team point differential per game | ESPN game results |
+| Home advantage (per-sport) | NBA +3.0, NFL +2.5, MLB +0.5, NHL +0.3, soccer +0.4 |
+| Cold/hot streak adjustment | Last 3 games |
+| **MLB pitcher ERA differential** | ESPN probable pitchers (±0.3 runs per 1.0 ERA gap) |
+| Odds spread line | The Odds API |
+
+Picks classified as **Strong** (edge ≥ threshold), **Lean**, or **Skip**. Only Strong + Lean shown to users. Track record gated at N≥30 resolved picks. Break-even at -110 vig: 52.4%.
+
+### Known Limitations (Council Debt)
+
+- No backtesting (needs historical odds data — accumulating)
+- Streak adjustments not empirically calibrated
+- MLB: no bullpen or park factor modeling
+- NHL: no goalie matchup data
+- MLS/EPL: draw probability not modeled (affects Asian handicap spreads)
+- Pseudo-probabilities (0.58/0.54/0.51) are starting priors, not calibrated

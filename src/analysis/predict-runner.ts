@@ -55,7 +55,7 @@ interface ReasoningJson {
 }
 
 /** Determine the season year (NBA: Oct-Jun, season starts in October) */
-function nbaSeasonYear(date: string): number {
+export function nbaSeasonYear(date: string): number {
   const d = new Date(date);
   const month = d.getUTCMonth();
   const year = d.getUTCFullYear();
@@ -64,7 +64,7 @@ function nbaSeasonYear(date: string): number {
 
 /** Build CURRENT-SEASON team state for the sport up to (and not including) a target date.
  *  Council mandate: we don't carry stale records across seasons. */
-function buildTeamStateUpTo(sport: Sport, targetDate: string): Map<string, TeamState> {
+export function buildTeamStateUpTo(sport: Sport, targetDate: string): Map<string, TeamState> {
   const db = getDb();
 
   // Determine the current season for the target date

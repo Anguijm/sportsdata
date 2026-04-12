@@ -301,6 +301,88 @@ export function storeRawOdds(sport: string, response: string): void {
   `).run(sport, new Date().toISOString(), response);
 }
 
+/**
+ * Sprint 10.6: Write odds data back to games.odds_json by matching team names.
+ *
+ * The odds API returns full team names ("Boston Celtics") while games use
+ * canonical IDs ("nba:BOS"). This function builds a name→id lookup from the
+ * teams table and matches odds events to scheduled games by team names + date.
+ * Called by the scheduler after odds are scraped.
+ */
+export function writeOddsToGames(sport: string, oddsEvents: Array<{
+  homeTeam: string;
+  awayTeam: string;
+  commenceTime: string;
+  odds: unknown | null;
+}>): number {
+  const db = getDb();
+
+  // Build name → id lookup. Match on full name, city+name variants, and abbreviation.
+  const teams = db.prepare(
+    'SELECT id, name, abbreviation, city FROM teams WHERE sport = ?'
+  ).all(sport) as { id: string; name: string; abbreviation: string; city: string }[];
+
+  const nameToId = new Map<string, string>();
+  for (const t of teams) {
+    nameToId.set(t.name.toLowerCase(), t.id);
+    nameToId.set(t.abbreviation.toLowerCase(), t.id);
+    if (t.city) {
+      nameToId.set(`${t.city} ${t.name}`.toLowerCase(), t.id);
+      // Handle cases like "LA Clippers" vs "Los Angeles Clippers"
+      nameToId.set(t.city.toLowerCase(), t.id);
+    }
+  }
+
+  function resolveTeamId(name: string): string | null {
+    const lower = name.toLowerCase();
+    if (nameToId.has(lower)) return nameToId.get(lower)!;
+    // Fuzzy: check if any known name is a substring of the odds name
+    for (const [key, id] of nameToId) {
+      if (lower.includes(key) || key.includes(lower)) return id;
+    }
+    return null;
+  }
+
+  const updateStmt = db.prepare(`
+    UPDATE games SET odds_json = ?, updated_at = ?
+    WHERE sport = ? AND home_team_id = ? AND away_team_id = ?
+      AND date >= ? AND date <= ?
+      AND odds_json IS NULL
+  `);
+
+  let matched = 0;
+  const now = new Date().toISOString();
+
+  for (const event of oddsEvents) {
+    if (!event.odds) continue;
+    const homeId = resolveTeamId(event.homeTeam);
+    const awayId = resolveTeamId(event.awayTeam);
+    if (!homeId || !awayId) continue;
+
+    // Match within ±1 day of commence time
+    const commence = new Date(event.commenceTime);
+    const dayBefore = new Date(commence.getTime() - 86400000).toISOString().slice(0, 10);
+    const dayAfter = new Date(commence.getTime() + 86400000).toISOString().slice(0, 10);
+
+    // Also remap the favorite field from full name to canonical ID
+    const oddsObj = event.odds as Record<string, unknown>;
+    const spread = oddsObj.spread as { favorite: string; line: number } | undefined;
+    if (spread?.favorite) {
+      const favId = resolveTeamId(spread.favorite);
+      if (favId) spread.favorite = favId;
+    }
+
+    const result = updateStmt.run(
+      JSON.stringify(event.odds), now,
+      sport, homeId, awayId,
+      dayBefore, dayAfter,
+    );
+    if (result.changes > 0) matched++;
+  }
+
+  return matched;
+}
+
 // --- Query helpers ---
 
 export function getTeamCount(sport?: string): number {

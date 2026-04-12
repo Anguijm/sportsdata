@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>sportsdata — three seasons of NBA, the interesting parts</title>
+  <title>sportsdata</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -12,7 +12,7 @@
 <body>
   <div class="narrative">
     <div class="hero">
-      <div class="hero-eyebrow">sportsdata · three nba seasons</div>
+      <div class="hero-eyebrow" id="hero-eyebrow">sportsdata</div>
       <h1 id="hero-title">Loading...</h1>
       <p id="hero-text"></p>
       <div class="big-stats" id="big-stats"></div>
@@ -21,9 +21,9 @@
     <div class="section">
       <div class="section-eyebrow">Section 01 · Distribution</div>
       <h2>How most games end<span class="highlight">.</span></h2>
-      <p class="lead">
-        The shape of normal. Most NBA games are decided by single digits.
-        A handful are decided by 50+. Here's the histogram.
+      <p class="lead" id="histogram-lead">
+        The shape of normal. Most games are decided by single digits.
+        A handful are decided by much more. Here's the histogram.
       </p>
       <div class="chart" id="histogram-chart"></div>
     </div>
@@ -39,9 +39,9 @@
 
     <div class="section">
       <div class="section-eyebrow">Section 03 · Every team, every season</div>
-      <h2>Best and worst 5, by point diff<span class="highlight">.</span></h2>
-      <p class="lead">
-        The cleanest signal in basketball: point differential per game. Top 5 and bottom 5 each season —
+      <h2>Best and worst 5, by margin diff<span class="highlight">.</span></h2>
+      <p class="lead" id="streak-lead">
+        Top 5 and bottom 5 each season by margin differential per game —
         the rest hidden by default. Wins green, losses red, read left-to-right. Older seasons collapsed.
       </p>
       <div id="streak-grid"></div>
@@ -60,9 +60,9 @@
     <div class="section">
       <div class="section-eyebrow">Section 05 · Live Predictions</div>
       <h2>Tonight, the model picks<span class="highlight">.</span></h2>
-      <p class="lead">
+      <p class="lead" id="predictions-lead">
         The v2 ratchet model — the same one that beat baseline by 45% Brier on a held-out
-        test set — applied to upcoming NBA games. Track record updates as games complete.
+        test set — applied to upcoming games. Track record updates as games complete.
         Picks are reasoned, not vibes. Confidence is honest.
       </p>
       <div id="predictions-section"></div>

@@ -134,7 +134,7 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
       continue;
     }
 
-    if (!odds.spread?.favorite || !odds.spread?.line) {
+    if (!odds.spread?.favorite || odds.spread?.line == null) {
       skipped++;
       continue;
     }

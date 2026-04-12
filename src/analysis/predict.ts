@@ -251,11 +251,14 @@ export function compareToSpread(
     spreadFavorite.includes(homeTeamId.split(':')[1] ?? '');
   const signedSpread = homeIsFavorite ? -spreadLine : spreadLine;
 
-  // Edge = how much model disagrees with the line
-  // predictedMargin is home-relative (positive = home wins)
-  // signedSpread is home-relative (negative = home needs to win by that much)
-  // edge = predictedMargin - (-spreadLine) = predictedMargin + spreadLine (when home is fav)
-  const edge = predictedMargin - signedSpread;
+  // Edge = does the model predict that the home team covers?
+  // Uses the same convention as sqlite.ts spread resolution:
+  //   adjustedMargin = homeMargin + spreadLine
+  //   adjustedMargin > 0 → home covers
+  // So: edge = predictedMargin + signedSpread
+  //   positive edge → model says home covers
+  //   negative edge → model says away covers
+  const edge = predictedMargin + signedSpread;
   const absEdge = Math.abs(edge);
 
   const thresholds = SPORT_EDGE_THRESHOLDS[sport] ?? SPORT_EDGE_THRESHOLDS['nba'];

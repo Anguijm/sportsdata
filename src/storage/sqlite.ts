@@ -352,10 +352,14 @@ export function writeOddsToGames(sport: string, oddsEvents: Array<{
     return null;
   }
 
+  // Use julianday for date comparison so full ISO timestamps (e.g.,
+  // '2026-04-13T01:00:00Z') are correctly matched against the ±1 day
+  // window. Plain string comparison fails because 'T' > end-of-string.
   const updateStmt = db.prepare(`
     UPDATE games SET odds_json = ?, updated_at = ?
     WHERE sport = ? AND home_team_id = ? AND away_team_id = ?
-      AND date >= ? AND date <= ?
+      AND julianday(date) >= julianday(?)
+      AND julianday(date) <= julianday(?)
       AND odds_json IS NULL
   `);
 
@@ -368,10 +372,10 @@ export function writeOddsToGames(sport: string, oddsEvents: Array<{
     const awayId = resolveTeamId(event.awayTeam);
     if (!homeId || !awayId) continue;
 
-    // Match within ±1 day of commence time
+    // Match within ±1 day of commence time — full ISO timestamps for julianday()
     const commence = new Date(event.commenceTime);
-    const dayBefore = new Date(commence.getTime() - 86400000).toISOString().slice(0, 10);
-    const dayAfter = new Date(commence.getTime() + 86400000).toISOString().slice(0, 10);
+    const dayBefore = new Date(commence.getTime() - 86400000).toISOString();
+    const dayAfter = new Date(commence.getTime() + 86400000).toISOString();
 
     // Also remap the favorite field from full name to canonical ID
     const oddsObj = event.odds as Record<string, unknown>;

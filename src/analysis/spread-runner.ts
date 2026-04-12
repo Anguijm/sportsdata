@@ -15,7 +15,7 @@ import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
 import type { GameOdds } from '../schema/game.js';
 import { predictMargin, compareToSpread } from './predict.js';
-import type { ConfidenceTier, SpreadComparison } from './predict.js';
+import type { ConfidenceTier, SpreadComparison, PitcherMatchup } from './predict.js';
 import { buildTeamStateUpTo } from './predict-runner.js';
 import type { PredictionRecord } from './predict-runner.js';
 
@@ -26,6 +26,7 @@ interface ScheduledGameWithOdds {
   home_team_id: string;
   away_team_id: string;
   odds_json: string;
+  pitchers_json: string | null;
 }
 
 interface SpreadReasoningJson {
@@ -97,7 +98,7 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
 
   const today = new Date().toISOString().slice(0, 10);
   const scheduledGames = db.prepare(`
-    SELECT id, date, sport, home_team_id, away_team_id, odds_json
+    SELECT id, date, sport, home_team_id, away_team_id, odds_json, pitchers_json
     FROM games
     WHERE sport = ? AND status = 'scheduled' AND date >= ? AND odds_json IS NOT NULL
     ORDER BY date
@@ -151,6 +152,17 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
     const ctx = { home: homeState, away: awayState, asOfDate };
     const lowConfidence = homeState.games < 5 || awayState.games < 5;
 
+    // Parse pitcher data for MLB
+    let pitchers: PitcherMatchup | undefined;
+    if (game.sport === 'mlb' && game.pitchers_json) {
+      try {
+        const pj = JSON.parse(game.pitchers_json) as { home?: { era: number }; away?: { era: number } };
+        if (pj.home?.era && pj.away?.era) {
+          pitchers = { homeEra: pj.home.era, awayEra: pj.away.era };
+        }
+      } catch { /* ignore */ }
+    }
+
     // Predict margin
     const margin = predictMargin(
       {
@@ -162,6 +174,7 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
         home_win: 0,
       },
       ctx,
+      pitchers,
     );
 
     // Compare to spread

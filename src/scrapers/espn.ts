@@ -5,6 +5,7 @@
  */
 
 import type { Game, Team } from '../schema/index.js';
+import type { ProbablePitcher } from '../schema/game.js';
 import type { Sport } from '../schema/provenance.js';
 import type { ScrapeLogEntry } from '../storage/json-log.js';
 import { appendLog, countRecentRequests } from '../storage/json-log.js';
@@ -187,6 +188,33 @@ function normalizeScoreboard(data: EspnScoreboardResponse, sport: Sport, url: st
         away: parseInt(away.score, 10),
         overtime: false,
       };
+    }
+
+    // MLB probable starting pitchers — ESPN includes these on scheduled games.
+    // probables[] is at the competition level, each entry has an athlete + team.
+    if (sport === 'mlb' && comp?.probables && comp.probables.length >= 2) {
+      const pitchers: Game['probablePitchers'] = {};
+      for (const p of comp.probables) {
+        const teamId = p.athlete.team?.id;
+        // Match to home or away by ESPN team ID
+        const isHome = teamId?.toString() === home?.id;
+        const isAway = teamId?.toString() === away?.id;
+        const eraStat = p.statistics?.find(s => s.abbreviation === 'ERA');
+        const pitcher: ProbablePitcher = {
+          name: p.athlete.fullName ?? p.athlete.displayName,
+          espnId: p.athlete.id,
+          era: eraStat ? parseFloat(eraStat.displayValue) || 0 : 0,
+          record: p.record,
+        };
+        if (isHome) pitchers.home = pitcher;
+        else if (isAway) pitchers.away = pitcher;
+        else {
+          // Fallback: first probable is away, second is home (ESPN convention)
+          if (!pitchers.away) pitchers.away = pitcher;
+          else if (!pitchers.home) pitchers.home = pitcher;
+        }
+      }
+      if (pitchers.home || pitchers.away) game.probablePitchers = pitchers;
     }
 
     return game;

@@ -31,6 +31,12 @@ export interface PredictionContext {
   asOfDate: string;
 }
 
+/** Pitcher data attached to a game, if available (MLB only). */
+export interface PitcherMatchup {
+  homeEra: number;
+  awayEra: number;
+}
+
 /** Returns probability that the home team wins (0.0 - 1.0) */
 export type Predictor = (game: GameForPrediction, ctx: PredictionContext) => number;
 
@@ -170,8 +176,9 @@ const SPORT_EDGE_THRESHOLDS: Record<string, { strong: number; lean: number }> = 
 /** Predict expected margin: positive = home team wins by that many units.
  *
  *  Formula: base margin from differential gap + home advantage + streak adjustments.
- *  Same inputs as v3 but continuous output instead of probability buckets. */
-export function predictMargin(game: GameForPrediction, ctx: PredictionContext): number {
+ *  Same inputs as v3 but continuous output instead of probability buckets.
+ *  For MLB, pitcher ERA differential adjusts the margin when available. */
+export function predictMargin(game: GameForPrediction, ctx: PredictionContext, pitchers?: PitcherMatchup): number {
   const sport = game.sport;
   const homeAdv = SPORT_HOME_ADVANTAGE[sport] ?? 3.0;
   const clamp = SPORT_MARGIN_CLAMP[sport] ?? 30;
@@ -193,6 +200,15 @@ export function predictMargin(game: GameForPrediction, ctx: PredictionContext): 
 
   if (homeColdStreak) margin -= homeAdv * 0.5; // halve home advantage when cold
   if (awayHotStreak) margin -= homeAdv * 0.3;  // further reduce for hot visitor
+
+  // MLB pitcher ERA differential: lower ERA = better pitcher.
+  // League average ERA ≈ 4.0. A 1.0 ERA gap maps to roughly ±0.5 runs of margin
+  // adjustment (conservative, based on ~1 run per 9 IP ERA difference scaled down
+  // because run support, bullpen, and defense matter too).
+  if (sport === 'mlb' && pitchers && pitchers.homeEra > 0 && pitchers.awayEra > 0) {
+    const eraGap = pitchers.awayEra - pitchers.homeEra; // positive = home pitcher better
+    margin += eraGap * 0.5; // ±0.5 runs per 1.0 ERA gap
+  }
 
   return Math.max(-clamp, Math.min(clamp, margin));
 }

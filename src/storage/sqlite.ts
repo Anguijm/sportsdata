@@ -123,6 +123,13 @@ function initTables(db: Database.Database): void {
     // Column already exists, ignore
   }
 
+  // Sprint 10.6 migration: add pitchers_json column for MLB probable starters.
+  try {
+    db.exec('ALTER TABLE games ADD COLUMN pitchers_json TEXT');
+  } catch {
+    // Column already exists, ignore
+  }
+
   db.exec(`
     -- Sprint 8.5 council mandate (Architect): filtered queries by source
     CREATE INDEX IF NOT EXISTS idx_predictions_source_model ON predictions(prediction_source, model_version);
@@ -202,6 +209,7 @@ function gameToRow(game: Game) {
     score_json: game.score ? JSON.stringify(game.score) : null,
     odds_json: game.odds ? JSON.stringify(game.odds) : null,
     weather_json: game.weather ? JSON.stringify(game.weather) : null,
+    pitchers_json: game.probablePitchers ? JSON.stringify(game.probablePitchers) : null,
     provenance_json: JSON.stringify(game.provenance),
     updated_at: new Date().toISOString(),
   };
@@ -220,6 +228,7 @@ function rowToGame(row: Record<string, unknown>): Game {
     score: row.score_json ? JSON.parse(row.score_json as string) : undefined,
     odds: row.odds_json ? JSON.parse(row.odds_json as string) : undefined,
     weather: row.weather_json ? JSON.parse(row.weather_json as string) : undefined,
+    probablePitchers: row.pitchers_json ? JSON.parse(row.pitchers_json as string) : undefined,
     provenance: JSON.parse(row.provenance_json as string),
   };
 }
@@ -253,10 +262,10 @@ export const sqliteRepository: Repository = {
   async upsertGame(game: Game): Promise<void> {
     const row = gameToRow(game);
     getDb().prepare(`
-      INSERT INTO games (id, sport, season, date, home_team_id, away_team_id, venue, status, score_json, odds_json, weather_json, provenance_json, updated_at)
-      VALUES (@id, @sport, @season, @date, @home_team_id, @away_team_id, @venue, @status, @score_json, @odds_json, @weather_json, @provenance_json, @updated_at)
+      INSERT INTO games (id, sport, season, date, home_team_id, away_team_id, venue, status, score_json, odds_json, weather_json, pitchers_json, provenance_json, updated_at)
+      VALUES (@id, @sport, @season, @date, @home_team_id, @away_team_id, @venue, @status, @score_json, @odds_json, @weather_json, @pitchers_json, @provenance_json, @updated_at)
       ON CONFLICT(id) DO UPDATE SET
-        status=@status, score_json=@score_json, odds_json=@odds_json, weather_json=@weather_json,
+        status=@status, score_json=@score_json, odds_json=@odds_json, weather_json=@weather_json, pitchers_json=COALESCE(@pitchers_json, pitchers_json),
         provenance_json=@provenance_json, updated_at=@updated_at
     `).run(row);
   },

@@ -24,7 +24,8 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           # Use sqlite3 .dump for text-safe output (avoids binary-over-SSH corruption risk)
-          flyctl ssh console -C "sqlite3 /app/data/sqlite/sportsdata.db .dump" > sportsdata.sql
+          # -a flag explicitly targets the sportsdata-api app
+          flyctl ssh console -a sportsdata-api -C "sqlite3 /app/data/sqlite/sportsdata.db .dump" > sportsdata.sql
           gzip -9 sportsdata.sql
           ls -lh sportsdata.sql.gz
           echo "Backup size: $(stat -c%s sportsdata.sql.gz) bytes"

@@ -480,6 +480,11 @@ export interface PredictionWithGame {
 
 export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWithGame[] {
   const db = getDb();
+  // Only show predictions for games that are TODAY or in the future.
+  // Past-date unresolved predictions (e.g., BDL game IDs whose status
+  // was never updated to 'final' by the ESPN scraper) should not appear
+  // as "upcoming" — they'll be resolved by the cross-namespace resolver.
+  const today = new Date().toISOString().slice(0, 10);
   return db.prepare(`
     SELECT p.id, p.game_id, p.sport, p.model_version, p.predicted_winner,
            p.predicted_prob, p.reasoning_text, p.made_at, p.resolved_at,
@@ -488,9 +493,10 @@ export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWith
     FROM predictions p
     JOIN games g ON p.game_id = g.id
     WHERE p.sport = ? AND p.model_version = 'v2' AND p.resolved_at IS NULL
+      AND g.date >= ?
     ORDER BY g.date
     LIMIT ?
-  `).all(sport, limit) as PredictionWithGame[];
+  `).all(sport, today, limit) as PredictionWithGame[];
 }
 
 export function getRecentResolvedPredictions(sport: Sport, limit = 20): PredictionWithGame[] {
@@ -532,6 +538,7 @@ export interface SpreadPickRow {
 
 export function getUpcomingSpreadPicks(sport: Sport, limit = 30): SpreadPickRow[] {
   const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
   return db.prepare(`
     SELECT p.id, p.game_id, p.sport, p.predicted_winner,
            p.predicted_prob, p.reasoning_text, p.reasoning_json,
@@ -540,9 +547,10 @@ export function getUpcomingSpreadPicks(sport: Sport, limit = 30): SpreadPickRow[
     FROM predictions p
     JOIN games g ON p.game_id = g.id
     WHERE p.sport = ? AND p.model_version = 'v4-spread' AND p.resolved_at IS NULL
+      AND g.date >= ?
     ORDER BY g.date
     LIMIT ?
-  `).all(sport, limit) as SpreadPickRow[];
+  `).all(sport, today, limit) as SpreadPickRow[];
 }
 
 export interface SpreadTrackRecord {

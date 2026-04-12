@@ -62,15 +62,42 @@ export function nbaSeasonYear(date: string): number {
   return month >= 9 ? year : year - 1;
 }
 
+/** Return the season start date for a sport. Each sport has a different
+ *  calendar — using the wrong window means team state is computed from
+ *  the wrong games (Codex review on PR #7). */
+function getSeasonStart(sport: Sport, targetDate: string): string {
+  const d = new Date(targetDate);
+  const month = d.getUTCMonth(); // 0-indexed
+  const year = d.getUTCFullYear();
+
+  switch (sport) {
+    case 'mlb':
+      // MLB: March–October, season = calendar year
+      return `${year}-03-01`;
+    case 'nfl':
+      // NFL: September–February
+      return `${month >= 8 ? year : year - 1}-09-01`;
+    case 'epl':
+      // EPL: August–May
+      return `${month >= 7 ? year : year - 1}-08-01`;
+    case 'mls':
+      // MLS: March–November, season = calendar year
+      return `${year}-03-01`;
+    case 'nhl':
+      // NHL: October–June (same as NBA)
+      return `${month >= 9 ? year : year - 1}-10-01`;
+    case 'nba':
+    default:
+      return `${month >= 9 ? year : year - 1}-10-01`;
+  }
+}
+
 /** Build CURRENT-SEASON team state for the sport up to (and not including) a target date.
  *  Council mandate: we don't carry stale records across seasons. */
 export function buildTeamStateUpTo(sport: Sport, targetDate: string): Map<string, TeamState> {
   const db = getDb();
 
-  // Determine the current season for the target date
-  const currentSeason = nbaSeasonYear(targetDate);
-  // Season window: October 1 of currentSeason → September 30 of next year
-  const seasonStart = `${currentSeason}-10-01`;
+  const seasonStart = getSeasonStart(sport, targetDate);
 
   const rows = db.prepare(`
     SELECT date, winner, loser, home_score, away_score, home_win

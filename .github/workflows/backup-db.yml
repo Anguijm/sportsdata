@@ -1,0 +1,61 @@
+name: Backup SQLite DB
+
+# P0-1: Automated nightly backup of the SQLite volume.
+# Council mandate: Fly volumes are single-host, non-replicated.
+# Volume failure = total data loss (predictions, track record, scrape history).
+# Uploads gzipped DB to GitHub release artifacts (free, versioned, auditable).
+# Keeps a 7-day rolling window of daily backups.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3am UTC daily (before the 5am scrape cron)
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Download SQLite DB from Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Use sqlite3 .dump for text-safe output (avoids binary-over-SSH corruption risk)
+          flyctl ssh console -C "sqlite3 /app/data/sqlite/sportsdata.db .dump" > sportsdata.sql
+          gzip -9 sportsdata.sql
+          ls -lh sportsdata.sql.gz
+          echo "Backup size: $(stat -c%s sportsdata.sql.gz) bytes"
+
+      - name: Upload to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="backup-$(date -u +%Y-%m-%d)"
+          gh release create "$TAG" --title "Daily Backup $TAG" --notes "Automated SQLite backup" 2>/dev/null || true
+          gh release upload "$TAG" sportsdata.sql.gz --clobber
+
+      - name: Prune old backups (keep 7 days)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUTOFF=$(date -u -d "8 days ago" +%Y-%m-%d)
+          # gh release list outputs: tag\tstatus\ttitle\tdate
+          gh release list --limit 30 --json tagName --jq '.[].tagName' | while read -r TAG; do
+            case "$TAG" in
+              backup-*)
+                DATE=${TAG#backup-}
+                if [[ "$DATE" < "$CUTOFF" ]]; then
+                  echo "Pruning old backup: $TAG"
+                  gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+                fi
+                ;;
+            esac
+          done
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          echo "::error::SQLite backup failed! Check Fly.io connectivity and volume status."

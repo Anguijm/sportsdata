@@ -14,6 +14,7 @@ import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
 import { v2 } from './predict.js';
 import type { TeamState } from './predict.js';
+import { getSeasonStart, getSeasonYear } from './season.js';
 
 export interface PredictionRecord {
   id: string;
@@ -54,42 +55,9 @@ interface ReasoningJson {
   prob_home_wins: number;
 }
 
-/** Determine the season year (NBA: Oct-Jun, season starts in October) */
+/** @deprecated Use getSeasonYear from './season.js' instead. Kept for backwards compat. */
 export function nbaSeasonYear(date: string): number {
-  const d = new Date(date);
-  const month = d.getUTCMonth();
-  const year = d.getUTCFullYear();
-  return month >= 9 ? year : year - 1;
-}
-
-/** Return the season start date for a sport. Each sport has a different
- *  calendar — using the wrong window means team state is computed from
- *  the wrong games (Codex review on PR #7). */
-function getSeasonStart(sport: Sport, targetDate: string): string {
-  const d = new Date(targetDate);
-  const month = d.getUTCMonth(); // 0-indexed
-  const year = d.getUTCFullYear();
-
-  switch (sport) {
-    case 'mlb':
-      // MLB: March–October, season = calendar year
-      return `${year}-03-01`;
-    case 'nfl':
-      // NFL: September–February
-      return `${month >= 8 ? year : year - 1}-09-01`;
-    case 'epl':
-      // EPL: August–May
-      return `${month >= 7 ? year : year - 1}-08-01`;
-    case 'mls':
-      // MLS: March–November, season = calendar year
-      return `${year}-03-01`;
-    case 'nhl':
-      // NHL: October–June (same as NBA)
-      return `${month >= 9 ? year : year - 1}-10-01`;
-    case 'nba':
-    default:
-      return `${month >= 9 ? year : year - 1}-10-01`;
-  }
+  return getSeasonYear('nba', date);
 }
 
 /** Build CURRENT-SEASON team state for the sport up to (and not including) a target date.
@@ -100,13 +68,13 @@ export function buildTeamStateUpTo(sport: Sport, targetDate: string): Map<string
   const seasonStart = getSeasonStart(sport, targetDate);
 
   const rows = db.prepare(`
-    SELECT date, winner, loser, home_score, away_score, home_win
+    SELECT date, winner, loser, home_score, away_score, home_win, is_draw
     FROM game_results
     WHERE sport = ? AND date >= ? AND date < ?
     ORDER BY date
   `).all(sport, seasonStart, targetDate) as Array<{
     date: string; winner: string; loser: string;
-    home_score: number; away_score: number; home_win: number;
+    home_score: number; away_score: number; home_win: number; is_draw: number;
   }>;
 
   const states = new Map<string, TeamState>();
@@ -122,8 +90,11 @@ export function buildTeamStateUpTo(sport: Sport, targetDate: string): Map<string
   };
 
   for (const r of rows) {
-    const homeId = r.home_win === 1 ? r.winner : r.loser;
-    const awayId = r.home_win === 1 ? r.loser : r.winner;
+    // For draws, winner=home by convention (P0-2). Derive team IDs from
+    // the winner/loser fields since home_win=0 for both draws and away wins.
+    const isDraw = r.is_draw === 1;
+    const homeId = (r.home_win === 1 || isDraw) ? r.winner : r.loser;
+    const awayId = (r.home_win === 1 || isDraw) ? r.loser : r.winner;
     const homeState = init(homeId);
     const awayState = init(awayId);
 
@@ -134,16 +105,25 @@ export function buildTeamStateUpTo(sport: Sport, targetDate: string): Map<string
     awayState.pointsFor += r.away_score;
     awayState.pointsAgainst += r.home_score;
 
-    const homeWon = r.home_win === 1;
-    if (homeWon) {
-      homeState.wins++;
-      awayState.losses++;
+    // Draws: increment games (already done above) but NOT wins or losses.
+    // Council mandate (P0-2): without this, draws counted as away wins,
+    // corrupting team state for MLS/EPL where ~25-30% of games draw.
+    if (!isDraw) {
+      const homeWon = r.home_win === 1;
+      if (homeWon) {
+        homeState.wins++;
+        awayState.losses++;
+      } else {
+        homeState.losses++;
+        awayState.wins++;
+      }
+      homeState.lastNResults = [...homeState.lastNResults, r.home_win === 1].slice(-5);
+      awayState.lastNResults = [...awayState.lastNResults, r.home_win !== 1].slice(-5);
     } else {
-      homeState.losses++;
-      awayState.wins++;
+      // Draw: treat as neither win nor loss in streak tracking
+      homeState.lastNResults = [...homeState.lastNResults].slice(-5);
+      awayState.lastNResults = [...awayState.lastNResults].slice(-5);
     }
-    homeState.lastNResults = [...homeState.lastNResults, homeWon].slice(-5);
-    awayState.lastNResults = [...awayState.lastNResults, !homeWon].slice(-5);
   }
 
   return states;

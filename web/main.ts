@@ -1163,7 +1163,15 @@ function renderPlayerSection(container: HTMLElement, allPlayers: Map<string, Spo
     return;
   }
 
-  let activeSport = sports.includes(currentSport) ? currentSport : sports[0]!;
+  // If the globally selected sport has no player data, show an empty state
+  // for that sport rather than silently displaying another sport's data.
+  if (!sports.includes(currentSport)) {
+    const term = sportTerm();
+    container.innerHTML = `<p style="color: var(--text-muted)">No player data for ${term.leagueName} yet. Data accumulates as games are scraped.</p>`;
+    return;
+  }
+
+  let activeSport = currentSport;
 
   const renderTabs = (active: string): string => sports.map(sport => {
     const count = counts[sport] ?? 0;
@@ -1348,9 +1356,11 @@ async function loadAndRenderAll() {
     const firstSeason = sortedSeasons[0];
     const lastSeason = sortedSeasons[sortedSeasons.length - 1];
     const seasonCount = sortedSeasons.length;
-    const seasonRangeLabel = firstSeason === lastSeason
-      ? `${firstSeason}-${String(firstSeason + 1).slice(-2)} season`
-      : `${firstSeason}-${String(firstSeason + 1).slice(-2)} through ${lastSeason}-${String(lastSeason + 1).slice(-2)}`;
+    const seasonRangeLabel = seasonCount === 0
+      ? 'no season data'
+      : firstSeason === lastSeason
+        ? `${firstSeason}-${String(firstSeason! + 1).slice(-2)} season`
+        : `${firstSeason}-${String(firstSeason! + 1).slice(-2)} through ${lastSeason}-${String(lastSeason! + 1).slice(-2)}`;
 
     // Hero
     if (totalGames === 0) {

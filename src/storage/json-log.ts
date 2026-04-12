@@ -86,8 +86,9 @@ function recordRequest(source: string): void {
   if (!recentTimestamps.has(source)) recentTimestamps.set(source, []);
   const arr = recentTimestamps.get(source)!;
   arr.push(Date.now());
-  // Prune entries older than 5 minutes to prevent memory growth
-  const cutoff = Date.now() - 5 * 60 * 1000;
+  // Prune entries older than 25 hours to cover the Odds API 24-hour window
+  // while still bounding memory growth (~1 entry per request, max ~500/month)
+  const cutoff = Date.now() - 25 * 60 * 60 * 1000;
   const firstValid = arr.findIndex(t => t > cutoff);
   if (firstValid > 0) arr.splice(0, firstValid);
 }

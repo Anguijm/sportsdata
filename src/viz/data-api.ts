@@ -271,12 +271,19 @@ export function startDataApi(): void {
             }
           }
 
-          response = jsonResponse({
+          const predictBody = {
             sports: predictSports,
             results: perSport,
             errors: errors.length > 0 ? errors : undefined,
             triggeredAt: new Date().toISOString(),
-          });
+          };
+          // Return 502 when any sport failed so cron's curl -f catches it
+          if (errors.length > 0) {
+            res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify(predictBody));
+            return;
+          }
+          response = jsonResponse(predictBody);
           break;
         }
 

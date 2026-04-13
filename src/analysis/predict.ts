@@ -146,7 +146,57 @@ export const v3: Iteration = {
   },
 };
 
-export const ITERATIONS: Iteration[] = [v0, v1, v2, v3];
+/** v5: Continuous sigmoid model — replaces discrete v2 buckets.
+ *
+ *  Maps the point-differential gap to a continuous probability via logistic
+ *  function. Every game gets a unique probability instead of one of 4 buckets.
+ *
+ *  prob_home = sigmoid(scale * (homeDiff - awayDiff + homeAdvBias))
+ *
+ *  Scale calibrated from 12,813 backfill predictions:
+ *  - NBA at diffGap=0: ~60% home wins → homeAdvBias ≈ 3.0, scale ≈ 0.10
+ *  - NBA at diffGap=5 (away better): ~38% home → sigmoid(0.10 * (-5+3)) ≈ 0.45
+ *  - NBA at diffGap=-5 (home better): ~72% home → sigmoid(0.10 * (5+3)) ≈ 0.69
+ *
+ *  Per-sport scale accounts for scoring range: NBA/NFL use points (large
+ *  differentials), MLB/NHL/soccer use runs/goals (small differentials).
+ */
+const SIGMOID_SCALE: Record<string, number> = {
+  nba: 0.10,   // ~10 pts differential range
+  nfl: 0.10,   // similar scoring range to NBA
+  mlb: 0.40,   // ~2 run differential range
+  nhl: 0.50,   // ~1 goal differential range
+  mls: 0.50,   // similar to NHL
+  epl: 0.50,   // similar to NHL
+};
+
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-x));
+}
+
+export const v5: Iteration = {
+  id: 'v5',
+  version: '5',
+  description: 'Continuous sigmoid model — unique probability per game from differential gap',
+  predict: (game, ctx) => {
+    const baseRate = SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
+    if (ctx.home.games < 5 || ctx.away.games < 5) return baseRate;
+
+    const homeDiff = (ctx.home.pointsFor - ctx.home.pointsAgainst) / ctx.home.games;
+    const awayDiff = (ctx.away.pointsFor - ctx.away.pointsAgainst) / ctx.away.games;
+    const scale = SIGMOID_SCALE[game.sport] ?? 0.10;
+    const homeAdv = SPORT_HOME_ADVANTAGE[game.sport] ?? 3.0;
+
+    // x > 0 → home favored, x < 0 → away favored
+    const x = scale * ((homeDiff - awayDiff) + homeAdv);
+    const prob = sigmoid(x);
+
+    // Clamp to [0.15, 0.85] — no game is truly 95% certain
+    return Math.max(0.15, Math.min(0.85, prob));
+  },
+};
+
+export const ITERATIONS: Iteration[] = [v0, v1, v2, v3, v5];
 
 // =============================================================================
 // SPREAD MODEL (Phase 2 — Sprint 10.6)

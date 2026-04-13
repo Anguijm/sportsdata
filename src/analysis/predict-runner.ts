@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
-import { v2 } from './predict.js';
+import { v5 } from './predict.js';
 import type { TeamState } from './predict.js';
 import { getSeasonStart, getSeasonYear } from './season.js';
 
@@ -186,7 +186,7 @@ export function predictGame(
     asOfDate,
   };
 
-  const probHome = v2.predict(
+  const probHome = v5.predict(
     {
       game_id: game.id,
       date: game.date,
@@ -206,7 +206,7 @@ export function predictGame(
   const awayDiff = awayState.games > 0 ? (awayState.pointsFor - awayState.pointsAgainst) / awayState.games : 0;
 
   const reasoning: ReasoningJson = {
-    model: 'v2',
+    model: 'v5',
     features: {
       home_wins: homeState.wins,
       home_losses: homeState.losses,
@@ -230,7 +230,7 @@ export function predictGame(
     id: randomUUID(),
     game_id: game.id,
     sport: game.sport,
-    model_version: 'v2',
+    model_version: 'v5',
     predicted_winner: winnerId,
     predicted_prob: pick === 'home' ? probHome : 1 - probHome,
     reasoning_json: JSON.stringify(reasoning),
@@ -272,7 +272,7 @@ export function predictUpcoming(sport: Sport): { predictions: PredictionRecord[]
   );
 
   for (const game of scheduledGames) {
-    if (existingStmt.get(game.id, 'v2')) {
+    if (existingStmt.get(game.id, 'v5')) {
       skipped++;
       continue;
     }

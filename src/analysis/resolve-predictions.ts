@@ -238,7 +238,7 @@ function getCohort(sport: Sport, modelVersion: string, source: 'live' | 'backfil
   };
 }
 
-export function getTrackRecord(sport: Sport, modelVersion = 'v2'): TrackRecord {
+export function getTrackRecord(sport: Sport, modelVersion = 'v5'): TrackRecord {
   const live = getCohort(sport, modelVersion, 'live');
   const backfill = getCohort(sport, modelVersion, 'backfill');
 
@@ -469,7 +469,7 @@ function computeCohort(
   };
 }
 
-export function getCalibration(sport: Sport, modelVersion = 'v2', binCount = 10): Calibration {
+export function getCalibration(sport: Sport, modelVersion = 'v5', binCount = 10): Calibration {
   const db = getDb();
   const fetchRows = (source: 'live' | 'backfill'): CalibrationRow[] =>
     db.prepare(`
@@ -530,7 +530,7 @@ export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWith
            g.pitchers_json
     FROM predictions p
     JOIN games g ON p.game_id = g.id
-    WHERE p.sport = ? AND p.model_version = 'v2' AND p.resolved_at IS NULL
+    WHERE p.sport = ? AND p.model_version IN ('v2', 'v5') AND p.resolved_at IS NULL
       AND g.date >= ?
     ORDER BY g.date
     LIMIT ?
@@ -546,7 +546,7 @@ export function getRecentResolvedPredictions(sport: Sport, limit = 20): Predicti
            g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status
     FROM predictions p
     JOIN games g ON p.game_id = g.id
-    WHERE p.sport = ? AND p.model_version = 'v2' AND p.resolved_at IS NOT NULL
+    WHERE p.sport = ? AND p.model_version IN ('v2', 'v5') AND p.resolved_at IS NOT NULL
     ORDER BY p.resolved_at DESC
     LIMIT ?
   `).all(sport, limit) as PredictionWithGame[];

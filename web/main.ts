@@ -438,7 +438,7 @@ function renderPredictions(
 
   const trackHtml = `
     <div class="track-record">
-      <div class="track-record-eyebrow">v2 model · track record</div>
+      <div class="track-record-eyebrow">v5 model · track record</div>
       <div class="track-cohorts">
         ${renderCohort(
           'LIVE',
@@ -461,7 +461,7 @@ function renderPredictions(
         ? `<div class="track-disclaimer">Live sample size: ${live.resolved}. Track record will stabilize as more games resolve.</div>`
         : ''}
       ${backfill && backfill.resolved > 0
-        ? `<div class="track-disclaimer">Backtest is the v2 model run retrospectively on held-out 2024-25 + 2025-26 games using only data available before each game. It is the model's calibration baseline, not a live record.</div>`
+        ? `<div class="track-disclaimer">Backtest is the model run retrospectively on held-out games using only data available before each game. It is the model's calibration baseline, not a live record.</div>`
         : ''}
     </div>
   `;
@@ -1012,7 +1012,7 @@ function renderCalibration(container: HTMLElement, data: Calibration) {
   // is discrete (only a few bins populated), explain the chart's apparent
   // sparseness — that IS the finding.
   const discreteFootnote = primary.populatedBins > 0 && primary.populatedBins <= 3
-    ? `<div class="calibration-footnote">v2 model emits ${primary.populatedBins} discrete confidence value${primary.populatedBins === 1 ? '' : 's'} — ${totalBins - primary.populatedBins} of ${totalBins} bins empty by design.</div>`
+    ? `<div class="calibration-footnote">Model emits ${primary.populatedBins} confidence value${primary.populatedBins === 1 ? '' : 's'} — ${totalBins - primary.populatedBins} of ${totalBins} bins empty.</div>`
     : '';
 
   const liveFootnote = live.n > 0 && live.n < LIVE_THRESHOLD
@@ -1368,7 +1368,7 @@ async function loadAndRenderAll() {
     `The cleanest signal in ${term.leagueName}: ${term.diffLabel} per ${term.gameNoun === 'matches' ? 'match' : 'game'}. Top 5 and bottom 5 each season — the rest hidden by default. Wins green, losses red, read left-to-right. Older seasons collapsed.`;
   const predLead = document.getElementById('predictions-lead');
   if (predLead) predLead.textContent =
-    `The v2 ratchet model, validated against a held-out test set, applied to upcoming ${term.leagueName} ${term.gameNoun}. Track record updates as ${term.gameNoun} complete. Picks are reasoned, not vibes. Confidence is honest.`;
+    `The v5 model uses a continuous sigmoid on team differential to produce unique probabilities per game. Applied to upcoming ${term.leagueName} ${term.gameNoun}. Track record updates as ${term.gameNoun} complete. Picks are reasoned, not vibes.`;
   const spreadLead = document.getElementById('spread-lead');
   if (spreadLead) spreadLead.textContent =
     `The v4-spread model predicts expected margin and compares it against the bookmaker's line. When the model disagrees with the spread by a meaningful amount, that's an edge signal. This is experimental — no backtesting, no proven edge. Track record accumulates live.`;

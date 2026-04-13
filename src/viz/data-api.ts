@@ -396,7 +396,13 @@ export function startDataApi(): void {
             return;
           }
           const backfillSport = url.searchParams.get('sport') ?? 'all';
-          const backfillMode = url.searchParams.get('mode') ?? undefined; // 'scrape' | 'predict' | undefined (full)
+          const backfillMode = url.searchParams.get('mode') ?? undefined;
+          const VALID_MODES = new Set(['scrape', 'predict']);
+          if (backfillMode && !VALID_MODES.has(backfillMode)) {
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: `Invalid mode: ${backfillMode}. Valid: scrape, predict (or omit for full)` }));
+            return;
+          }
           const args = [backfillSport];
           if (backfillMode) args.push(backfillMode);
 

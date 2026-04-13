@@ -41,6 +41,10 @@ export interface InjuryEntry {
   returnDate: string | null;
   shortComment: string;
   fetchedAt: string;
+  /** Timestamp when this injury was first observed. Persists across scrape
+   *  cycles so the recency filter can distinguish new injuries from chronic
+   *  ones (whose impact is already reflected in team differential). */
+  firstSeenAt: string;
 }
 
 /** Normalize ESPN status strings to a consistent set */
@@ -135,6 +139,7 @@ export async function fetchInjuries(sport: Sport): Promise<InjuryEntry[]> {
             returnDate: inj.details?.returnDate ?? null,
             shortComment: inj.shortComment ?? '',
             fetchedAt: now,
+            firstSeenAt: now, // will be overwritten by storeInjuries if player already existed
           });
         }
       }
@@ -165,11 +170,16 @@ export async function fetchInjuries(sport: Sport): Promise<InjuryEntry[]> {
   return entries;
 }
 
-/** Store injuries in the database. Replaces all entries for a sport (full refresh). */
+/** Store injuries in the database. Full refresh for the sport: deletes rows
+ *  NOT in the current fetch, upserts current ones. Preserves first_seen_at
+ *  so the recency filter works correctly across scrape cycles.
+ *
+ *  Called unconditionally (even when entries is empty) so stale rows from
+ *  prior runs are cleared when ESPN returns an empty list. */
 export function storeInjuries(sport: Sport, entries: InjuryEntry[]): void {
   const db = getDb();
 
-  // Ensure table exists
+  // Ensure table exists (with first_seen_at column)
   db.exec(`
     CREATE TABLE IF NOT EXISTS player_injuries (
       player_id TEXT NOT NULL,
@@ -183,24 +193,48 @@ export function storeInjuries(sport: Sport, entries: InjuryEntry[]): void {
       return_date TEXT,
       short_comment TEXT,
       fetched_at TEXT NOT NULL,
+      first_seen_at TEXT NOT NULL,
       PRIMARY KEY (player_id, sport)
     )
   `);
 
-  // Full refresh for this sport — delete old, insert new
+  // Migration: add first_seen_at if missing on older DBs
+  try {
+    db.exec(`ALTER TABLE player_injuries ADD COLUMN first_seen_at TEXT NOT NULL DEFAULT ''`);
+  } catch { /* column already exists */ }
+
+  // Delete all entries for this sport, then re-insert current ones.
+  // first_seen_at is preserved: if the player already existed, we keep
+  // their original first_seen_at; otherwise we set it to now.
   const deleteStmt = db.prepare('DELETE FROM player_injuries WHERE sport = ?');
+
+  // Look up existing first_seen_at for a player
+  const lookupStmt = db.prepare(
+    `SELECT first_seen_at FROM player_injuries WHERE player_id = ? AND sport = ?`
+  );
+
   const insertStmt = db.prepare(`
     INSERT OR REPLACE INTO player_injuries
-    (player_id, player_name, position, team_id, team_abbr, sport, status, injury_type, return_date, short_comment, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (player_id, player_name, position, team_id, team_abbr, sport, status, injury_type, return_date, short_comment, fetched_at, first_seen_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const upsertAll = db.transaction(() => {
+    // Snapshot existing first_seen_at values before deleting
+    const existingFirstSeen = new Map<string, string>();
+    for (const e of entries) {
+      const row = lookupStmt.get(e.playerId, sport) as { first_seen_at: string } | undefined;
+      if (row && row.first_seen_at) {
+        existingFirstSeen.set(e.playerId, row.first_seen_at);
+      }
+    }
+
     deleteStmt.run(sport);
     for (const e of entries) {
+      const firstSeen = existingFirstSeen.get(e.playerId) || e.fetchedAt;
       insertStmt.run(
         e.playerId, e.playerName, e.position, e.teamId, e.teamAbbr,
-        e.sport, e.status, e.injuryType, e.returnDate, e.shortComment, e.fetchedAt
+        e.sport, e.status, e.injuryType, e.returnDate, e.shortComment, e.fetchedAt, firstSeen
       );
     }
   });
@@ -209,16 +243,35 @@ export function storeInjuries(sport: Sport, entries: InjuryEntry[]): void {
 }
 
 /** Get all effectively-out players for a team. Used by the prediction model
- *  to adjust expected team strength when key players are missing. */
+ *  to adjust expected team strength when key players are missing.
+ *
+ *  Maps snake_case DB columns to camelCase InjuryEntry fields so downstream
+ *  code (computeInjuryImpact) can access .playerName, .teamAbbr, .firstSeenAt
+ *  correctly. Without this mapping, SELECT * returns snake_case keys and all
+ *  camelCase property accesses resolve to undefined. */
 export function getTeamInjuries(sport: Sport, teamId: string): InjuryEntry[] {
   const db = getDb();
 
   // Table might not exist yet
   try {
-    return db.prepare(`
-      SELECT * FROM player_injuries
+    const rows = db.prepare(`
+      SELECT
+        player_id   AS playerId,
+        player_name AS playerName,
+        position,
+        team_id     AS teamId,
+        team_abbr   AS teamAbbr,
+        sport,
+        status,
+        injury_type   AS injuryType,
+        return_date   AS returnDate,
+        short_comment AS shortComment,
+        fetched_at    AS fetchedAt,
+        first_seen_at AS firstSeenAt
+      FROM player_injuries
       WHERE sport = ? AND team_id = ? AND status IN ('out', 'ir', '15-day-il', '60-day-il', 'doubtful')
     `).all(sport, teamId) as InjuryEntry[];
+    return rows;
   } catch {
     return []; // Table doesn't exist yet
   }

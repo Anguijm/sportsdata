@@ -220,16 +220,18 @@ export async function runCycle(
     console.log(`\n▸ Odds API: skipped (THE_ODDS_API_KEY not set)`);
   }
 
-  // Injury reports — fetched before predictions so the model can use them
+  // Injury reports — fetched before predictions so the model can use them.
+  // storeInjuries is called unconditionally (even on empty list) so stale
+  // rows from prior runs are cleared when ESPN returns no injuries.
   for (const sport of config.sports) {
     try {
       console.log(`\n▸ ${sport.toUpperCase()} injuries`);
       const injuries = await fetchInjuries(sport);
+      storeInjuries(sport, injuries);
       if (injuries.length > 0) {
-        storeInjuries(sport, injuries);
         console.log(`  ✓ ${injuries.length} injury entries`);
       } else {
-        console.log(`  ○ no injury data (may not be available for this sport)`);
+        console.log(`  ○ no injury data (stale entries cleared)`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

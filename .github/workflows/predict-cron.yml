@@ -28,11 +28,21 @@ jobs:
 
       - name: Trigger predict on Fly.io
         # sport=all generates v2 winner + v4-spread predictions for every
-        # league, not just NBA. Without this, only NBA got predictions.
+        # league, not just NBA. The endpoint returns 502 if any sport fails
+        # (partial failure). We print the response body to see which sport
+        # errored, then fail the step so the alert fires.
         run: |
-          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/predict?sport=all" \
+          RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://sportsdata-api.fly.dev/api/trigger/predict?sport=all" \
             -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
-            --max-time 600
+            --max-time 600)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "::error::Predict returned HTTP $HTTP_CODE"
+            exit 1
+          fi
 
       - name: Alert on failure
         if: failure()

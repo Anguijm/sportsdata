@@ -1907,6 +1907,14 @@ body {
   .streak-bar { height: 22px; }
 }
 
+@media (max-width: 600px) {
+  .big-stats { grid-template-columns: 1fr; gap: 12px; }
+  .spread-picks-grid { grid-template-columns: 1fr; }
+  .upcoming-grid { grid-template-columns: 1fr; }
+  .global-sport-selector .sport-tabs.global-tabs { gap: 4px; }
+  .sport-tab { padding: 8px 10px; font-size: 10px; }
+}
+
 @media (max-width: 380px) {
   .hero h1 { font-size: 36px; }
   .section h2 { font-size: 24px; }

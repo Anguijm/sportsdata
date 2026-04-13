@@ -240,7 +240,9 @@ function getCohort(sport: Sport, modelVersion: string, source: 'live' | 'backfil
 
 export function getTrackRecord(sport: Sport, modelVersion = 'v5'): TrackRecord {
   const live = getCohort(sport, modelVersion, 'live');
-  const backfill = getCohort(sport, modelVersion, 'backfill');
+  // Backfill was generated with v2 before v5 existed. Show v2 backfill
+  // as the calibration baseline regardless of which live model is active.
+  const backfill = getCohort(sport, 'v2', 'backfill');
 
   return {
     modelVersion,
@@ -482,7 +484,17 @@ export function getCalibration(sport: Sport, modelVersion = 'v5', binCount = 10)
     `).all(sport, modelVersion, source) as CalibrationRow[];
 
   const liveRows = fetchRows('live');
-  const backfillRows = fetchRows('backfill');
+  // Backfill was generated with v2 — fetch v2 backfill for calibration baseline
+  const backfillFetchRows = (source: 'live' | 'backfill'): CalibrationRow[] =>
+    db.prepare(`
+      SELECT predicted_prob, was_correct, low_confidence
+      FROM predictions
+      WHERE sport = ? AND model_version = ?
+        AND COALESCE(prediction_source, 'live') = ?
+        AND resolved_at IS NOT NULL
+        AND was_correct IS NOT NULL
+    `).all(sport, 'v2', source) as CalibrationRow[];
+  const backfillRows = backfillFetchRows('backfill');
 
   return {
     modelVersion,
@@ -530,7 +542,7 @@ export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWith
            g.pitchers_json
     FROM predictions p
     JOIN games g ON p.game_id = g.id
-    WHERE p.sport = ? AND p.model_version IN ('v2', 'v5') AND p.resolved_at IS NULL
+    WHERE p.sport = ? AND p.model_version = 'v5' AND p.resolved_at IS NULL
       AND g.date >= ?
     ORDER BY g.date
     LIMIT ?
@@ -546,7 +558,7 @@ export function getRecentResolvedPredictions(sport: Sport, limit = 20): Predicti
            g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status
     FROM predictions p
     JOIN games g ON p.game_id = g.id
-    WHERE p.sport = ? AND p.model_version IN ('v2', 'v5') AND p.resolved_at IS NOT NULL
+    WHERE p.sport = ? AND p.model_version = 'v5' AND p.resolved_at IS NOT NULL
     ORDER BY p.resolved_at DESC
     LIMIT ?
   `).all(sport, limit) as PredictionWithGame[];

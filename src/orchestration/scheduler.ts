@@ -25,6 +25,13 @@ export interface ScheduleConfig {
    *   self-heal after a missed cron run.
    */
   backfillDays: number;
+  /**
+   * Number of days ahead of today to scrape for scheduled games.
+   * - `0` (default for manual triggers): today only.
+   * - `N > 0`: also fetch `today + 1` through `today + N` to pick up
+   *   scheduled games several days out, enabling multi-day predictions.
+   */
+  lookaheadDays: number;
 }
 
 const DEFAULT_CONFIG: ScheduleConfig = {
@@ -33,6 +40,7 @@ const DEFAULT_CONFIG: ScheduleConfig = {
   maxRetries: 3,
   retryDelayMs: 5000,
   backfillDays: 0,
+  lookaheadDays: 0,
 };
 
 /** Format a Date as `YYYYMMDD` (UTC) — ESPN scoreboard date parameter format. */
@@ -81,11 +89,20 @@ async function scrapeEspn(sport: Sport, config: ScheduleConfig): Promise<{ teams
   // day with an explicit `?dates=YYYYMMDD` parameter so we catch games that
   // fell outside ESPN's default "current day" window.
   const dateQueries: (string | undefined)[] = [];
-  if (config.backfillDays > 0) {
+  if (config.backfillDays > 0 || config.lookaheadDays > 0) {
     const today = new Date();
-    for (let offset = config.backfillDays; offset >= 0; offset--) {
+    // Past dates (backfill)
+    for (let offset = config.backfillDays; offset >= 1; offset--) {
       const d = new Date(today);
       d.setUTCDate(d.getUTCDate() - offset);
+      dateQueries.push(toEspnDateStr(d));
+    }
+    // Today
+    dateQueries.push(toEspnDateStr(today));
+    // Future dates (lookahead for scheduled games)
+    for (let offset = 1; offset <= config.lookaheadDays; offset++) {
+      const d = new Date(today);
+      d.setUTCDate(d.getUTCDate() + offset);
       dateQueries.push(toEspnDateStr(d));
     }
   } else {

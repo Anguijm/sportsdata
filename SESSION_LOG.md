@@ -1,7 +1,7 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-09 (end of Sprint 10, deploy infrastructure repaired)
+Last updated: 2026-04-13 (end of Sprint 10.6 mega-session)
 
 ---
 
@@ -9,14 +9,69 @@ Last updated: 2026-04-09 (end of Sprint 10, deploy infrastructure repaired)
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log before acting on it. Git history is the authoritative timeline.
 
-**Status as of 2026-04-09 06:50 JST:** Sprint 9 + 10 shipped and verified LIVE. Deploy infrastructure repaired.
+**Status as of 2026-04-13:**
 
-**Next task:** NHL ratchet + cross-sport comparison (first in priority queue after Sprint 10).
+### Current branch state
+- **Branch:** `claude/injury-signal` (1 commit ahead of main)
+- **PR #22:** https://github.com/Anguijm/sportsdata/pull/22 — injury-based prediction signal. NOT YET MERGED. Merge + run predict cron to activate.
+- **PR #21 (v5 continuous model):** MERGED to main
 
-**User has not yet picked a scoping option.** Before starting the Algorithm, ask:
-1. Run existing v2 iteration recipe as-is against NHL data — fast, likely weak model, simple story
-2. Design NHL-specific ratchet iterations (goalie quality, back-to-back fatigue, low-scoring) — bigger effort, better story
-3. Start with (1) to get a baseline, decide based on results
+### What shipped this session (22 PRs)
+
+| PR | What |
+|----|------|
+| #2-3 | Scrape pipeline repair (missing /api/trigger/scrape, backfillDays, silent failure removal) |
+| #4 | Global sport selector (all 6 leagues on frontend) |
+| #5-6 | Spread prediction model (v4-spread + MLB pitchers + findings math fix) |
+| #7 | Multi-sport predictions + stale upcoming fix |
+| #8 | P0 fixes: backups, draws, resolver UNION, sport-specific baselines, season field |
+| #9-10 | Backup workflow fixes (sqlite3 in Docker, contents:write permission) |
+| #11 | P1 fixes: XSS, JSONL memory, ON CONFLICT, bookmaker consensus, overtime, etc. |
+| #12 | P2 fixes: pagination, BDL overtime, coreSeason, validators, responsive, etc. |
+| #13 | P3 fixes: ID comments, cron alerting, deploy-pages workflow_dispatch |
+| #14-16 | Historical backfill script + /api/trigger/backfill + GitHub Actions workflow |
+| #17 | Model improvements: recalibration, ratchet trigger, draw labels, MLB pitchers |
+| #18-19 | Lookahead scraping (multi-day predictions) + predict error visibility |
+| #20 | Predictions UNIQUE constraint migration for production DB |
+| #21 | v5 continuous sigmoid model (unique probability per game) |
+| #22 | **PENDING** — Injury signal (ESPN scraper + v5 adjustment) |
+
+### Current data state
+- **21,433 games** across 6 sports (2-3 seasons per sport)
+- **12,813 backfill predictions** (v2) resolved with accuracy metrics
+- **v5 live predictions** generating with unique probabilities per game
+- **Injury data** will flow once PR #22 is merged and cron runs
+- **Automated backups** running nightly at 3am UTC
+
+### Backlog (prioritized)
+
+**Ready to merge:**
+1. PR #22 — Injury signal (needs merge + cron run to activate)
+
+**Ready to build:**
+2. Run ratchet for each sport (Actions → Run Ratchet) to regenerate artifacts with v5 + honest baselines
+3. NHL goalie matchups — ESPN scoreboard doesn't include goalie data. Need to explore ESPN boxscore or external source.
+4. MLS/EPL draw model — spread model doesn't account for draws (~25% of soccer outcomes). Needs three-outcome model (home/draw/away).
+
+**Needs research:**
+5. Full lineup integration — per-game starting lineups from official league APIs (NBA, NFL). Enables position-by-position matchup analysis.
+6. Held-out validation — v5 scale and injury compensation factor are fitted on backfill (in-sample). Need cross-validation or train/test split.
+7. Player stats scraper in cron — currently one-time Sprint 5 ingest, not refreshed. Add to predict-cron schedule.
+
+**Council governance:**
+- 5-expert council (Data Quality, Statistical Validity, Prediction Accuracy, Domain Expert, Mathematics Expert)
+- Mathematics expert covers both computational correctness AND theoretical soundness
+- All plans reviewed before implementation, all implementations reviewed before shipping
+- User mandated: "don't forget to run council on everything"
+
+### Key architecture facts
+- v5 is the active winner-prediction model (continuous sigmoid, replaces v2's 4 buckets)
+- v4-spread is the active spread model (margin prediction vs bookmaker line)
+- Predictions table has UNIQUE(game_id, model_version, prediction_source) — 3-column constraint
+- Track record: v5 live + v2 backfill (backfill predates v5, shown as calibration baseline)
+- Injury signal: 7-day recency filter to avoid double-counting with team differential
+- All deploy is automated: push to main → deploy-fly.yml + deploy-pages.yml
+- Daily cron: scrape all sports + odds + injuries → predict all sports → resolve outcomes
 
 **What's live right now:**
 - https://sportsdata.pages.dev — Section 07 "Does the model mean what it says?" shows ECE 0.0892, verdict DISCRETE, the v2 model's 2-value finding

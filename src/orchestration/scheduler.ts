@@ -6,6 +6,7 @@
 
 import { fetchTeams, fetchScoreboard } from '../scrapers/espn.js';
 import { fetchOdds } from '../scrapers/odds-api.js';
+import { fetchInjuries, storeInjuries } from '../scrapers/injuries.js';
 import { sqliteRepository, closeDb, resolveGameOutcomes, writeOddsToGames } from '../storage/sqlite.js';
 import { formatScrapeSummary } from '../cli/tables.js';
 import { appendLog, readLog } from '../storage/json-log.js';
@@ -217,6 +218,23 @@ export async function runCycle(
     }
   } else {
     console.log(`\n▸ Odds API: skipped (THE_ODDS_API_KEY not set)`);
+  }
+
+  // Injury reports — fetched before predictions so the model can use them
+  for (const sport of config.sports) {
+    try {
+      console.log(`\n▸ ${sport.toUpperCase()} injuries`);
+      const injuries = await fetchInjuries(sport);
+      if (injuries.length > 0) {
+        storeInjuries(sport, injuries);
+        console.log(`  ✓ ${injuries.length} injury entries`);
+      } else {
+        console.log(`  ○ no injury data (may not be available for this sport)`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`  ✗ Injuries: ${msg}`);
+    }
   }
 
   // Auto-resolve game outcomes for any newly finalized games

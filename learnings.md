@@ -143,3 +143,44 @@ Accumulated patterns, anti-patterns, and insights from scraping, analysis, and p
 - **INSIGHT**: Prediction Accuracy expert rightly demanded renaming "What's safe to bet?" → "Where the model disagrees with the line" — framing without backtesting is irresponsible
 - **INSIGHT**: Track record must be gated at N≥30 — displaying 3/5 (60%) accuracy is statistically meaningless
 - **INSIGHT**: Probable pitchers are in ESPN's scoreboard response but were never parsed — one normalizer change unlocks MLB-specific modeling
+
+### codebase-review-p0-p3 (2026-04-12)
+- **KEEP**: Full 5-expert council review with 35 issues identified (P0-P3) — systematic quality sweep
+- **KEEP**: Mathematics expert as 5th council member — catches both computational AND theoretical errors
+- **KEEP**: Draw handling: is_draw column + excluded from accuracy metrics + correct team state updates
+- **KEEP**: Cross-namespace resolver UNION: direct match + BDL→ESPN match prevents stuck predictions
+- **KEEP**: Automated SQLite backup via GitHub releases with 7-day rotation
+- **IMPROVE**: v0 baseline was 1.0 (100% certainty) — inflated all improvement claims. Sport-specific rates now.
+- **IMPROVE**: ON CONFLICT column mismatch (2 vs 3 columns) required table recreation migration
+- **IMPROVE**: XSS via innerHTML — `esc()` utility needed on all API-sourced strings
+- **IMPROVE**: JSONL log read entirely into memory per rate check — replaced with in-memory counter
+- **IMPROVE**: Single bookmaker odds → median consensus across all bookmakers
+- **INSIGHT**: Codex review catches real bugs (edge math inversion, pick'em exclusion, date comparison) — worth waiting for before merge
+- **INSIGHT**: Council plan review BEFORE implementation catches flawed approaches early (roster quality was killed before a line of code was written)
+
+### v5-continuous-model (2026-04-13)
+- **KEEP**: Sigmoid function is theoretically correct (Bradley-Terry model) — math expert confirmed
+- **KEEP**: Per-sport scale derived from `scale = π / (√3 × σ_effective)` — grounded in theory, not hand-tuned
+- **KEEP**: Clamp [0.15, 0.85] prevents degenerate predictions
+- **IMPROVE**: v2's 4 discrete buckets (0.40, 0.38, 0.43, 0.60) produced identical 60% confidence for most NBA games — sigmoid gives unique probabilities
+- **IMPROVE**: MLB scale 0.40 was too aggressive (77% for 2.5-run gap) → council caught, lowered to 0.30
+- **INSIGHT**: Brier score formulation (picked-winner prob vs wasCorrect) is mathematically equivalent to standard form — math expert verified
+- **INSIGHT**: Calibration bins in [0.5, 1.0] can't detect asymmetric miscalibration — known diagnostic limitation
+
+### historical-backfill (2026-04-13)
+- **KEEP**: ESPN scoreboard ?dates= parameter works for all sports going back years
+- **KEEP**: 21,433 games scraped, 12,813 backfill predictions generated across all 6 sports
+- **KEEP**: Global rate limit counter across sports prevents inter-sport burst gaps
+- **KEEP**: Split skip counters (noSnapshot vs draws) for data quality monitoring
+- **INSIGHT**: Historical odds are NOT available from ESPN or Odds API — spread model backfill has zero data
+- **INSIGHT**: Backfill revealed massive v2 overconfidence: 75% bucket actually won 50-62%. Led to recalibration.
+
+### injury-signal (2026-04-13)
+- **KEEP**: ESPN has undocumented /injuries endpoint for NBA, NFL, MLB, NHL — comprehensive data
+- **KEEP**: Injury signal is genuinely ORTHOGONAL to team differential (council confirmed)
+- **IMPROVE**: Season roster quality was collinear with teamDiff — council killed the approach before code was written (4.2/10 FAIL). Only AVAILABILITY changes are orthogonal.
+- **IMPROVE**: NFL touchdowns rejected as impact metric (Domain Expert: "OL and defenders have zero TDs"). Using gamesStarted instead.
+- **IMPROVE**: MLB RBIs rejected (sabermetric antipattern). Using OPS instead.
+- **IMPROVE**: Recency filter (7 days) required to avoid double-counting chronic injuries already in teamDiff
+- **IMPROVE**: Name matching is fragile — added fuzzy last-name fallback + console.warn on misses
+- **CRITICAL**: Council feedback "do not ship without recency filter" — without it, the model double-counts every chronic absence

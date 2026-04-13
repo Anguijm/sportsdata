@@ -12,8 +12,9 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
-import { v5 } from './predict.js';
-import type { TeamState } from './predict.js';
+import { v5, predictWithInjuries } from './predict.js';
+import type { TeamState, InjuryImpact } from './predict.js';
+import { getTeamInjuries } from '../scrapers/injuries.js';
 import { getSeasonStart, getSeasonYear } from './season.js';
 
 export interface PredictionRecord {
@@ -166,6 +167,77 @@ function generateReasoningText(
 }
 
 /** Run v2 prediction on a single scheduled game */
+/** Compute injury impact for a team by looking up injured players' season stats.
+ *  Returns the total PPG/goals-per-game of effectively-out players.
+ *
+ *  Council mandates (injury signal review):
+ *  - Only count RECENT injuries (reported within last 7 days) to avoid
+ *    double-counting with teamDiff (chronic absences already reflected)
+ *  - Use sport-appropriate impact metrics (not NFL touchdowns)
+ *  - Log unmatched players so silent degradation is visible
+ */
+function computeInjuryImpact(sport: Sport, teamId: string): number {
+  const injuries = getTeamInjuries(sport, teamId);
+  if (injuries.length === 0) return 0;
+
+  // Recency filter: only count injuries reported within last 7 days.
+  // Older injuries are already reflected in the team's point differential.
+  const recentCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+  const recentInjuries = injuries.filter(inj => inj.fetchedAt >= recentCutoff);
+  if (recentInjuries.length === 0) return 0;
+
+  const db = getDb();
+
+  // Sport-appropriate impact metrics (council Domain Expert fixes):
+  // NBA: avgPoints (per-game, direct)
+  // NFL: games_played as proxy for starter importance (TDs was rejected)
+  // MLB: batting.OPS (better than RBIs per sabermetrics)
+  // NHL: offensive.points / games (goals + assists per game)
+  const IMPACT_CONFIG: Record<string, { stat: string; isPerGame: boolean; fallbackPerGame: number }> = {
+    nba: { stat: 'offensive.avgPoints', isPerGame: true, fallbackPerGame: 10 },
+    nfl: { stat: 'general.gamesStarted', isPerGame: false, fallbackPerGame: 3 },
+    mlb: { stat: 'batting.OPS', isPerGame: true, fallbackPerGame: 0.3 },
+    nhl: { stat: 'offensive.points', isPerGame: false, fallbackPerGame: 0.5 },
+    mls: { stat: 'offensive.totalGoals', isPerGame: false, fallbackPerGame: 0.2 },
+    epl: { stat: 'offensive.totalGoals', isPerGame: false, fallbackPerGame: 0.2 },
+  };
+  const config = IMPACT_CONFIG[sport] ?? IMPACT_CONFIG['nba'];
+
+  let totalImpact = 0;
+  for (const inj of recentInjuries) {
+    // Look up player's season stats — try exact name first, then fuzzy
+    let row = db.prepare(`
+      SELECT stats_json, games_played FROM player_stats
+      WHERE team_abbr = ? AND sport = ? AND full_name = ?
+      ORDER BY season DESC LIMIT 1
+    `).get(inj.teamAbbr, sport, inj.playerName) as { stats_json: string; games_played: number } | undefined;
+
+    // Fuzzy fallback: LIKE match on last name
+    if (!row) {
+      const lastName = inj.playerName.split(' ').pop() ?? inj.playerName;
+      row = db.prepare(`
+        SELECT stats_json, games_played FROM player_stats
+        WHERE team_abbr = ? AND sport = ? AND full_name LIKE ?
+        ORDER BY season DESC LIMIT 1
+      `).get(inj.teamAbbr, sport, `%${lastName}%`) as typeof row;
+    }
+
+    if (!row) {
+      console.warn(`  ⚠ Injury: ${inj.playerName} (${inj.teamAbbr}) not found in player_stats`);
+      continue;
+    }
+    if (row.games_played < 5) continue;
+
+    try {
+      const stats = JSON.parse(row.stats_json) as Record<string, number>;
+      const value = stats[config.stat] ?? config.fallbackPerGame;
+      const perGame = config.isPerGame ? value : value / row.games_played;
+      totalImpact += perGame;
+    } catch { /* skip */ }
+  }
+  return totalImpact;
+}
+
 export function predictGame(
   game: ScheduledGame,
   states: Map<string, TeamState>,
@@ -186,17 +258,26 @@ export function predictGame(
     asOfDate,
   };
 
-  const probHome = v5.predict(
-    {
-      game_id: game.id,
-      date: game.date,
-      sport: game.sport,
-      home_team_id: game.home_team_id,
-      away_team_id: game.away_team_id,
-      home_win: 0, // unknown — predictor must not use this
-    },
-    ctx,
-  );
+  // Compute injury impact (orthogonal signal — council mandate)
+  const injuryImpact: InjuryImpact = {
+    homeOutImpact: computeInjuryImpact(game.sport, game.home_team_id),
+    awayOutImpact: computeInjuryImpact(game.sport, game.away_team_id),
+  };
+  const hasInjuryData = injuryImpact.homeOutImpact > 0 || injuryImpact.awayOutImpact > 0;
+
+  const gameForPred = {
+    game_id: game.id,
+    date: game.date,
+    sport: game.sport,
+    home_team_id: game.home_team_id,
+    away_team_id: game.away_team_id,
+    home_win: 0,
+  };
+
+  // Use injury-adjusted prediction when injury data is available
+  const probHome = hasInjuryData
+    ? predictWithInjuries(gameForPred, ctx, injuryImpact)
+    : v5.predict(gameForPred, ctx);
 
   const lowConfidence = homeState.games < 5 || awayState.games < 5;
   const pick = probHome >= 0.5 ? 'home' : 'away';

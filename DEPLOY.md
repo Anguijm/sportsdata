@@ -1,6 +1,6 @@
 # Deploy Runbook
 
-Last updated: 2026-04-09 (Sprint 10.6 — scrape pipeline repair + Fly auto-deploy)
+Last updated: 2026-04-13 (v5 model + injury signal + full codebase review)
 
 ## Topology
 

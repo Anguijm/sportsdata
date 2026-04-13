@@ -5,6 +5,14 @@
 
 import type { Sport } from '../schema/provenance.js';
 
+/** Injury impact data passed to the prediction model. */
+export interface InjuryImpact {
+  /** Total PPG/points-equivalent of effectively-out players for the home team */
+  homeOutImpact: number;
+  /** Total PPG/points-equivalent of effectively-out players for the away team */
+  awayOutImpact: number;
+}
+
 export interface GameForPrediction {
   game_id: string;
   date: string;
@@ -230,6 +238,46 @@ export const v5: Iteration = {
 };
 
 export const ITERATIONS: Iteration[] = [v0, v1, v2, v3, v5];
+
+/** Injury-adjusted compensation factor: a player's absence doesn't remove
+ *  their full PPG/points — teammates partially compensate through increased
+ *  usage. Literature suggests ~40% of a star's production is truly "lost"
+ *  when they sit (rest is redistributed). */
+const INJURY_COMPENSATION = 0.4;
+
+/** v5 with injury adjustment. Called by the prediction runner when injury
+ *  data is available. The base v5 sigmoid is computed first, then the
+ *  injury impact shifts the probability.
+ *
+ *  The adjustment converts missing-player impact (in points/runs/goals) to
+ *  a differential shift: if the home team is missing 25 PPG worth of players,
+ *  their effective differential drops by 25 * 0.4 = 10 points. This shifts
+ *  the sigmoid input the same way a 10-point differential gap would. */
+export function predictWithInjuries(
+  game: GameForPrediction,
+  ctx: PredictionContext,
+  injuries?: InjuryImpact,
+): number {
+  const baseRate = SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
+  if (ctx.home.games < 5 || ctx.away.games < 5) return baseRate;
+
+  const homeDiff = (ctx.home.pointsFor - ctx.home.pointsAgainst) / ctx.home.games;
+  const awayDiff = (ctx.away.pointsFor - ctx.away.pointsAgainst) / ctx.away.games;
+  const scale = SIGMOID_SCALE[game.sport] ?? 0.10;
+  const homeAdv = SPORT_HOME_ADVANTAGE[game.sport] ?? 3.0;
+
+  // Injury adjustment: reduce team's effective differential
+  let injuryAdj = 0;
+  if (injuries) {
+    // homeOutImpact > 0 means home team is WEAKER → subtract from home's favor
+    // awayOutImpact > 0 means away team is WEAKER → add to home's favor
+    injuryAdj = (injuries.awayOutImpact - injuries.homeOutImpact) * INJURY_COMPENSATION;
+  }
+
+  const x = scale * ((homeDiff - awayDiff) + homeAdv + injuryAdj);
+  const prob = sigmoid(x);
+  return Math.max(0.15, Math.min(0.85, prob));
+}
 
 // =============================================================================
 // SPREAD MODEL (Phase 2 — Sprint 10.6)

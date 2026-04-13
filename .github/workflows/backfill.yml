@@ -1,0 +1,47 @@
+name: Run Historical Backfill
+
+# One-shot workflow to trigger the historical backfill on Fly.
+# Scrapes 2-3 seasons of ESPN data for all sports and generates
+# backfill predictions. Takes ~45 minutes. Manual trigger only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sport:
+        description: 'Sport to backfill (or "all")'
+        required: false
+        default: 'all'
+      mode:
+        description: 'Mode: full, scrape, or predict'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - scrape
+          - predict
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Trigger backfill on Fly.io
+        run: |
+          SPORT="${{ github.event.inputs.sport || 'all' }}"
+          MODE="${{ github.event.inputs.mode || 'full' }}"
+
+          QUERY="sport=${SPORT}"
+          if [ "$MODE" != "full" ]; then
+            QUERY="${QUERY}&mode=${MODE}"
+          fi
+
+          echo "Starting backfill: sport=${SPORT} mode=${MODE}"
+          echo "This runs in the background on Fly — expect ~45 min for all sports."
+
+          curl -sSf -X POST \
+            "https://sportsdata-api.fly.dev/api/trigger/backfill?${QUERY}" \
+            -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
+            --max-time 30
+
+          echo "Backfill accepted (202). Monitor progress with: fly logs -a sportsdata-api"

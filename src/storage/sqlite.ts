@@ -178,7 +178,17 @@ function initTables(db: Database.Database): void {
         brier_score REAL,
         UNIQUE (game_id, model_version, prediction_source)
       );
-      INSERT INTO predictions_new SELECT * FROM predictions;
+      INSERT INTO predictions_new (
+        id, game_id, sport, model_version, prediction_source,
+        predicted_winner, predicted_prob, reasoning_json, reasoning_text,
+        made_at, team_state_as_of, low_confidence,
+        resolved_at, actual_winner, was_correct, brier_score
+      ) SELECT
+        id, game_id, sport, model_version, prediction_source,
+        predicted_winner, predicted_prob, reasoning_json, reasoning_text,
+        made_at, team_state_as_of, low_confidence,
+        resolved_at, actual_winner, was_correct, brier_score
+      FROM predictions;
       DROP TABLE predictions;
       ALTER TABLE predictions_new RENAME TO predictions;
       CREATE INDEX IF NOT EXISTS idx_predictions_sport_resolved ON predictions(sport, resolved_at);

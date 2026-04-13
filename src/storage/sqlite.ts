@@ -137,6 +137,68 @@ function initTables(db: Database.Database): void {
     // Column already exists, ignore
   }
 
+  // P1-3 migration: migrate predictions UNIQUE constraint from 2-column
+  // (game_id, model_version) to 3-column (game_id, model_version, prediction_source).
+  // Fresh DBs already have the 3-column constraint from CREATE TABLE, but
+  // the Fly production DB was created with the old 2-column constraint.
+  // SQLite doesn't support ALTER TABLE ... DROP CONSTRAINT, so we need to
+  // recreate the table. This is idempotent — checks if migration is needed first.
+  try {
+    // Test if the 3-column conflict works. If it throws, we need to migrate.
+    db.exec(`
+      INSERT INTO predictions (id, game_id, sport, model_version, prediction_source,
+        predicted_winner, predicted_prob, reasoning_json, reasoning_text,
+        made_at, team_state_as_of, low_confidence)
+      VALUES ('__constraint_test__', '__test__', 'nba', '__test__', 'live',
+        '', 0, '{}', '', '', '', 0)
+      ON CONFLICT (game_id, model_version, prediction_source) DO NOTHING
+    `);
+    // Clean up test row
+    db.exec("DELETE FROM predictions WHERE id = '__constraint_test__'");
+  } catch {
+    // Migration needed: recreate table with 3-column UNIQUE constraint
+    console.log('Migrating predictions table: 2-column → 3-column UNIQUE constraint...');
+    db.exec(`
+      CREATE TABLE predictions_new (
+        id TEXT PRIMARY KEY,
+        game_id TEXT NOT NULL,
+        sport TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        prediction_source TEXT NOT NULL DEFAULT 'live',
+        predicted_winner TEXT NOT NULL,
+        predicted_prob REAL NOT NULL,
+        reasoning_json TEXT NOT NULL,
+        reasoning_text TEXT NOT NULL,
+        made_at TEXT NOT NULL,
+        team_state_as_of TEXT NOT NULL,
+        low_confidence INTEGER NOT NULL DEFAULT 0,
+        resolved_at TEXT,
+        actual_winner TEXT,
+        was_correct INTEGER,
+        brier_score REAL,
+        UNIQUE (game_id, model_version, prediction_source)
+      );
+      INSERT INTO predictions_new (
+        id, game_id, sport, model_version, prediction_source,
+        predicted_winner, predicted_prob, reasoning_json, reasoning_text,
+        made_at, team_state_as_of, low_confidence,
+        resolved_at, actual_winner, was_correct, brier_score
+      ) SELECT
+        id, game_id, sport, model_version, prediction_source,
+        predicted_winner, predicted_prob, reasoning_json, reasoning_text,
+        made_at, team_state_as_of, low_confidence,
+        resolved_at, actual_winner, was_correct, brier_score
+      FROM predictions;
+      DROP TABLE predictions;
+      ALTER TABLE predictions_new RENAME TO predictions;
+      CREATE INDEX IF NOT EXISTS idx_predictions_sport_resolved ON predictions(sport, resolved_at);
+      CREATE INDEX IF NOT EXISTS idx_predictions_game ON predictions(game_id);
+      CREATE INDEX IF NOT EXISTS idx_predictions_state_time ON predictions(team_state_as_of);
+      CREATE INDEX IF NOT EXISTS idx_predictions_source_model ON predictions(prediction_source, model_version);
+    `);
+    console.log('Migration complete.');
+  }
+
   db.exec(`
     -- Sprint 8.5 council mandate (Architect): filtered queries by source
     CREATE INDEX IF NOT EXISTS idx_predictions_source_model ON predictions(prediction_source, model_version);

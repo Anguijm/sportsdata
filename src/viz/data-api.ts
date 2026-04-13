@@ -320,17 +320,22 @@ export function startDataApi(): void {
             ? allSports
             : [rawSport as Sport];
 
-          // backfillDays default = 3: today + 3 prior days. Covers a missed
-          // cron run without hammering ESPN. Callers may override via
-          // `?backfillDays=N`.
+          // backfillDays default = 3 (past), lookaheadDays default = 3 (future).
+          // Together they scrape a 7-day window centered on today, ensuring
+          // both missed games get resolved and future games get predictions.
           const backfillParam = url.searchParams.get('backfillDays');
           const backfillDays = backfillParam !== null
             ? Math.max(0, Math.min(14, parseInt(backfillParam, 10) || 0))
             : 3;
-          const { results, failures } = await runCycle({ sports: targetSports, backfillDays });
+          const lookaheadParam = url.searchParams.get('lookaheadDays');
+          const lookaheadDays = lookaheadParam !== null
+            ? Math.max(0, Math.min(7, parseInt(lookaheadParam, 10) || 0))
+            : 3;
+          const { results, failures } = await runCycle({ sports: targetSports, backfillDays, lookaheadDays });
           const body = {
             sports: targetSports,
             backfillDays,
+            lookaheadDays,
             results,
             failures,
             triggeredAt: new Date().toISOString(),

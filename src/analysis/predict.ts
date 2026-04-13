@@ -79,7 +79,7 @@ export const v1: Iteration = {
   predict: (game, ctx) => {
     if (ctx.home.games < 5 || ctx.away.games < 5) return SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
     const winGap = ctx.away.wins - ctx.home.wins;
-    if (winGap >= 10) return 0.3;
+    if (winGap >= 10) return 0.40; // recalibrated (was 0.30)
     return SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
   },
 };
@@ -106,9 +106,9 @@ export const v2: Iteration = {
 
     const winGap = ctx.away.wins - ctx.home.wins;
 
-    if (winGap >= 10) return 0.42; // recalibrated: was 0.25 (75%), actual ~58%
+    if (winGap >= 10) return 0.40; // recalibrated: was 0.25 (75%), actual ~56% (midpoint of 50-62%)
     if (diffGap >= 5) return 0.38;  // recalibrated: was 0.30 (70%), actual ~62%
-    if (diffGap >= 3) return 0.42;  // unchanged — well calibrated at ~58%
+    if (diffGap >= 3) return 0.43;  // was 0.42 — nudged up to preserve ordering vs winGap
     return baseRate + 0.03;
   },
 };
@@ -134,9 +134,9 @@ export const v3: Iteration = {
       ctx.away.lastNResults.slice(-3).every(r => r);
 
     let base = baseRate + 0.03;
-    if (winGap >= 10) base = 0.42;      // recalibrated (was 0.25)
+    if (winGap >= 10) base = 0.40;      // recalibrated (was 0.25)
     else if (diffGap >= 5) base = 0.38;  // recalibrated (was 0.30)
-    else if (diffGap >= 3) base = 0.42;
+    else if (diffGap >= 3) base = 0.43;
 
     // Cold streak reduces home probability
     if (homeColdStreak) base -= 0.05;  // reduced from 0.10 (council: arbitrary, halved)

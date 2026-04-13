@@ -210,6 +210,7 @@ function getCohort(sport: Sport, modelVersion: string, source: 'live' | 'backfil
     WHERE sport = ? AND model_version = ?
       AND COALESCE(prediction_source, 'live') = ?
       AND resolved_at IS NOT NULL
+      AND was_correct IS NOT NULL
       AND low_confidence = 0
   `).get(sport, modelVersion, source) as { resolved: number; correct: number; avg_brier: number };
 
@@ -219,6 +220,7 @@ function getCohort(sport: Sport, modelVersion: string, source: 'live' | 'backfil
     WHERE sport = ? AND model_version = ?
       AND COALESCE(prediction_source, 'live') = ?
       AND resolved_at IS NOT NULL
+      AND was_correct IS NOT NULL
       AND low_confidence = 1
   `).get(sport, modelVersion, source) as { resolved: number; correct: number };
 

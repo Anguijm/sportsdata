@@ -263,38 +263,52 @@ All GET endpoints accept `?sport=nba|nfl|mlb|nhl|mls|epl`. Trigger endpoints acc
 
 ## Models
 
-### v2 Ratchet (Winner Prediction)
+### v5 Continuous Sigmoid (Winner Prediction — current)
 
-Built via a Karpathy-style ratchet loop. Predicts which team wins.
+Continuous probability per game via logistic sigmoid on team differential:
 
-| Version | Description | Test Brier | Δ |
-|---------|-------------|------------|---|
-| v0 | Always pick home team | 0.4529 | — |
-| v1 | + Flip if visitor has 10+ more wins | 0.3233 | −0.1296 |
-| **v2** | **+ Flip on 3+ point differential** | **0.2486** | **−0.0745** |
-| v3 | + Cold streak penalty | 0.2510 | +0.0022 (rejected) |
+```
+prob_home = sigmoid(scale × (homeDiff - awayDiff + homeAdv + injuryAdj))
+```
 
-45% Brier improvement over baseline. Validated on 2,500 held-out games.
+| Feature | Source | Impact |
+|---------|--------|--------|
+| Team point differential per game | ESPN game results | Primary signal (~85-90% of variance) |
+| Home advantage (per-sport) | Empirical rates | NBA +3.0, NFL +2.5, MLB +0.5, NHL +0.3, soccer +0.4 |
+| **Injury adjustment** | ESPN /injuries endpoint | Missing-star PPG × 0.4 compensation factor |
+| **MLB pitcher ERA** | ESPN probable pitchers | ±0.3 runs per 1.0 ERA gap |
+| Sigmoid scale (per-sport) | Derived: π / (√3 × σ_eff) | NBA 0.10, NFL 0.10, MLB 0.30, NHL 0.45, soccer 0.60 |
+
+Replaces v2's 4 discrete buckets. Every game gets a unique probability. Output clamped to [15%, 85%].
+
+#### Historical iterations (ratchet loop)
+
+| Version | Description | Status |
+|---------|-------------|--------|
+| v0 | Always pick home at sport-specific rate | Baseline |
+| v1 | + Flip if visitor has 10+ more wins | Superseded |
+| v2 | + Point differential threshold (4 buckets) | Superseded by v5 |
+| v3 | + Cold streak penalty | Rejected (Brier worse) |
+| **v5** | **Continuous sigmoid + injury signal** | **Active** |
 
 ### v4-spread (Against the Spread)
 
-Predicts expected margin and compares against the bookmaker's spread line. Experimental — no backtesting, accumulating live track record.
+Predicts expected margin and compares against the bookmaker's spread line. Experimental — accumulating live track record.
 
 | Feature | Source |
 |---------|--------|
 | Team point differential per game | ESPN game results |
-| Home advantage (per-sport) | NBA +3.0, NFL +2.5, MLB +0.5, NHL +0.3, soccer +0.4 |
+| Home advantage (per-sport) | Empirical rates |
 | Cold/hot streak adjustment | Last 3 games |
 | **MLB pitcher ERA differential** | ESPN probable pitchers (±0.3 runs per 1.0 ERA gap) |
-| Odds spread line | The Odds API |
+| Odds spread line | The Odds API (median consensus across bookmakers) |
 
 Picks classified as **Strong** (edge ≥ threshold), **Lean**, or **Skip**. Only Strong + Lean shown to users. Track record gated at N≥30 resolved picks. Break-even at -110 vig: 52.4%.
 
 ### Known Limitations (Council Debt)
 
-- No backtesting (needs historical odds data — accumulating)
-- Streak adjustments not empirically calibrated
-- MLB: no bullpen or park factor modeling
-- NHL: no goalie matchup data
 - MLS/EPL: draw probability not modeled (affects Asian handicap spreads)
-- Pseudo-probabilities (0.58/0.54/0.51) are starting priors, not calibrated
+- NHL: no goalie matchup data (ESPN scoreboard doesn't include it)
+- No per-game starting lineups (except MLB pitchers) — injury signal is partial
+- In-sample calibration (scale + compensation factor fitted on backfill, no held-out validation yet)
+- NFL injury impact metric (gamesStarted) is a crude proxy for positional value

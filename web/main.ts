@@ -370,14 +370,19 @@ interface TrackRecordRow {
 }
 
 function formatGameDate(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffDays = Math.floor((d.getTime() - now.getTime()) / 86400000);
+  // P2-6: Compare date-only strings to avoid timezone off-by-one
+  const gameDate = iso.slice(0, 10);
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const diffDays = Math.round((new Date(gameDate + 'T12:00:00').getTime() - new Date(todayDate + 'T12:00:00').getTime()) / 86400000);
   if (diffDays === 0) return 'TONIGHT';
   if (diffDays === 1) return 'TOMORROW';
   if (diffDays === -1) return 'YESTERDAY';
   if (diffDays > 1 && diffDays < 7) return `IN ${diffDays} DAYS`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+  // Codex fix: format directly from YYYY-MM-DD without UTC Date parsing
+  // (new Date('2026-04-13') parses as UTC midnight, toLocaleDateString shifts backward in US TZ)
+  const [, month, day] = gameDate.split('-');
+  const MONTHS = ['', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  return `${MONTHS[parseInt(month, 10)]} ${parseInt(day, 10)}`;
 }
 
 function renderPredictions(

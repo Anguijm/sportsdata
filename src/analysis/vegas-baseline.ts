@@ -12,6 +12,8 @@
 
 import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
+import { buildTeamStateUpTo } from './predict-runner.js';
+import { v2 as v2Model } from './predict.js';
 
 export interface VegasComparison {
   schemaVersion: 2;
@@ -50,6 +52,7 @@ interface OddsEvent {
 
 interface MatchedGame {
   game_id: string;
+  date: string;
   home_team_id: string;
   away_team_id: string;
   actual_winner: string;
@@ -132,6 +135,7 @@ function buildMatchedGames(sport: Sport): MatchedGame[] {
 
       matched.push({
         game_id: gameResult.game_id,
+        date: eventDate,
         home_team_id: homeId,
         away_team_id: awayId,
         actual_winner: gameResult.winner,
@@ -197,6 +201,45 @@ export function computeVegasComparison(sport: Sport): VegasComparison {
   });
   const vegasBrier = vegasBriers.reduce((a, b) => a + b, 0) / sampleSize;
 
+  // P2-12: v2 predictor on the matched subset
+  let v2Acc: number | null = null;
+  let v2Brier: number | null = null;
+  let v2Correct: number[] | null = null;
+  let v2Briers: number[] | null = null;
+  if (sampleSize > 0) {
+    try {
+      // Codex fix: build team state per game date, not once at earliest.
+      // Process chronologically so each game gets point-in-time state.
+      const sortedByDate = [...matched].sort((a, b) => a.date.localeCompare(b.date));
+
+      v2Correct = [];
+      v2Briers = [];
+      for (const m of sortedByDate) {
+        const states = buildTeamStateUpTo(sport, m.date);
+        const homeState = states.get(m.home_team_id);
+        const awayState = states.get(m.away_team_id);
+        if (!homeState || !awayState) {
+          // Skip games where we don't have state
+          continue;
+        }
+        const probHome = v2Model.predict(
+          { game_id: m.game_id, date: m.date, sport, home_team_id: m.home_team_id, away_team_id: m.away_team_id, home_win: 0 },
+          { home: homeState, away: awayState, asOfDate: m.date },
+        );
+        const homeWon = m.actual_winner === m.home_team_id ? 1 : 0;
+        const v2PickedHome = probHome >= 0.5;
+        v2Correct.push(v2PickedHome === (homeWon === 1) ? 1 : 0);
+        v2Briers.push((probHome - homeWon) ** 2);
+      }
+      if (v2Correct.length > 0) {
+        v2Acc = v2Correct.reduce((a, b) => a + b, 0) / v2Correct.length;
+        v2Brier = v2Briers.reduce((a, b) => a + b, 0) / v2Briers.length;
+      }
+    } catch (err) {
+      console.warn('Vegas baseline: v2 comparison failed:', err);
+    }
+  }
+
   return {
     schemaVersion: 2,
     sport,
@@ -209,10 +252,15 @@ export function computeVegasComparison(sport: Sport): VegasComparison {
       brier: vegasBrier,
       brierCI95: bootstrapCI(vegasBriers),
     },
-    // v2 on the same subset would require running the predictor — for now, leave null
-    // and let the frontend display Vegas alone with the preliminary label.
-    // Sprint 8.5 can add the v2-on-subset comparison once we have meaningful sample size.
-    v2: null,
+    // P2-12: Run v2 predictor on the matched subset for comparison.
+    // Council mandate: "SHIPS AS INSTRUMENTATION" — frontend must not promote
+    // "v2 beats Vegas" headlines. The `preliminary` flag + note handle this.
+    v2: v2Acc !== null ? {
+      accuracy: v2Acc,
+      accuracyCI95: bootstrapCI(v2Correct!),
+      brier: v2Brier!,
+      brierCI95: bootstrapCI(v2Briers!),
+    } : null,
     note: sampleSize < 500
       ? `PRELIMINARY: n=${sampleSize}, well below significance threshold of 500. Treat as instrumentation, not verdict. Revisit when n >= 500.`
       : `n=${sampleSize}. Sample size adequate for comparison.`,

@@ -57,29 +57,38 @@ export function validateScoreboard(raw: unknown): ValidationResult<EspnScoreboar
     return { ok: false, reason: 'events field is missing or not an array' };
   }
 
+  // P2-9: Filter out malformed events instead of failing the whole response.
+  // Exhibition/all-star games may have non-standard competitor counts.
+  const validEvents: unknown[] = [];
   for (const [i, eventRaw] of (obj.events as unknown[]).entries()) {
     if (!eventRaw || typeof eventRaw !== 'object') {
-      return { ok: false, reason: `events[${i}] is not an object` };
+      console.warn(`ESPN: events[${i}] is not an object, skipping`);
+      continue;
     }
     const event = eventRaw as Record<string, unknown>;
-    if (typeof event.id !== 'string') return { ok: false, reason: `events[${i}].id missing or not string` };
-    if (typeof event.date !== 'string') return { ok: false, reason: `events[${i}].date missing or not string` };
+    if (typeof event.id !== 'string' || typeof event.date !== 'string') {
+      console.warn(`ESPN: events[${i}] missing id or date, skipping`);
+      continue;
+    }
     if (!event.status || typeof event.status !== 'object') {
-      return { ok: false, reason: `events[${i}].status missing` };
+      console.warn(`ESPN: events[${i}] missing status, skipping`);
+      continue;
     }
-    if (!Array.isArray(event.competitions)) {
-      return { ok: false, reason: `events[${i}].competitions missing or not array` };
-    }
-    if (event.competitions.length === 0) {
-      return { ok: false, reason: `events[${i}].competitions is empty` };
+    if (!Array.isArray(event.competitions) || event.competitions.length === 0) {
+      console.warn(`ESPN: events[${i}] missing competitions, skipping`);
+      continue;
     }
     const comp = event.competitions[0] as Record<string, unknown>;
     if (!Array.isArray(comp.competitors) || comp.competitors.length !== 2) {
-      return { ok: false, reason: `events[${i}].competitions[0].competitors must have exactly 2 entries` };
+      console.warn(`ESPN: events[${i}] has ${(comp.competitors as unknown[])?.length ?? 0} competitors (expected 2), skipping`);
+      continue;
     }
+    validEvents.push(eventRaw);
   }
 
-  return { ok: true, data: raw as EspnScoreboardResponse };
+  // Replace events array with only valid events
+  obj.events = validEvents;
+  return { ok: true, data: obj as unknown as EspnScoreboardResponse };
 }
 
 // --- ESPN Teams ---

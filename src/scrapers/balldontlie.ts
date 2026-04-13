@@ -45,6 +45,7 @@ interface BdlGame {
   id: number;
   date: string;
   season: number;
+  period: number;
   status: string;
   home_team: BdlTeam;
   visitor_team: BdlTeam;
@@ -86,7 +87,7 @@ function bdlGameToGame(g: BdlGame): Game {
     score: isFinal ? {
       home: g.home_team_score,
       away: g.visitor_team_score,
-      overtime: false,
+      overtime: (g.period ?? 4) > 4, // NBA regulation is 4 periods; >4 = overtime
     } : undefined,
     provenance: createProvenance('balldontlie'),
   };

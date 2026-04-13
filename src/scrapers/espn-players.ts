@@ -19,13 +19,22 @@ import { appendLog, countRecentRequests } from '../storage/json-log.js';
 const SITE_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 const CORE_BASE = 'https://sports.core.api.espn.com/v2/sports';
 
-const SPORT_PATHS: Record<Sport, { site: string; core: string; coreSeason: string }> = {
-  nfl: { site: 'football/nfl', core: 'football/leagues/nfl', coreSeason: '2025' },
-  nba: { site: 'basketball/nba', core: 'basketball/leagues/nba', coreSeason: '2025' },
-  mlb: { site: 'baseball/mlb', core: 'baseball/leagues/mlb', coreSeason: '2025' },
-  nhl: { site: 'hockey/nhl', core: 'hockey/leagues/nhl', coreSeason: '2025' },
-  mls: { site: 'soccer/usa.1', core: 'soccer/leagues/usa.1', coreSeason: '2025' },
-  epl: { site: 'soccer/eng.1', core: 'soccer/leagues/eng.1', coreSeason: '2025' },
+// coreSeason computed dynamically from current date + sport calendar.
+// Council note: this is wrong for historical backfills (uses now() not game time)
+// but acceptable for the live scrape cron which always fetches current season.
+import { getSeasonYear } from '../analysis/season.js';
+
+function currentCoreSeason(sport: Sport): string {
+  return String(getSeasonYear(sport, new Date().toISOString()));
+}
+
+const SPORT_PATHS: Record<Sport, { site: string; core: string }> = {
+  nfl: { site: 'football/nfl', core: 'football/leagues/nfl' },
+  nba: { site: 'basketball/nba', core: 'basketball/leagues/nba' },
+  mlb: { site: 'baseball/mlb', core: 'baseball/leagues/mlb' },
+  nhl: { site: 'hockey/nhl', core: 'hockey/leagues/nhl' },
+  mls: { site: 'soccer/usa.1', core: 'soccer/leagues/usa.1' },
+  epl: { site: 'soccer/eng.1', core: 'soccer/leagues/eng.1' },
 };
 
 // Soccer leagues use season type 1 (regular), others use type 2
@@ -161,7 +170,8 @@ interface RawStatsResponse {
 
 /** Fetch a single player's season stats */
 export async function fetchPlayerStats(sport: Sport, playerId: string): Promise<PlayerStatRow | null> {
-  const { core, coreSeason } = SPORT_PATHS[sport];
+  const { core } = SPORT_PATHS[sport];
+  const coreSeason = currentCoreSeason(sport);
   const seasonType = SEASON_TYPE[sport];
   const url = `${CORE_BASE}/${core}/seasons/${coreSeason}/types/${seasonType}/athletes/${playerId}/statistics`;
 

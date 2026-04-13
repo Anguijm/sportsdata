@@ -339,23 +339,23 @@ export function writeOddsToGames(sport: string, oddsEvents: Array<{
     'SELECT id, name, abbreviation, city FROM teams WHERE sport = ?'
   ).all(sport) as { id: string; name: string; abbreviation: string; city: string }[];
 
+  // P2-4: Removed city-only mapping (caused false matches: "Los Angeles" → random LA team).
+  // Only map by full name, abbreviation, and city+name composite.
   const nameToId = new Map<string, string>();
   for (const t of teams) {
     nameToId.set(t.name.toLowerCase(), t.id);
     nameToId.set(t.abbreviation.toLowerCase(), t.id);
     if (t.city) {
       nameToId.set(`${t.city} ${t.name}`.toLowerCase(), t.id);
-      // Handle cases like "LA Clippers" vs "Los Angeles Clippers"
-      nameToId.set(t.city.toLowerCase(), t.id);
     }
   }
 
   function resolveTeamId(name: string): string | null {
     const lower = name.toLowerCase();
     if (nameToId.has(lower)) return nameToId.get(lower)!;
-    // Fuzzy: check if any known name is a substring of the odds name
+    // Fuzzy: substring match with min-length 4 guard to avoid short-string collisions
     for (const [key, id] of nameToId) {
-      if (lower.includes(key) || key.includes(lower)) return id;
+      if (key.length >= 4 && lower.length >= 4 && (lower.includes(key) || key.includes(lower))) return id;
     }
     return null;
   }

@@ -74,13 +74,16 @@ export function startDataApi(): void {
 
         case '/api/games': {
           const db = getDb();
+          const gamesLimit = Math.min(parseInt(url.searchParams.get('limit') ?? '100', 10) || 100, 1000);
+          const gamesOffset = parseInt(url.searchParams.get('offset') ?? '0', 10) || 0;
           const games = db.prepare(`
             SELECT gr.*, g.home_team_id, g.away_team_id, g.odds_json
             FROM game_results gr
             JOIN games g ON gr.game_id = g.id
             WHERE gr.sport = ?
-            ORDER BY gr.date
-          `).all(sport);
+            ORDER BY gr.date, gr.game_id
+            LIMIT ? OFFSET ?
+          `).all(sport, gamesLimit, gamesOffset);
           response = jsonResponse(games);
           break;
         }
@@ -428,7 +431,15 @@ export function startDataApi(): void {
         }
 
         default:
-          response = jsonResponse({ error: 'Not found', endpoints: ['/api/findings', '/api/margins', '/api/home-timeline', '/api/games', '/api/stats', '/api/health'] });
+          response = jsonResponse({ error: 'Not found', endpoints: [
+            '/api/health', '/api/stats', '/api/games', '/api/margins', '/api/home-timeline',
+            '/api/extreme-games', '/api/team-sequences', '/api/findings', '/api/players',
+            '/api/player-counts', '/api/sport-data', '/api/ratchet',
+            '/api/predictions/upcoming', '/api/predictions/recent',
+            '/api/predictions/track-record', '/api/predictions/calibration',
+            '/api/spread-picks/upcoming', '/api/spread-picks/track-record',
+            '/api/trigger/scrape', '/api/trigger/predict',
+          ] });
           res.writeHead(404, response.headers);
           res.end(response.body);
           return;

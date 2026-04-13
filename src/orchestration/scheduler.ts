@@ -185,6 +185,17 @@ export async function runCycle(
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.log(`  ✗ Odds API: ${msg}`);
+        // P2-11: Log odds failures so they appear in the cycle failure sweep
+        appendLog('scrape', {
+          timestamp: new Date().toISOString(),
+          source: 'odds-api',
+          sport,
+          dataType: 'odds-failure',
+          records: 0,
+          gate: 'FAIL',
+          durationMs: Date.now() - startTime,
+          error: `Odds API: ${msg}`,
+        });
       }
     }
   } else {
@@ -203,7 +214,7 @@ export async function runCycle(
   // failures from prior runs.
   const logEntries = readLog<ScrapeLogEntry>('scrape');
   const failures = logEntries
-    .filter((e) => e.source === 'espn' && e.gate === 'FAIL' && e.timestamp >= startIso)
+    .filter((e) => (e.source === 'espn' || e.source === 'odds-api') && e.gate === 'FAIL' && e.timestamp >= startIso)
     .filter((e) => config.sports.includes(e.sport as Sport))
     .map((e) => ({ sport: e.sport, dataType: e.dataType, error: e.error, timestamp: e.timestamp }));
 

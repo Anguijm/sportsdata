@@ -474,6 +474,26 @@ function renderPredictions(
         const winnerAbbr = p.predicted_winner.split(':')[1] ?? p.predicted_winner;
         const confidence = (p.predicted_prob * 100).toFixed(0);
         const dateLabel = formatGameDate(p.game_date);
+        // MLB pitcher display
+        let pitcherHtml = '';
+        if (currentSport === 'mlb' && (p as unknown as { pitchers_json: string | null }).pitchers_json) {
+          try {
+            const pitchers = JSON.parse((p as unknown as { pitchers_json: string }).pitchers_json) as {
+              home?: { name: string; era: number; record?: string };
+              away?: { name: string; era: number; record?: string };
+            };
+            const hp = pitchers.home;
+            const ap = pitchers.away;
+            if (hp || ap) {
+              pitcherHtml = `<div class="prediction-pitchers">
+                ${ap ? `<span class="pitcher">${esc(ap.name)} (${ap.era.toFixed(2)} ERA)</span>` : ''}
+                <span class="pitcher-vs">vs</span>
+                ${hp ? `<span class="pitcher">${esc(hp.name)} (${hp.era.toFixed(2)} ERA)</span>` : ''}
+              </div>`;
+            }
+          } catch { /* ignore */ }
+        }
+
         return `
           <div class="prediction-card ${p.low_confidence ? 'low-confidence' : ''}">
             <div class="prediction-header">
@@ -485,6 +505,7 @@ function renderPredictions(
               <div class="matchup-at">@</div>
               <div class="matchup-team ${winnerAbbr === homeAbbr ? 'pick' : ''}">${homeAbbr}</div>
             </div>
+            ${pitcherHtml}
             <div class="prediction-pick">
               <div class="pick-text">Model pick: <strong>${winnerAbbr}</strong></div>
               <div class="pick-confidence">${confidence}%</div>

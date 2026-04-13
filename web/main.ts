@@ -411,6 +411,7 @@ function renderPredictions(
   ): string => {
     const acc = cohort.resolved > 0 ? (cohort.accuracy * 100).toFixed(1) + '%' : '—';
     const brier = cohort.resolved > 0 ? cohort.avgBrier.toFixed(3) : '—';
+    const drawNote = (currentSport === 'mls' || currentSport === 'epl') ? ' (excl. draws)' : '';
     return `
       <div class="track-cohort ${isLive ? 'cohort-live' : 'cohort-backfill'}">
         <div class="track-cohort-header">
@@ -420,11 +421,11 @@ function renderPredictions(
         <div class="track-cohort-stats">
           <div class="track-stat">
             <div class="track-stat-value">${cohort.correct}<span class="track-stat-sep">–</span>${cohort.resolved - cohort.correct}</div>
-            <div class="track-stat-label">RECORD</div>
+            <div class="track-stat-label">RECORD${drawNote}</div>
           </div>
           <div class="track-stat">
             <div class="track-stat-value">${acc}</div>
-            <div class="track-stat-label">ACCURACY</div>
+            <div class="track-stat-label">ACCURACY${drawNote}</div>
           </div>
           <div class="track-stat">
             <div class="track-stat-value">${brier}</div>

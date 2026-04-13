@@ -1,7 +1,7 @@
 import type { Provenance, Sport } from './provenance.js';
 
 export interface Game {
-  id: string; // normalized: "nfl:2025-W12-KC@BUF"
+  id: string; // format: "{sport}:{source_id}" — e.g. "nba:401811234" (ESPN), "nba:bdl-18447972" (BDL)
   sport: Sport;
   season: string;
   date: string; // ISO 8601

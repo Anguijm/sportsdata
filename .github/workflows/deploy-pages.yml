@@ -7,6 +7,7 @@ on:
       - 'web/**'
       - 'vite.config.ts'
       - 'package.json'
+  workflow_dispatch:  # P3: allow manual trigger (was missing per infra review)
 
 jobs:
   deploy:

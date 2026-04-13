@@ -33,3 +33,9 @@ jobs:
           curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/predict?sport=all" \
             -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
             --max-time 600
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          echo "::error::Predict cron failed! Check https://sportsdata-api.fly.dev/api/health for staleness."
+          echo "::error::Last successful scrape and predict timestamps should be within 24 hours."

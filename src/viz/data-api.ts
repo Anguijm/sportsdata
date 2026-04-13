@@ -59,6 +59,9 @@ export function startDataApi(): void {
     try {
       let response: { body: string; headers: Record<string, string> };
 
+      // TODO (council P3): This 400+ line switch should be refactored into a
+      // route registry pattern when endpoint count exceeds ~25. Not urgent but
+      // adding a new endpoint currently means modifying one giant function.
       switch (path) {
         case '/api/findings':
           response = jsonResponse(scanForFindings(sport));

@@ -388,6 +388,31 @@ export function startDataApi(): void {
           break;
         }
 
+        case '/api/trigger/ratchet': {
+          const auth = req.headers['authorization'];
+          const expected = process.env.PREDICT_TRIGGER_TOKEN;
+          if (!expected || auth !== `Bearer ${expected}`) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Unauthorized' }));
+            return;
+          }
+          const ratchetSport = url.searchParams.get('sport') ?? 'nba';
+          console.log(`[ratchet] Starting for ${ratchetSport}`);
+          const ratchetChild = execFile('node', ['node_modules/.bin/tsx', 'src/cli/ratchet.ts', ratchetSport], {
+            env: { ...process.env },
+            timeout: 0,
+          }, (err, stdout, stderr) => {
+            if (err) console.error(`[ratchet] FAILED:`, err.message);
+            else console.log(`[ratchet] COMPLETE`);
+            if (stdout) console.log(stdout);
+            if (stderr) console.error(stderr);
+          });
+          ratchetChild.unref();
+          res.writeHead(202, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ status: 'accepted', sport: ratchetSport, message: 'Ratchet started in background.' }));
+          return;
+        }
+
         case '/api/trigger/backfill': {
           // One-shot historical backfill. Runs in background (fire-and-forget)
           // because it takes ~45 min. Returns 202 Accepted immediately.

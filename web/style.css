@@ -793,6 +793,22 @@ body {
   color: var(--accent);
 }
 
+.prediction-pitchers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 4px 0;
+  justify-content: center;
+}
+
+.pitcher-vs {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
 .prediction-reasoning {
   font-size: 12px;
   color: var(--text-secondary);

@@ -79,16 +79,23 @@ export const v1: Iteration = {
   predict: (game, ctx) => {
     if (ctx.home.games < 5 || ctx.away.games < 5) return SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
     const winGap = ctx.away.wins - ctx.home.wins;
-    if (winGap >= 10) return 0.3;
+    if (winGap >= 10) return 0.40; // recalibrated (was 0.30)
     return SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
   },
 };
 
-/** v2: v1 + use point differential as tie-breaker */
+/** v2: v1 + use point differential as tie-breaker
+ *
+ *  Recalibrated from 12,813 backfill predictions (Sprint 10.6):
+ *  - winGap >= 10: was 0.25 (75% away), actual 50-62% → now 0.42 (~58%)
+ *  - diffGap >= 5: was 0.30 (70% away), actual ~64% → now 0.38 (~62%)
+ *  - diffGap >= 3: was 0.42 (58% away), actual ~58% → unchanged
+ *  - default: baseRate + 0.03 → unchanged (well calibrated)
+ */
 export const v2: Iteration = {
   id: 'v2',
   version: '2',
-  description: 'v1 + flip when visitor point differential is 3+ higher',
+  description: 'v1 + flip when visitor point differential is 3+ higher (recalibrated)',
   predict: (game, ctx) => {
     const baseRate = SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
     if (ctx.home.games < 5 || ctx.away.games < 5) return baseRate;
@@ -99,10 +106,10 @@ export const v2: Iteration = {
 
     const winGap = ctx.away.wins - ctx.home.wins;
 
-    if (winGap >= 10) return 0.25;
-    if (diffGap >= 5) return 0.30;
-    if (diffGap >= 3) return 0.42;
-    return baseRate + 0.03; // slight home edge above sport base rate
+    if (winGap >= 10) return 0.40; // recalibrated: was 0.25 (75%), actual ~56% (midpoint of 50-62%)
+    if (diffGap >= 5) return 0.38;  // recalibrated: was 0.30 (70%), actual ~62%
+    if (diffGap >= 3) return 0.43;  // was 0.42 — nudged up to preserve ordering vs winGap
+    return baseRate + 0.03;
   },
 };
 
@@ -127,13 +134,13 @@ export const v3: Iteration = {
       ctx.away.lastNResults.slice(-3).every(r => r);
 
     let base = baseRate + 0.03;
-    if (winGap >= 10) base = 0.25;
-    else if (diffGap >= 5) base = 0.30;
-    else if (diffGap >= 3) base = 0.42;
+    if (winGap >= 10) base = 0.40;      // recalibrated (was 0.25)
+    else if (diffGap >= 5) base = 0.38;  // recalibrated (was 0.30)
+    else if (diffGap >= 3) base = 0.43;
 
     // Cold streak reduces home probability
-    if (homeColdStreak) base -= 0.10;
-    if (awayHotStreak) base -= 0.05;
+    if (homeColdStreak) base -= 0.05;  // reduced from 0.10 (council: arbitrary, halved)
+    if (awayHotStreak) base -= 0.03;   // reduced from 0.05
 
     return Math.max(0.1, Math.min(0.9, base));
   },

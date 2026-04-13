@@ -210,6 +210,7 @@ function getCohort(sport: Sport, modelVersion: string, source: 'live' | 'backfil
     WHERE sport = ? AND model_version = ?
       AND COALESCE(prediction_source, 'live') = ?
       AND resolved_at IS NOT NULL
+      AND was_correct IS NOT NULL
       AND low_confidence = 0
   `).get(sport, modelVersion, source) as { resolved: number; correct: number; avg_brier: number };
 
@@ -219,6 +220,7 @@ function getCohort(sport: Sport, modelVersion: string, source: 'live' | 'backfil
     WHERE sport = ? AND model_version = ?
       AND COALESCE(prediction_source, 'live') = ?
       AND resolved_at IS NOT NULL
+      AND was_correct IS NOT NULL
       AND low_confidence = 1
   `).get(sport, modelVersion, source) as { resolved: number; correct: number };
 
@@ -509,6 +511,8 @@ export interface PredictionWithGame {
   home_team_id: string;
   away_team_id: string;
   game_status: string;
+  /** MLB probable pitchers JSON, if available */
+  pitchers_json: string | null;
 }
 
 export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWithGame[] {
@@ -522,7 +526,8 @@ export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWith
     SELECT p.id, p.game_id, p.sport, p.model_version, p.predicted_winner,
            p.predicted_prob, p.reasoning_text, p.made_at, p.resolved_at,
            p.actual_winner, p.was_correct, p.brier_score, p.low_confidence,
-           g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status
+           g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status,
+           g.pitchers_json
     FROM predictions p
     JOIN games g ON p.game_id = g.id
     WHERE p.sport = ? AND p.model_version = 'v2' AND p.resolved_at IS NULL

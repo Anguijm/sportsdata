@@ -180,10 +180,12 @@ function computeInjuryImpact(sport: Sport, teamId: string): number {
   const injuries = getTeamInjuries(sport, teamId);
   if (injuries.length === 0) return 0;
 
-  // Recency filter: only count injuries reported within last 7 days.
+  // Recency filter: only count injuries first observed within last 7 days.
   // Older injuries are already reflected in the team's point differential.
+  // Uses firstSeenAt (persisted across scrape cycles) instead of fetchedAt
+  // (which resets every cycle, making chronic injuries always look "recent").
   const recentCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
-  const recentInjuries = injuries.filter(inj => inj.fetchedAt >= recentCutoff);
+  const recentInjuries = injuries.filter(inj => (inj.firstSeenAt || inj.fetchedAt) >= recentCutoff);
   if (recentInjuries.length === 0) return 0;
 
   const db = getDb();

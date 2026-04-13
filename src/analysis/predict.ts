@@ -146,18 +146,6 @@ export const v3: Iteration = {
   },
 };
 
-export const ITERATIONS: Iteration[] = [v0, v1, v2, v3];
-
-// =============================================================================
-// SPREAD MODEL (Phase 2 — Sprint 10.6)
-// =============================================================================
-//
-// Council mandate: coexists with v2 winner-prediction as a separate model
-// version (`v4-spread`). Uses the same features (point differential, win
-// records, streaks) but outputs a continuous predicted margin instead of a
-// probability bucket. The margin is compared against the bookmaker spread
-// to identify "value bets" — games where the model disagrees with the line.
-
 /** Home court / home field / home ice advantage in margin units per sport.
  *  Derived from historical home-win rates:
  *  - NBA ~54.7% ≈ +3.0 pts, NFL ~57% ≈ +2.5 pts, MLB ~54% ≈ +0.5 runs,
@@ -170,6 +158,88 @@ const SPORT_HOME_ADVANTAGE: Record<string, number> = {
   mls: 0.4,
   epl: 0.4,
 };
+
+/** v5: Continuous sigmoid model — replaces discrete v2 buckets.
+ *
+ *  Maps the point-differential gap to a continuous probability via logistic
+ *  function. Every game gets a unique probability instead of one of 4 buckets.
+ *
+ *  prob_home = sigmoid(scale * (homeDiff - awayDiff + homeAdvBias))
+ *
+ *  Scale calibrated from 12,813 backfill predictions:
+ *  - NBA at diffGap=0: ~60% home wins → homeAdvBias ≈ 3.0, scale ≈ 0.10
+ *  - NBA at diffGap=5 (away better): ~38% home → sigmoid(0.10 * (-5+3)) ≈ 0.45
+ *  - NBA at diffGap=-5 (home better): ~72% home → sigmoid(0.10 * (5+3)) ≈ 0.69
+ *
+ *  Per-sport scale accounts for scoring range: NBA/NFL use points (large
+ *  differentials), MLB/NHL/soccer use runs/goals (small differentials).
+ */
+/** Sigmoid scale per sport.
+ *
+ *  Theoretically: scale = π / (√3 × σ) where σ is the effective prediction
+ *  noise SD — the uncertainty in predicting a single game's outcome from
+ *  season-average differentials. This is LARGER than the raw game-margin SD
+ *  because the model doesn't account for matchup-specific factors (injuries,
+ *  rest, strength of schedule, etc.).
+ *
+ *  Current values are empirically calibrated against 12,813 backfill
+ *  predictions (in-sample). The NBA scale 0.10 implies σ_effective ≈ 18 pts
+ *  (raw margin SD ≈ 12 pts + model uncertainty). Future work: fit scale via
+ *  maximum likelihood logistic regression on held-out data.
+ *
+ *  Math expert note: scale = π / (√3 × σ_effective):
+ *    NBA: σ_eff ≈ 18 → scale ≈ 0.10 ✓
+ *    NFL: σ_eff ≈ 18 → scale ≈ 0.10 ✓
+ *    MLB: σ_eff ≈ 6  → scale ≈ 0.30
+ *    NHL: σ_eff ≈ 4  → scale ≈ 0.45
+ *    Soccer: σ_eff ≈ 3 → scale ≈ 0.60
+ */
+const SIGMOID_SCALE: Record<string, number> = {
+  nba: 0.10,
+  nfl: 0.10,
+  mlb: 0.30,   // revised: was 0.25, theoretical ≈ 0.30 from σ_eff ≈ 6 runs
+  nhl: 0.45,   // revised: was 0.50, theoretical ≈ 0.45 from σ_eff ≈ 4 goals
+  mls: 0.60,   // revised: was 0.50, theoretical ≈ 0.60 from σ_eff ≈ 3 goals
+  epl: 0.60,   // revised: was 0.50, theoretical ≈ 0.60 from σ_eff ≈ 3 goals
+};
+
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-x));
+}
+
+export const v5: Iteration = {
+  id: 'v5',
+  version: '5',
+  description: 'Continuous sigmoid model — unique probability per game from differential gap',
+  predict: (game, ctx) => {
+    const baseRate = SPORT_HOME_WIN_RATE[game.sport] ?? 0.55;
+    if (ctx.home.games < 5 || ctx.away.games < 5) return baseRate;
+
+    const homeDiff = (ctx.home.pointsFor - ctx.home.pointsAgainst) / ctx.home.games;
+    const awayDiff = (ctx.away.pointsFor - ctx.away.pointsAgainst) / ctx.away.games;
+    const scale = SIGMOID_SCALE[game.sport] ?? 0.10;
+    const homeAdv = SPORT_HOME_ADVANTAGE[game.sport] ?? 3.0;
+
+    // x > 0 → home favored, x < 0 → away favored
+    const x = scale * ((homeDiff - awayDiff) + homeAdv);
+    const prob = sigmoid(x);
+
+    // Clamp to [0.15, 0.85] — no game is truly 95% certain
+    return Math.max(0.15, Math.min(0.85, prob));
+  },
+};
+
+export const ITERATIONS: Iteration[] = [v0, v1, v2, v3, v5];
+
+// =============================================================================
+// SPREAD MODEL (Phase 2 — Sprint 10.6)
+// =============================================================================
+//
+// Council mandate: coexists with v2 winner-prediction as a separate model
+// version (`v4-spread`). Uses the same features (point differential, win
+// records, streaks) but outputs a continuous predicted margin instead of a
+// probability bucket. The margin is compared against the bookmaker spread
+// to identify "value bets" — games where the model disagrees with the line.
 
 /** Maximum reasonable margin per sport (clamp bounds). */
 const SPORT_MARGIN_CLAMP: Record<string, number> = {

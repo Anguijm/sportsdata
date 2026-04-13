@@ -11,6 +11,7 @@ import { getPlayerCount } from '../storage/sqlite.js';
 import { getTrackRecord, getUpcomingPredictions, getRecentResolvedPredictions, resolvePredictions, getCalibration, getUpcomingSpreadPicks, getSpreadTrackRecord } from '../analysis/resolve-predictions.js';
 import { predictUpcoming } from '../analysis/predict-runner.js';
 import { predictUpcomingSpreads } from '../analysis/spread-runner.js';
+import { execFile } from 'node:child_process';
 import { getLastScrapeTime } from '../storage/sqlite.js';
 import { runCycle } from '../orchestration/scheduler.js';
 import { readFileSync, existsSync } from 'node:fs';
@@ -387,6 +388,50 @@ export function startDataApi(): void {
           break;
         }
 
+        case '/api/trigger/backfill': {
+          // One-shot historical backfill. Runs in background (fire-and-forget)
+          // because it takes ~45 min. Returns 202 Accepted immediately.
+          const auth = req.headers['authorization'];
+          const expected = process.env.PREDICT_TRIGGER_TOKEN;
+          if (!expected || auth !== `Bearer ${expected}`) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Unauthorized' }));
+            return;
+          }
+          const backfillSport = url.searchParams.get('sport') ?? 'all';
+          const backfillMode = url.searchParams.get('mode') ?? undefined;
+          const VALID_MODES = new Set(['scrape', 'predict']);
+          if (backfillMode && !VALID_MODES.has(backfillMode)) {
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: `Invalid mode: ${backfillMode}. Valid: scrape, predict (or omit for full)` }));
+            return;
+          }
+          const args = [backfillSport];
+          if (backfillMode) args.push(backfillMode);
+
+          console.log(`[backfill] Starting: sport=${backfillSport} mode=${backfillMode ?? 'full'}`);
+          // Spawn as detached child process so it survives if this request times out
+          const child = execFile('node', ['node_modules/.bin/tsx', 'src/cli/backfill-historical.ts', ...args], {
+            env: { ...process.env },
+            timeout: 0, // no timeout — backfill can take 45+ min
+          }, (err, stdout, stderr) => {
+            if (err) console.error(`[backfill] FAILED:`, err.message);
+            else console.log(`[backfill] COMPLETE`);
+            if (stdout) console.log(stdout);
+            if (stderr) console.error(stderr);
+          });
+          child.unref();
+
+          res.writeHead(202, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({
+            status: 'accepted',
+            sport: backfillSport,
+            mode: backfillMode ?? 'full',
+            message: 'Backfill started in background. Check server logs for progress. Takes ~45 min for all sports.',
+          }));
+          return;
+        }
+
         case '/api/ratchet': {
           const ratchetDir = process.env.SQLITE_PATH ? '/app/data/ratchet' : 'data/ratchet';
           const artifactPath = join(ratchetDir, `${sport}-ratchet.json`);
@@ -441,7 +486,7 @@ export function startDataApi(): void {
             '/api/predictions/upcoming', '/api/predictions/recent',
             '/api/predictions/track-record', '/api/predictions/calibration',
             '/api/spread-picks/upcoming', '/api/spread-picks/track-record',
-            '/api/trigger/scrape', '/api/trigger/predict',
+            '/api/trigger/scrape', '/api/trigger/predict', '/api/trigger/backfill',
           ] });
           res.writeHead(404, response.headers);
           res.end(response.body);

@@ -1,0 +1,35 @@
+name: Run Ratchet
+
+# Re-runs the ratchet loop for a sport on Fly. Produces a new ratchet
+# artifact with recalibrated improvement percentages.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sport:
+        description: 'Sport to run ratchet for'
+        required: false
+        default: 'nba'
+        type: choice
+        options:
+          - nba
+          - nfl
+          - mlb
+          - nhl
+          - mls
+          - epl
+
+jobs:
+  ratchet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Trigger ratchet on Fly.io
+        run: |
+          SPORT="${{ github.event.inputs.sport || 'nba' }}"
+          echo "Running ratchet for ${SPORT}"
+          curl -sSf -X POST \
+            "https://sportsdata-api.fly.dev/api/trigger/ratchet?sport=${SPORT}" \
+            -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
+            --max-time 30
+          echo "Ratchet started. Monitor: fly logs -a sportsdata-api"

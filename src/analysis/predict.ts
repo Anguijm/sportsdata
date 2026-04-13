@@ -146,6 +146,19 @@ export const v3: Iteration = {
   },
 };
 
+/** Home court / home field / home ice advantage in margin units per sport.
+ *  Derived from historical home-win rates:
+ *  - NBA ~54.7% ≈ +3.0 pts, NFL ~57% ≈ +2.5 pts, MLB ~54% ≈ +0.5 runs,
+ *    NHL ~55% ≈ +0.3 goals, MLS ~49% ≈ +0.4 goals, EPL ~46% ≈ +0.4 goals */
+const SPORT_HOME_ADVANTAGE: Record<string, number> = {
+  nba: 3.0,
+  nfl: 2.5,
+  mlb: 0.5,
+  nhl: 0.3,
+  mls: 0.4,
+  epl: 0.4,
+};
+
 /** v5: Continuous sigmoid model — replaces discrete v2 buckets.
  *
  *  Maps the point-differential gap to a continuous probability via logistic
@@ -164,7 +177,7 @@ export const v3: Iteration = {
 const SIGMOID_SCALE: Record<string, number> = {
   nba: 0.10,   // ~10 pts differential range
   nfl: 0.10,   // similar scoring range to NBA
-  mlb: 0.40,   // ~2 run differential range
+  mlb: 0.25,   // council: 0.40 was too aggressive — 2.5-run gap gave 77%, now ~56%
   nhl: 0.50,   // ~1 goal differential range
   mls: 0.50,   // similar to NHL
   epl: 0.50,   // similar to NHL
@@ -207,19 +220,6 @@ export const ITERATIONS: Iteration[] = [v0, v1, v2, v3, v5];
 // records, streaks) but outputs a continuous predicted margin instead of a
 // probability bucket. The margin is compared against the bookmaker spread
 // to identify "value bets" — games where the model disagrees with the line.
-
-/** Home court / home field / home ice advantage in margin units per sport.
- *  Derived from historical home-win rates:
- *  - NBA ~54.7% ≈ +3.0 pts, NFL ~57% ≈ +2.5 pts, MLB ~54% ≈ +0.5 runs,
- *    NHL ~55% ≈ +0.3 goals, MLS ~49% ≈ +0.4 goals, EPL ~46% ≈ +0.4 goals */
-const SPORT_HOME_ADVANTAGE: Record<string, number> = {
-  nba: 3.0,
-  nfl: 2.5,
-  mlb: 0.5,
-  nhl: 0.3,
-  mls: 0.4,
-  epl: 0.4,
-};
 
 /** Maximum reasonable margin per sport (clamp bounds). */
 const SPORT_MARGIN_CLAMP: Record<string, number> = {

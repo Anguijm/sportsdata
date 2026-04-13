@@ -208,13 +208,14 @@ export function computeVegasComparison(sport: Sport): VegasComparison {
   let v2Briers: number[] | null = null;
   if (sampleSize > 0) {
     try {
-      // Build team state up to the earliest matched game
+      // Codex fix: build team state per game date, not once at earliest.
+      // Process chronologically so each game gets point-in-time state.
       const sortedByDate = [...matched].sort((a, b) => a.date.localeCompare(b.date));
-      const states = buildTeamStateUpTo(sport, sortedByDate[0].date);
 
       v2Correct = [];
       v2Briers = [];
-      for (const m of matched) {
+      for (const m of sortedByDate) {
+        const states = buildTeamStateUpTo(sport, m.date);
         const homeState = states.get(m.home_team_id);
         const awayState = states.get(m.away_team_id);
         if (!homeState || !awayState) {

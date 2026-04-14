@@ -1,0 +1,181 @@
+Baseline Analysis — generated 2026-04-14T18:52:19.246Z
+Models: winner=v5, margin=v4-spread
+Train cutoff: season 2023 (analyzing post-cutoff held-out games)
+Holdout split: earliest 80% / latest 20% by date
+Bootstrap: 1000 resamples with replacement (deterministic seed per sport:slice)
+Totals: 16777 games, 268 low-confidence, 631 draws, 0 snapshot-skipped
+
+Margin model = v4-spread predictMargin() with no pitcher/injury data.
+Winner model = v5.predict() sigmoid, no injury adjustment.
+In-sample w.r.t. the parameter calibration. CIs are bootstrap; in-sample
+caveat applies — see honest-disclosure note in baseline.ts header.
+
+Paired-diff verdicts use 95% bootstrap CI:
+  ✓ beats  = CI entirely below zero (model significantly better)
+  ✗ LOSES  = CI entirely above zero (model significantly WORSE than baseline)
+  ~ tie    = CI straddles zero (cannot distinguish at 95%)
+
+━━━ NBA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  all  (N=5196, lowCnf=17, draws=10, σ_act=16.17)
+    MAE          11.67 [11.42, 11.95]   nv0 12.96 [12.69, 13.23]   nvHA 12.80 [12.52, 13.09]
+    RMSE         15.01 [14.70, 15.34]   bias +0.60 [+0.18, +1.01]
+    MAE − nv0    -1.283 [-1.452, -1.116]  → ✓ beats predict-zero
+    MAE − nvHA   -1.126 [-1.301, -0.965]  → ✓ beats predict-home_adv
+    winner acc   0.631 [0.619, 0.644]   (eligible N=5169, home-win rate 0.548)
+    Brier        0.2258 [0.2217, 0.2296]   nvBr 0.2477 [0.2462, 0.2487]
+    Brier − nvBr -0.0219 [-0.0256, -0.0182]  → ✓ beats naive Brier
+  train (<2026-01-25T01:00Z)  (N=4156, lowCnf=13, draws=8, σ_act=15.80)
+    MAE          11.37 [11.10, 11.64]   nv0 12.60 [12.29, 12.88]   nvHA 12.46 [12.15, 12.76]
+    RMSE         14.63 [14.30, 14.97]   bias +0.56 [+0.15, +0.99]
+    MAE − nv0    -1.233 [-1.431, -1.039]  → ✓ beats predict-zero
+    MAE − nvHA   -1.093 [-1.287, -0.919]  → ✓ beats predict-home_adv
+    winner acc   0.632 [0.618, 0.647]   (eligible N=4135, home-win rate 0.547)
+    Brier        0.2268 [0.2222, 0.2312]   nvBr 0.2478 [0.2460, 0.2490]
+    Brier − nvBr -0.0210 [-0.0252, -0.0169]  → ✓ beats naive Brier
+  test  (>=2026-01-25T01:00Z)  (N=1040, lowCnf=4, draws=2, σ_act=17.60)
+    MAE          12.90 [12.23, 13.50]   nv0 14.38 [13.75, 15.00]   nvHA 14.16 [13.51, 14.78]
+    RMSE         16.44 [15.66, 17.14]   bias +0.79 [-0.13, +1.76]
+    MAE − nv0    -1.484 [-1.838, -1.137]  → ✓ beats predict-zero
+    MAE − nvHA   -1.259 [-1.598, -0.923]  → ✓ beats predict-home_adv
+    winner acc   0.627 [0.598, 0.657]   (eligible N=1034, home-win rate 0.553)
+    Brier        0.2218 [0.2133, 0.2297]   nvBr 0.2472 [0.2428, 0.2494]
+    Brier − nvBr -0.0254 [-0.0325, -0.0179]  → ✓ beats naive Brier
+
+━━━ NFL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  all  (N=621, lowCnf=2, draws=4, σ_act=14.38)
+    MAE          10.70 [10.02, 11.37]   nv0 11.28 [10.60, 11.96]   nvHA 11.20 [10.52, 11.86]
+    RMSE         13.78 [12.97, 14.55]   bias +0.09 [-0.98, +1.17]
+    MAE − nv0    -0.579 [-1.011, -0.146]  → ✓ beats predict-zero
+    MAE − nvHA   -0.501 [-0.949, -0.069]  → ✓ beats predict-home_adv
+    winner acc   0.631 [0.593, 0.668]   (eligible N=615, home-win rate 0.537)
+    Brier        0.2320 [0.2214, 0.2427]   nvBr 0.2487 [0.2440, 0.2500]
+    Brier − nvBr -0.0167 [-0.0259, -0.0059]  → ✓ beats naive Brier
+  train (<2025-11-16T21:25Z)  (N=496, lowCnf=1, draws=4, σ_act=14.40)
+    MAE          10.66 [9.87, 11.48]   nv0 11.32 [10.53, 12.17]   nvHA 11.23 [10.48, 12.04]
+    RMSE         13.86 [12.90, 14.79]   bias -0.12 [-1.26, +1.12]
+    MAE − nv0    -0.664 [-1.160, -0.123]  → ✓ beats predict-zero
+    MAE − nvHA   -0.574 [-1.076, -0.083]  → ✓ beats predict-home_adv
+    winner acc   0.635 [0.589, 0.678]   (eligible N=491, home-win rate 0.540)
+    Brier        0.2309 [0.2190, 0.2437]   nvBr 0.2484 [0.2435, 0.2500]
+    Brier − nvBr -0.0176 [-0.0284, -0.0057]  → ✓ beats naive Brier
+  test  (>=2025-11-16T21:25Z)  (N=125, lowCnf=1, draws=0, σ_act=14.32)
+    MAE          10.86 [9.54, 12.34]   nv0 11.10 [9.42, 12.67]   nvHA 11.07 [9.26, 12.67]
+    RMSE         13.43 [11.93, 14.95]   bias +0.96 [-1.44, +3.36]
+    MAE − nv0    -0.240 [-1.080, +0.739]  → ~ tie predict-zero
+    MAE − nvHA   -0.212 [-1.056, +0.747]  → ~ tie predict-home_adv
+    winner acc   0.613 [0.524, 0.694]   (eligible N=124, home-win rate 0.524)
+    Brier        0.2363 [0.2152, 0.2615]   nvBr 0.2494 [0.2390, 0.2500]
+    Brier − nvBr -0.0132 [-0.0317, +0.0139]  → ~ tie naive Brier
+
+━━━ MLB ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  all  (N=6270, lowCnf=90, draws=157, σ_act=4.50)
+    MAE          3.48 [3.41, 3.55]   nv0 3.52 [3.45, 3.59]   nvHA 3.49 [3.42, 3.56]
+    RMSE         4.50 [4.41, 4.60]   bias +0.35 [+0.24, +0.46]
+    MAE − nv0    -0.042 [-0.071, -0.014]  → ✓ beats predict-zero
+    MAE − nvHA   -0.017 [-0.042, +0.011]  → ~ tie predict-home_adv
+    winner acc   0.560 [0.547, 0.572]   (eligible N=6039, home-win rate 0.539)
+    Brier        0.2449 [0.2426, 0.2472]   nvBr 0.2485 [0.2474, 0.2493]
+    Brier − nvBr -0.0036 [-0.0056, -0.0015]  → ✓ beats naive Brier
+  train (<2025-08-21T20:05Z)  (N=5016, lowCnf=90, draws=133, σ_act=4.47)
+    MAE          3.45 [3.37, 3.54]   nv0 3.49 [3.42, 3.57]   nvHA 3.47 [3.39, 3.55]
+    RMSE         4.48 [4.37, 4.58]   bias +0.37 [+0.24, +0.49]
+    MAE − nv0    -0.038 [-0.071, -0.005]  → ✓ beats predict-zero
+    MAE − nvHA   -0.016 [-0.048, +0.014]  → ~ tie predict-home_adv
+    winner acc   0.561 [0.547, 0.576]   (eligible N=4809, home-win rate 0.536)
+    Brier        0.2445 [0.2420, 0.2470]   nvBr 0.2487 [0.2473, 0.2495]
+    Brier − nvBr -0.0041 [-0.0065, -0.0018]  → ✓ beats naive Brier
+  test  (>=2025-08-21T20:05Z)  (N=1254, lowCnf=0, draws=24, σ_act=4.62)
+    MAE          3.56 [3.40, 3.71]   nv0 3.62 [3.46, 3.78]   nvHA 3.58 [3.42, 3.74]
+    RMSE         4.59 [4.37, 4.81]   bias +0.28 [+0.04, +0.54]
+    MAE − nv0    -0.057 [-0.113, -0.007]  → ✓ beats predict-zero
+    MAE − nvHA   -0.020 [-0.070, +0.027]  → ~ tie predict-home_adv
+    winner acc   0.554 [0.527, 0.582]   (eligible N=1230, home-win rate 0.548)
+    Brier        0.2462 [0.2421, 0.2501]   nvBr 0.2477 [0.2443, 0.2496]
+    Brier − nvBr -0.0015 [-0.0049, +0.0023]  → ~ tie naive Brier
+
+━━━ NHL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  all  (N=2832, lowCnf=13, draws=4, σ_act=2.59)
+    MAE          2.16 [2.11, 2.22]   nv0 2.23 [2.19, 2.28]   nvHA 2.21 [2.16, 2.26]
+    RMSE         2.58 [2.52, 2.64]   bias +0.04 [-0.04, +0.13]
+    MAE − nv0    -0.071 [-0.095, -0.047]  → ✓ beats predict-zero
+    MAE − nvHA   -0.047 [-0.071, -0.024]  → ✓ beats predict-home_adv
+    winner acc   0.556 [0.537, 0.574]   (eligible N=2815, home-win rate 0.543)
+    Brier        0.2444 [0.2417, 0.2472]   nvBr 0.2482 [0.2462, 0.2494]
+    Brier − nvBr -0.0037 [-0.0063, -0.0009]  → ✓ beats naive Brier
+  train (<2026-01-13T00:00Z)  (N=2265, lowCnf=13, draws=3, σ_act=2.59)
+    MAE          2.16 [2.10, 2.22]   nv0 2.24 [2.19, 2.30]   nvHA 2.21 [2.16, 2.27]
+    RMSE         2.58 [2.52, 2.65]   bias +0.01 [-0.11, +0.12]
+    MAE − nv0    -0.079 [-0.109, -0.048]  → ✓ beats predict-zero
+    MAE − nvHA   -0.051 [-0.081, -0.023]  → ✓ beats predict-home_adv
+    winner acc   0.568 [0.546, 0.588]   (eligible N=2249, home-win rate 0.549)
+    Brier        0.2432 [0.2398, 0.2466]   nvBr 0.2476 [0.2451, 0.2492]
+    Brier − nvBr -0.0044 [-0.0075, -0.0009]  → ✓ beats naive Brier
+  test  (>=2026-01-13T00:00Z)  (N=567, lowCnf=0, draws=1, σ_act=2.56)
+    MAE          2.17 [2.06, 2.29]   nv0 2.21 [2.10, 2.32]   nvHA 2.20 [2.09, 2.31]
+    RMSE         2.57 [2.44, 2.69]   bias +0.18 [-0.03, +0.39]
+    MAE − nv0    -0.041 [-0.092, +0.012]  → ~ tie predict-zero
+    MAE − nvHA   -0.031 [-0.077, +0.018]  → ~ tie predict-home_adv
+    winner acc   0.507 [0.466, 0.549]   (eligible N=566, home-win rate 0.518)
+    Brier        0.2492 [0.2435, 0.2552]   nvBr 0.2497 [0.2468, 0.2500]
+    Brier − nvBr -0.0005 [-0.0054, +0.0058]  → ~ tie naive Brier
+
+━━━ MLS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  all  (N=1159, lowCnf=82, draws=279, σ_act=1.76)
+    MAE          1.35 [1.28, 1.41]   nv0 1.35 [1.28, 1.42]   nvHA 1.39 [1.33, 1.45]
+    RMSE         1.74 [1.66, 1.82]   bias -0.00 [-0.11, +0.10]
+    MAE − nv0    -0.004 [-0.046, +0.035]  → ~ tie predict-zero
+    MAE − nvHA   -0.043 [-0.077, -0.011]  → ✓ beats predict-home_adv
+    winner acc   0.631 [0.597, 0.664]   (eligible N=822, home-win rate 0.591)
+    Brier        0.2281 [0.2207, 0.2351]   nvBr 0.2417 [0.2340, 0.2467]
+    Brier − nvBr -0.0136 [-0.0202, -0.0063]  → ✓ beats naive Brier
+  train (<2025-08-31T00:30Z)  (N=927, lowCnf=82, draws=232, σ_act=1.70)
+    MAE          1.31 [1.25, 1.38]   nv0 1.31 [1.23, 1.38]   nvHA 1.35 [1.28, 1.42]
+    RMSE         1.69 [1.61, 1.78]   bias +0.03 [-0.08, +0.14]
+    MAE − nv0    +0.008 [-0.039, +0.055]  → ~ tie predict-zero
+    MAE − nvHA   -0.039 [-0.078, -0.001]  → ✓ beats predict-home_adv
+    winner acc   0.612 [0.575, 0.652]   (eligible N=637, home-win rate 0.586)
+    Brier        0.2285 [0.2198, 0.2372]   nvBr 0.2427 [0.2346, 0.2479]
+    Brier − nvBr -0.0142 [-0.0215, -0.0058]  → ✓ beats naive Brier
+  test  (>=2025-08-31T00:30Z)  (N=232, lowCnf=0, draws=47, σ_act=1.98)
+    MAE          1.47 [1.31, 1.63]   nv0 1.52 [1.34, 1.69]   nvHA 1.53 [1.37, 1.69]
+    RMSE         1.91 [1.71, 2.11]   bias -0.14 [-0.40, +0.09]
+    MAE − nv0    -0.048 [-0.131, +0.040]  → ~ tie predict-zero
+    MAE − nvHA   -0.058 [-0.125, +0.015]  → ~ tie predict-home_adv
+    winner acc   0.697 [0.627, 0.761]   (eligible N=185, home-win rate 0.611)
+    Brier        0.2267 [0.2128, 0.2417]   nvBr 0.2377 [0.2170, 0.2480]
+    Brier − nvBr -0.0110 [-0.0237, +0.0061]  → ~ tie naive Brier
+
+━━━ EPL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  all  (N=699, lowCnf=64, draws=177, σ_act=1.76)
+    MAE          1.36 [1.28, 1.43]   nv0 1.33 [1.24, 1.42]   nvHA 1.41 [1.32, 1.49]
+    RMSE         1.68 [1.59, 1.77]   bias +0.16 [+0.03, +0.29]
+    MAE − nv0    +0.026 [-0.039, +0.093]  → ~ tie predict-zero
+    MAE − nvHA   -0.044 [-0.099, +0.009]  → ~ tie predict-home_adv
+    winner acc   0.660 [0.619, 0.707]   (eligible N=477, home-win rate 0.551)
+    Brier        0.2140 [0.2032, 0.2240]   nvBr 0.2474 [0.2407, 0.2499]
+    Brier − nvBr -0.0334 [-0.0424, -0.0237]  → ✓ beats naive Brier
+  train (<2025-12-28T16:30Z)  (N=559, lowCnf=64, draws=132, σ_act=1.82)
+    MAE          1.40 [1.32, 1.48]   nv0 1.39 [1.30, 1.49]   nvHA 1.45 [1.36, 1.54]
+    RMSE         1.73 [1.64, 1.83]   bias +0.14 [-0.01, +0.29]
+    MAE − nv0    +0.002 [-0.066, +0.073]  → ~ tie predict-zero
+    MAE − nvHA   -0.053 [-0.113, +0.007]  → ~ tie predict-home_adv
+    winner acc   0.688 [0.640, 0.735]   (eligible N=382, home-win rate 0.565)
+    Brier        0.2085 [0.1976, 0.2201]   nvBr 0.2457 [0.2370, 0.2497]
+    Brier − nvBr -0.0372 [-0.0476, -0.0249]  → ✓ beats naive Brier
+  test  (>=2025-12-28T16:30Z)  (N=140, lowCnf=0, draws=45, σ_act=1.50)
+    MAE          1.22 [1.08, 1.36]   nv0 1.10 [0.94, 1.26]   nvHA 1.23 [1.09, 1.38]
+    RMSE         1.48 [1.33, 1.62]   bias +0.22 [-0.00, +0.46]
+    MAE − nv0    +0.121 [+0.003, +0.242]  → ✗ LOSES predict-zero
+    MAE − nvHA   -0.010 [-0.114, +0.096]  → ~ tie predict-home_adv
+    winner acc   0.547 [0.441, 0.653]   (eligible N=95, home-win rate 0.495)
+    Brier        0.2361 [0.2152, 0.2570]   nvBr 0.2500 [0.2370, 0.2500]
+    Brier − nvBr -0.0138 [-0.0307, +0.0151]  → ~ tie naive Brier
+
+Legend:
+  MAE    mean |predicted_margin - actual_margin|
+  RMSE   sqrt(mean((predicted - actual)^2))
+  bias   mean(predicted - actual); + = model over-predicts home margin
+  nv0    naive "always predict 0" baseline
+  nvHA   naive "always predict home_advantage" baseline
+  nvBr   naive Brier of constant home_win_rate prediction
+  σ_act  sample SD of actual signed margin (units: points/runs/goals)

@@ -67,6 +67,21 @@ interface ReplayedGame {
   lowConfidence: boolean;
 }
 
+/** A bootstrap 95% CI on a scalar statistic.
+ *
+ *  `estimate` is the point estimate on the full slice (what we'd have
+ *  reported without bootstrapping). `low` and `high` are the 2.5th and
+ *  97.5th percentiles from N_BOOTSTRAP resamples (with replacement) of
+ *  the slice. When `low` and `high` have the same sign, the statistic
+ *  is considered "significant" (directionally stable under resampling).
+ *  When the interval crosses zero — for a diff — we cannot distinguish
+ *  the effect from noise at 95%. */
+export interface CI {
+  estimate: number;
+  low: number;
+  high: number;
+}
+
 export interface BaselineMetrics {
   n: number;
   nLowConfidence: number;
@@ -75,28 +90,35 @@ export interface BaselineMetrics {
   nWinnerEligible: number;
   /** Per-sport home-win rate on the analyzed slice (excluding draws). */
   homeWinRate: number;
-  /** Population SD of actual signed margin. Contextualizes MAE. */
+  /** Sample SD (N-1) of actual signed margin. Contextualizes MAE. */
   sigmaActualMargin: number;
-  /** Population SD of predicted margin. */
+  /** Sample SD (N-1) of predicted margin. */
   sigmaPredictedMargin: number;
-  /** Mean absolute error of the margin prediction. */
-  marginMAE: number;
-  /** Root-mean-square error of the margin prediction. */
-  marginRMSE: number;
+  /** Mean absolute error of the margin prediction, with bootstrap 95% CI. */
+  marginMAE: CI;
+  /** Root-mean-square error of the margin prediction, with bootstrap 95% CI. */
+  marginRMSE: CI;
   /** Signed bias: mean(predicted - actual). Negative = model under-predicts
    *  home margin. Bias alone is the portion of error that's correctable by
    *  adjusting home_advantage or similar shift parameters. */
-  marginBias: number;
+  marginBias: CI;
   /** Fraction of games the v5 winner pick was correct (excluding low-conf and draws). */
-  winnerAccuracy: number;
+  winnerAccuracy: CI;
   /** Mean Brier score of the v5 probability (excluding low-conf and draws). */
-  brierScore: number;
-  /** Naive baseline for Brier: constant home_win_rate prediction each game. */
-  naiveBrier: number;
+  brierScore: CI;
+  /** Brier of constant-home-rate baseline (using per-resample home_win_rate). */
+  naiveBrier: CI;
   /** MAE a "predict zero" model would achieve. Contextualizes marginMAE. */
-  naiveZeroMAE: number;
+  naiveZeroMAE: CI;
   /** MAE a "predict home_advantage" model would achieve. */
-  naiveHomeAdvMAE: number;
+  naiveHomeAdvMAE: CI;
+  /** Paired diff CIs (model minus baseline, same resample per bootstrap draw).
+   *  Sign convention: NEGATIVE = model beats baseline (lower error).
+   *  If CI crosses zero, the model is not significantly different from
+   *  the baseline at 95%. */
+  marginMAE_minus_naiveZero: CI;
+  marginMAE_minus_naiveHomeAdv: CI;
+  brierScore_minus_naiveBrier: CI;
 }
 
 export interface SportBaseline {
@@ -112,6 +134,8 @@ export interface BaselineReport {
   generatedAt: string;
   trainCutoffSeason: number;
   holdoutTestFrac: number;
+  /** Number of bootstrap resamples used for CI estimation. */
+  bootstrapIterations: number;
   models: {
     winner: 'v5';
     margin: 'v4-spread';
@@ -120,6 +144,8 @@ export interface BaselineReport {
     games: number;
     lowConfidence: number;
     draws: number;
+    /** Games skipped because no state snapshot was available (should be 0). */
+    skippedSnapshots: number;
   };
   bySport: SportBaseline[];
 }
@@ -227,14 +253,15 @@ function buildStateSnapshots(
   return snapshots;
 }
 
-function replaySport(sport: Sport): ReplayedGame[] {
+function replaySport(sport: Sport): { games: ReplayedGame[]; skipped: number } {
   const games = loadScoredGames(sport);
   const snapshots = buildStateSnapshots(sport);
   const out: ReplayedGame[] = [];
+  let skipped = 0;
 
   for (const g of games) {
     const snap = snapshots.get(g.game_id);
-    if (!snap) continue;
+    if (!snap) { skipped++; continue; }
     const { home, away } = snap;
     const lowConfidence = home.games < 5 || away.games < 5;
 
@@ -275,7 +302,7 @@ function replaySport(sport: Sport): ReplayedGame[] {
       lowConfidence,
     });
   }
-  return out;
+  return { games: out, skipped };
 }
 
 function mean(xs: number[]): number {
@@ -285,13 +312,64 @@ function mean(xs: number[]): number {
   return s / xs.length;
 }
 
-function populationSD(xs: number[]): number {
-  if (xs.length === 0) return 0;
+/** Sample SD (divides by N-1) — unbiased estimator. Council math-expert fix:
+ *  was populationSD before. Practical impact at N≥500 is <0.1% but correct
+ *  is correct. */
+function sampleSD(xs: number[]): number {
+  if (xs.length < 2) return 0;
   const m = mean(xs);
   let ss = 0;
   for (const x of xs) ss += (x - m) ** 2;
-  return Math.sqrt(ss / xs.length);
+  return Math.sqrt(ss / (xs.length - 1));
 }
+
+/** Deterministic PRNG (mulberry32) so bootstrap CIs are reproducible across
+ *  runs. Seeded from a stable hash of the sport + slice label so each slice
+ *  gets an independent but repeatable stream. */
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t = (t + 0x6D2B79F5) >>> 0;
+    let r = t;
+    r = Math.imul(r ^ (r >>> 15), r | 1);
+    r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function percentile(sortedXs: number[], p: number): number {
+  if (sortedXs.length === 0) return 0;
+  const idx = p * (sortedXs.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedXs[lo];
+  const frac = idx - lo;
+  return sortedXs[lo] * (1 - frac) + sortedXs[hi] * frac;
+}
+
+function ciFrom(estimate: number, resamples: number[]): CI {
+  if (resamples.length === 0) return { estimate, low: estimate, high: estimate };
+  const sorted = [...resamples].sort((a, b) => a - b);
+  return {
+    estimate,
+    low: percentile(sorted, 0.025),
+    high: percentile(sorted, 0.975),
+  };
+}
+
+/** Bootstrap iterations. 1000 gives ±0.5pp precision on 95% CI bounds,
+ *  which is finer than the effect sizes we care about. Increase to 5000
+ *  if anything lands exactly on the zero line. */
+const N_BOOTSTRAP = 1000;
 
 /** Home-advantage literal from predict.ts. Duplicated to keep this module
  *  independent and to measure a transparent naive baseline without coupling
@@ -301,55 +379,198 @@ const NAIVE_HOME_ADV: Record<Sport, number> = {
   nba: 3.0, nfl: 2.5, mlb: 0.5, nhl: 0.3, mls: 0.4, epl: 0.4,
 };
 
-function computeMetrics(sport: Sport, games: ReplayedGame[]): BaselineMetrics {
+/** Per-game pre-computed quantities, so the bootstrap inner loop is a
+ *  single pass over resampled indices with no per-game branching. */
+interface GameAggregates {
+  absError: number;        // |predicted - actual|
+  sqError: number;         // (predicted - actual)^2
+  signedError: number;     // predicted - actual
+  actualMargin: number;
+  predictedMargin: number;
+  absActual: number;       // |actual| — naive-zero MAE term
+  absHomeAdv: number;      // |homeAdv - actual| — naive-homeAdv MAE term
+  eligible: boolean;       // not draw AND not low-confidence
+  homeWin: 0 | 1;
+  brierContrib: number;    // (prob - homeWin)^2 on eligible, else 0
+  winnerCorrect: 0 | 1;    // pick matches homeWin on eligible, else 0
+}
+
+function precompute(sport: Sport, games: ReplayedGame[]): GameAggregates[] {
+  const homeAdv = NAIVE_HOME_ADV[sport] ?? 3.0;
+  return games.map(g => {
+    const err = g.predictedMargin - g.actualMargin;
+    const eligible = !g.isDraw && !g.lowConfidence;
+    const pickHome = g.predictedProb >= 0.5;
+    const correct = eligible && ((pickHome && g.homeWin === 1) || (!pickHome && g.homeWin === 0)) ? 1 : 0;
+    const brier = eligible ? (g.predictedProb - g.homeWin) ** 2 : 0;
+    return {
+      absError: Math.abs(err),
+      sqError: err * err,
+      signedError: err,
+      actualMargin: g.actualMargin,
+      predictedMargin: g.predictedMargin,
+      absActual: Math.abs(g.actualMargin),
+      absHomeAdv: Math.abs(homeAdv - g.actualMargin),
+      eligible,
+      homeWin: g.homeWin,
+      brierContrib: brier,
+      winnerCorrect: correct as 0 | 1,
+    };
+  });
+}
+
+/** Point statistics on the full slice. Single pass, no resampling. */
+function pointStats(agg: GameAggregates[]): {
+  marginMAE: number; marginRMSE: number; marginBias: number;
+  naiveZeroMAE: number; naiveHomeAdvMAE: number;
+  winnerAccuracy: number; brierScore: number; naiveBrier: number;
+  homeWinRate: number; nWinnerEligible: number;
+  marginMAE_minus_naiveZero: number;
+  marginMAE_minus_naiveHomeAdv: number;
+  brierScore_minus_naiveBrier: number;
+} {
+  const n = agg.length;
+  if (n === 0) {
+    return {
+      marginMAE: 0, marginRMSE: 0, marginBias: 0,
+      naiveZeroMAE: 0, naiveHomeAdvMAE: 0,
+      winnerAccuracy: 0, brierScore: 0, naiveBrier: 0,
+      homeWinRate: 0, nWinnerEligible: 0,
+      marginMAE_minus_naiveZero: 0,
+      marginMAE_minus_naiveHomeAdv: 0,
+      brierScore_minus_naiveBrier: 0,
+    };
+  }
+  let sumAbs = 0, sumSq = 0, sumSigned = 0, sumAbsAct = 0, sumAbsHA = 0;
+  let eligN = 0, homeWinSum = 0, brierSum = 0, correctSum = 0;
+  for (const g of agg) {
+    sumAbs += g.absError; sumSq += g.sqError; sumSigned += g.signedError;
+    sumAbsAct += g.absActual; sumAbsHA += g.absHomeAdv;
+    if (g.eligible) {
+      eligN++; homeWinSum += g.homeWin; brierSum += g.brierContrib; correctSum += g.winnerCorrect;
+    }
+  }
+  const marginMAE = sumAbs / n;
+  const marginRMSE = Math.sqrt(sumSq / n);
+  const marginBias = sumSigned / n;
+  const naiveZeroMAE = sumAbsAct / n;
+  const naiveHomeAdvMAE = sumAbsHA / n;
+  const homeWinRate = eligN > 0 ? homeWinSum / eligN : 0;
+  const brierScore = eligN > 0 ? brierSum / eligN : 0;
+  const winnerAccuracy = eligN > 0 ? correctSum / eligN : 0;
+  // Naive Brier uses the in-slice home-win rate as its constant prediction,
+  // which is the Brier-minimizing constant. Tightest naive baseline.
+  // On eligible games: Σ(p - y)^2 = eligN * p*(1-p) when y∈{0,1}.
+  const naiveBrier = eligN > 0 ? homeWinRate * (1 - homeWinRate) : 0;
+  return {
+    marginMAE, marginRMSE, marginBias,
+    naiveZeroMAE, naiveHomeAdvMAE,
+    winnerAccuracy, brierScore, naiveBrier,
+    homeWinRate, nWinnerEligible: eligN,
+    marginMAE_minus_naiveZero: marginMAE - naiveZeroMAE,
+    marginMAE_minus_naiveHomeAdv: marginMAE - naiveHomeAdvMAE,
+    brierScore_minus_naiveBrier: brierScore - naiveBrier,
+  };
+}
+
+/** Run B bootstrap resamples (with replacement), recomputing all statistics
+ *  on each resample. Paired diffs are computed within the same resample so
+ *  CIs reflect covariance between model and baseline metrics. */
+function bootstrapStats(
+  agg: GameAggregates[],
+  B: number,
+  seed: number,
+): Record<string, number[]> {
+  const keys = [
+    'marginMAE', 'marginRMSE', 'marginBias',
+    'naiveZeroMAE', 'naiveHomeAdvMAE',
+    'winnerAccuracy', 'brierScore', 'naiveBrier',
+    'marginMAE_minus_naiveZero',
+    'marginMAE_minus_naiveHomeAdv',
+    'brierScore_minus_naiveBrier',
+  ];
+  const out: Record<string, number[]> = {};
+  for (const k of keys) out[k] = [];
+  const n = agg.length;
+  if (n === 0) return out;
+
+  const rng = mulberry32(seed);
+  for (let b = 0; b < B; b++) {
+    let sumAbs = 0, sumSq = 0, sumSigned = 0, sumAbsAct = 0, sumAbsHA = 0;
+    let eligN = 0, homeWinSum = 0, brierSum = 0, correctSum = 0;
+    for (let i = 0; i < n; i++) {
+      const g = agg[Math.floor(rng() * n)];
+      sumAbs += g.absError; sumSq += g.sqError; sumSigned += g.signedError;
+      sumAbsAct += g.absActual; sumAbsHA += g.absHomeAdv;
+      if (g.eligible) {
+        eligN++; homeWinSum += g.homeWin; brierSum += g.brierContrib; correctSum += g.winnerCorrect;
+      }
+    }
+    const marginMAE = sumAbs / n;
+    const marginRMSE = Math.sqrt(sumSq / n);
+    const marginBias = sumSigned / n;
+    const naiveZeroMAE = sumAbsAct / n;
+    const naiveHomeAdvMAE = sumAbsHA / n;
+    const homeWinRate = eligN > 0 ? homeWinSum / eligN : 0;
+    const brierScore = eligN > 0 ? brierSum / eligN : 0;
+    const winnerAccuracy = eligN > 0 ? correctSum / eligN : 0;
+    const naiveBrier = eligN > 0 ? homeWinRate * (1 - homeWinRate) : 0;
+    out.marginMAE.push(marginMAE);
+    out.marginRMSE.push(marginRMSE);
+    out.marginBias.push(marginBias);
+    out.naiveZeroMAE.push(naiveZeroMAE);
+    out.naiveHomeAdvMAE.push(naiveHomeAdvMAE);
+    out.winnerAccuracy.push(winnerAccuracy);
+    out.brierScore.push(brierScore);
+    out.naiveBrier.push(naiveBrier);
+    out.marginMAE_minus_naiveZero.push(marginMAE - naiveZeroMAE);
+    out.marginMAE_minus_naiveHomeAdv.push(marginMAE - naiveHomeAdvMAE);
+    out.brierScore_minus_naiveBrier.push(brierScore - naiveBrier);
+  }
+  return out;
+}
+
+function computeMetrics(
+  sport: Sport,
+  games: ReplayedGame[],
+  sliceLabel: string,
+): BaselineMetrics {
   const n = games.length;
   const nDraws = games.filter(g => g.isDraw).length;
   const nLowConfidence = games.filter(g => g.lowConfidence).length;
 
-  // Margin metrics: all games (including draws and low-conf) — the margin
-  // model is supposed to produce a number for every game.
+  const agg = precompute(sport, games);
   const actualMargins = games.map(g => g.actualMargin);
   const predictedMargins = games.map(g => g.predictedMargin);
-  const errors = games.map(g => g.predictedMargin - g.actualMargin);
+  const sigmaActualMargin = sampleSD(actualMargins);
+  const sigmaPredictedMargin = sampleSD(predictedMargins);
 
-  const marginMAE = mean(errors.map(Math.abs));
-  const marginRMSE = Math.sqrt(mean(errors.map(e => e * e)));
-  const marginBias = mean(errors);
-  const sigmaActualMargin = populationSD(actualMargins);
-  const sigmaPredictedMargin = populationSD(predictedMargins);
+  const point = pointStats(agg);
+  const seed = hashSeed(`${sport}:${sliceLabel}`);
+  const boots = n > 0 ? bootstrapStats(agg, N_BOOTSTRAP, seed) : {} as Record<string, number[]>;
 
-  // Naive baselines
-  const naiveZeroMAE = mean(actualMargins.map(Math.abs));
-  const homeAdv = NAIVE_HOME_ADV[sport] ?? 3.0;
-  const naiveHomeAdvMAE = mean(actualMargins.map(a => Math.abs(homeAdv - a)));
-
-  // Winner metrics: exclude draws and low-confidence
-  const eligible = games.filter(g => !g.isDraw && !g.lowConfidence);
-  const nWinnerEligible = eligible.length;
-  const homeWins = eligible.filter(g => g.homeWin === 1).length;
-  const homeWinRate = nWinnerEligible > 0 ? homeWins / nWinnerEligible : 0;
-
-  let correct = 0;
-  let brierSum = 0;
-  let naiveBrierSum = 0;
-  for (const g of eligible) {
-    const pickHome = g.predictedProb >= 0.5;
-    if ((pickHome && g.homeWin === 1) || (!pickHome && g.homeWin === 0)) correct++;
-    brierSum += (g.predictedProb - g.homeWin) ** 2;
-    naiveBrierSum += (homeWinRate - g.homeWin) ** 2;
-  }
-
-  const winnerAccuracy = nWinnerEligible > 0 ? correct / nWinnerEligible : 0;
-  const brierScore = nWinnerEligible > 0 ? brierSum / nWinnerEligible : 0;
-  const naiveBrier = nWinnerEligible > 0 ? naiveBrierSum / nWinnerEligible : 0;
+  const ci = (name: string, est: number): CI =>
+    ciFrom(est, boots[name] ?? []);
 
   return {
-    n, nLowConfidence, nDraws, nWinnerEligible,
-    homeWinRate,
+    n, nLowConfidence, nDraws,
+    nWinnerEligible: point.nWinnerEligible,
+    homeWinRate: point.homeWinRate,
     sigmaActualMargin, sigmaPredictedMargin,
-    marginMAE, marginRMSE, marginBias,
-    winnerAccuracy, brierScore, naiveBrier,
-    naiveZeroMAE, naiveHomeAdvMAE,
+    marginMAE: ci('marginMAE', point.marginMAE),
+    marginRMSE: ci('marginRMSE', point.marginRMSE),
+    marginBias: ci('marginBias', point.marginBias),
+    winnerAccuracy: ci('winnerAccuracy', point.winnerAccuracy),
+    brierScore: ci('brierScore', point.brierScore),
+    naiveBrier: ci('naiveBrier', point.naiveBrier),
+    naiveZeroMAE: ci('naiveZeroMAE', point.naiveZeroMAE),
+    naiveHomeAdvMAE: ci('naiveHomeAdvMAE', point.naiveHomeAdvMAE),
+    marginMAE_minus_naiveZero:
+      ci('marginMAE_minus_naiveZero', point.marginMAE_minus_naiveZero),
+    marginMAE_minus_naiveHomeAdv:
+      ci('marginMAE_minus_naiveHomeAdv', point.marginMAE_minus_naiveHomeAdv),
+    brierScore_minus_naiveBrier:
+      ci('brierScore_minus_naiveBrier', point.brierScore_minus_naiveBrier),
   };
 }
 
@@ -370,16 +591,18 @@ export function computeBaseline(): BaselineReport {
   let totalGames = 0;
   let totalLowConf = 0;
   let totalDraws = 0;
+  let totalSkipped = 0;
 
   for (const sport of SPORTS) {
-    const games = replaySport(sport);
+    const { games, skipped } = replaySport(sport);
+    totalSkipped += skipped;
     if (games.length === 0) {
       // Still record an empty entry so UI/downstream don't silently drop the sport.
       bySport.push({
         sport,
-        all: computeMetrics(sport, []),
-        trainEarlier80: computeMetrics(sport, []),
-        testLatest20: computeMetrics(sport, []),
+        all: computeMetrics(sport, [], 'all'),
+        trainEarlier80: computeMetrics(sport, [], 'train80'),
+        testLatest20: computeMetrics(sport, [], 'test20'),
         splitDate: '',
       });
       continue;
@@ -387,9 +610,9 @@ export function computeBaseline(): BaselineReport {
     const { train, test, splitDate } = splitByDate(games, HOLDOUT_TEST_FRAC);
     bySport.push({
       sport,
-      all: computeMetrics(sport, games),
-      trainEarlier80: computeMetrics(sport, train),
-      testLatest20: computeMetrics(sport, test),
+      all: computeMetrics(sport, games, 'all'),
+      trainEarlier80: computeMetrics(sport, train, 'train80'),
+      testLatest20: computeMetrics(sport, test, 'test20'),
       splitDate,
     });
     totalGames += games.length;
@@ -401,11 +624,13 @@ export function computeBaseline(): BaselineReport {
     generatedAt: new Date().toISOString(),
     trainCutoffSeason: TRAIN_CUTOFF_SEASON,
     holdoutTestFrac: HOLDOUT_TEST_FRAC,
+    bootstrapIterations: N_BOOTSTRAP,
     models: { winner: 'v5', margin: 'v4-spread' },
     totals: {
       games: totalGames,
       lowConfidence: totalLowConf,
       draws: totalDraws,
+      skippedSnapshots: totalSkipped,
     },
     bySport,
   };
@@ -413,32 +638,51 @@ export function computeBaseline(): BaselineReport {
 
 // --- Human-readable rendering ---
 
-function fmt(n: number, digits = 2): string {
-  if (!Number.isFinite(n)) return '—';
-  return n.toFixed(digits);
+/** A directional verdict on a paired diff CI.
+ *   "beats"   — CI entirely below zero: model significantly better than baseline
+ *   "loses"   — CI entirely above zero: model significantly WORSE than baseline
+ *   "tie"     — CI straddles zero: cannot distinguish from baseline at 95% */
+function significance(diff: CI): 'beats' | 'loses' | 'tie' {
+  if (diff.high < 0) return 'beats';
+  if (diff.low > 0) return 'loses';
+  return 'tie';
 }
 
-function pct(n: number, digits = 1): string {
-  if (!Number.isFinite(n)) return '—';
-  return `${(n * 100).toFixed(digits)}%`;
+function ciStr(c: CI, digits = 2, signed = false): string {
+  const pre = (n: number) => (signed && n >= 0 ? '+' : '') + n.toFixed(digits);
+  return `${pre(c.estimate)} [${pre(c.low)}, ${pre(c.high)}]`;
 }
 
-function renderMetricsRow(label: string, m: BaselineMetrics): string {
-  return [
-    label.padEnd(18),
-    String(m.n).padStart(6),
-    String(m.nLowConfidence).padStart(7),
-    String(m.nDraws).padStart(6),
-    fmt(m.sigmaActualMargin).padStart(8),
-    fmt(m.marginMAE).padStart(6),
-    fmt(m.marginRMSE).padStart(6),
-    (m.marginBias >= 0 ? '+' : '') + fmt(m.marginBias).padStart(5),
-    fmt(m.naiveZeroMAE).padStart(7),
-    fmt(m.naiveHomeAdvMAE).padStart(7),
-    pct(m.winnerAccuracy).padStart(7),
-    fmt(m.brierScore, 4).padStart(7),
-    fmt(m.naiveBrier, 4).padStart(7),
-  ].join(' ');
+function renderSportBlock(s: SportBaseline): string {
+  const lines: string[] = [];
+  const slices: Array<{ label: string; m: BaselineMetrics }> = [
+    { label: 'all', m: s.all },
+    { label: `train (<${s.splitDate})`, m: s.trainEarlier80 },
+    { label: `test  (>=${s.splitDate})`, m: s.testLatest20 },
+  ];
+
+  for (const { label, m } of slices) {
+    if (m.n === 0) {
+      lines.push(`  ${label}: (no data)`);
+      continue;
+    }
+    const sigZero = significance(m.marginMAE_minus_naiveZero);
+    const sigHA = significance(m.marginMAE_minus_naiveHomeAdv);
+    const sigBrier = significance(m.brierScore_minus_naiveBrier);
+    const verdict = (s: 'beats' | 'loses' | 'tie') =>
+      s === 'beats' ? '✓ beats' : s === 'loses' ? '✗ LOSES' : '~ tie';
+    lines.push(`  ${label}  (N=${m.n}, lowCnf=${m.nLowConfidence}, draws=${m.nDraws}, σ_act=${m.sigmaActualMargin.toFixed(2)})`);
+    lines.push(`    MAE          ${ciStr(m.marginMAE)}   nv0 ${ciStr(m.naiveZeroMAE)}   nvHA ${ciStr(m.naiveHomeAdvMAE)}`);
+    lines.push(`    RMSE         ${ciStr(m.marginRMSE)}   bias ${ciStr(m.marginBias, 2, true)}`);
+    lines.push(`    MAE − nv0    ${ciStr(m.marginMAE_minus_naiveZero, 3, true)}  → ${verdict(sigZero)} predict-zero`);
+    lines.push(`    MAE − nvHA   ${ciStr(m.marginMAE_minus_naiveHomeAdv, 3, true)}  → ${verdict(sigHA)} predict-home_adv`);
+    if (m.nWinnerEligible > 0) {
+      lines.push(`    winner acc   ${ciStr(m.winnerAccuracy, 3)}   (eligible N=${m.nWinnerEligible}, home-win rate ${m.homeWinRate.toFixed(3)})`);
+      lines.push(`    Brier        ${ciStr(m.brierScore, 4)}   nvBr ${ciStr(m.naiveBrier, 4)}`);
+      lines.push(`    Brier − nvBr ${ciStr(m.brierScore_minus_naiveBrier, 4, true)}  → ${verdict(sigBrier)} naive Brier`);
+    }
+  }
+  return lines.join('\n');
 }
 
 export function renderReport(report: BaselineReport): string {
@@ -447,55 +691,34 @@ export function renderReport(report: BaselineReport): string {
   lines.push(`Models: winner=${report.models.winner}, margin=${report.models.margin}`);
   lines.push(`Train cutoff: season ${report.trainCutoffSeason} (analyzing post-cutoff held-out games)`);
   lines.push(`Holdout split: earliest ${((1 - report.holdoutTestFrac) * 100).toFixed(0)}% / latest ${(report.holdoutTestFrac * 100).toFixed(0)}% by date`);
-  lines.push(`Totals: ${report.totals.games} games, ${report.totals.lowConfidence} low-confidence, ${report.totals.draws} draws`);
+  lines.push(`Bootstrap: ${report.bootstrapIterations} resamples with replacement (deterministic seed per sport:slice)`);
+  lines.push(`Totals: ${report.totals.games} games, ${report.totals.lowConfidence} low-confidence, ${report.totals.draws} draws, ${report.totals.skippedSnapshots} snapshot-skipped`);
   lines.push('');
-  lines.push('Note: margin model = v4-spread predictMargin() with no pitcher/injury data');
-  lines.push('      winner model = v5.predict() sigmoid, no injury adjustment');
-  lines.push('      In-sample w.r.t. the parameter calibration. See honest disclosure in baseline.ts.');
+  lines.push('Margin model = v4-spread predictMargin() with no pitcher/injury data.');
+  lines.push('Winner model = v5.predict() sigmoid, no injury adjustment.');
+  lines.push('In-sample w.r.t. the parameter calibration. CIs are bootstrap; in-sample');
+  lines.push('caveat applies — see honest-disclosure note in baseline.ts header.');
   lines.push('');
-
-  const header = [
-    'slice             ',
-    '     N',
-    ' lowCnf',
-    ' draws',
-    '   σ_act',
-    '   MAE',
-    '  RMSE',
-    '  bias',
-    ' nv0MAE',
-    ' nvHMAE',
-    '    acc',
-    ' Brier',
-    '  nvBr',
-  ].join(' ');
+  lines.push('Paired-diff verdicts use 95% bootstrap CI:');
+  lines.push('  ✓ beats  = CI entirely below zero (model significantly better)');
+  lines.push('  ✗ LOSES  = CI entirely above zero (model significantly WORSE than baseline)');
+  lines.push('  ~ tie    = CI straddles zero (cannot distinguish at 95%)');
+  lines.push('');
 
   for (const s of report.bySport) {
     lines.push(`━━━ ${s.sport.toUpperCase()} ${'━'.repeat(Math.max(0, 60 - s.sport.length))}`);
-    if (s.all.n === 0) {
-      lines.push('  (no data)');
-      continue;
-    }
-    lines.push(header);
-    lines.push(renderMetricsRow('all', s.all));
-    lines.push(renderMetricsRow(`train (<${s.splitDate})`, s.trainEarlier80));
-    lines.push(renderMetricsRow(`test  (>=${s.splitDate})`, s.testLatest20));
+    lines.push(renderSportBlock(s));
     lines.push('');
   }
 
-  lines.push('Column legend:');
-  lines.push('  N        total games in slice');
-  lines.push('  lowCnf   games with <5 state games (excluded from winner metrics)');
-  lines.push('  draws    soccer draws (excluded from winner metrics, kept in margin metrics)');
-  lines.push('  σ_act    population SD of actual signed margin (points/runs/goals)');
-  lines.push('  MAE      mean |predicted_margin - actual_margin|');
-  lines.push('  RMSE     sqrt(mean((predicted - actual)^2)) — heavy-tail sensitive');
-  lines.push('  bias     mean(predicted - actual); + = model over-predicts home margin');
-  lines.push('  nv0MAE   MAE of "always predict 0" baseline — contextualizes MAE');
-  lines.push('  nvHMAE   MAE of "always predict home_advantage" baseline');
-  lines.push('  acc      v5 winner accuracy (excl low-conf and draws)');
-  lines.push('  Brier    v5 Brier score (excl low-conf and draws)');
-  lines.push('  nvBr     Brier of constant home_win_rate prediction — reference');
+  lines.push('Legend:');
+  lines.push('  MAE    mean |predicted_margin - actual_margin|');
+  lines.push('  RMSE   sqrt(mean((predicted - actual)^2))');
+  lines.push('  bias   mean(predicted - actual); + = model over-predicts home margin');
+  lines.push('  nv0    naive "always predict 0" baseline');
+  lines.push('  nvHA   naive "always predict home_advantage" baseline');
+  lines.push('  nvBr   naive Brier of constant home_win_rate prediction');
+  lines.push('  σ_act  sample SD of actual signed margin (units: points/runs/goals)');
 
   return lines.join('\n');
 }

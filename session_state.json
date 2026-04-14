@@ -1,8 +1,8 @@
 {
-  "current_phase": "sprint_10_7_complete_all_merged",
-  "last_completed_sprint": "sprint_10_7_v4_spread_injury_integration",
-  "next_session_type": "ship_p0_backtest_debt",
-  "next_action": "Implement council debt #13: v4-spread margin MAE baseline on 12,813 backfilled games. Pure analysis on existing data — no historical odds or injury data needed. Establishes the baseline that should have shipped with v4-spread.",
+  "current_phase": "per_sport_baseline_complete_debt13_closed",
+  "last_completed_sprint": "sprint_10_8_per_sport_baseline_analysis",
+  "next_session_type": "ship_soccer_poisson_model",
+  "next_action": "Build Poisson/Skellam goal model for MLS+EPL as a separate margin model. Baseline analysis (2026-04-14, CI-gated) showed MLS and EPL margin models cannot be distinguished from predict-zero at 95% CI (MLS: MAE-nv0 CI [-0.046, +0.035]; EPL: [-0.039, +0.093]). Winner/Brier model works fine — problem is specific to the margin formulation applied to a ternary outcome. Math + Domain both CLEAR. Target: margin-MAE-minus-nv0 CI entirely below zero on both MLS and EPL test slice. Defer MLB/NHL tweaks — they already beat predict-zero but by trivially small effect sizes.",
   "open_prs": [
     {
       "number": 26,
@@ -75,10 +75,19 @@
     "cron_backup": "daily 3am UTC to GitHub Releases"
   },
   "backtesting_status": {
-    "v4_spread_margin_mae_baseline": "NOT DONE — P0 debt #13, shippable with existing data, FIRST TASK NEXT SESSION",
+    "v4_spread_margin_mae_baseline": "DONE 2026-04-14 — data/baselines/baseline-2026-04-14.json with bootstrap 95% CIs. 16,777 games across 6 sports, closes debt #13. Verdict (paired MAE vs predict-zero, 95% CI): NBA/NFL/MLB/NHL ✓ beat predict-zero. MLS/EPL ~ tie predict-zero on full slice — margin model cannot be distinguished from a constant for soccer. EPL test slice (N=140) shows ✗ LOSES but small N.",
     "v4_spread_ats_backtest": "CANNOT DO — no historical odds data",
     "injury_adjusted_vs_naive_historical": "CANNOT DO — no injury data before 2026-04-13",
     "shadow_prediction_forward_ab": "NOT SET UP — HIGH debt #14"
+  },
+  "per_sport_baseline_findings_2026_04_14": {
+    "methodology": "1000-sample bootstrap, paired diffs within resample, CI at 2.5/97.5 percentiles. In-sample w.r.t. parameter calibration. See learnings.md section 'per-sport-baseline-debt13' for full context.",
+    "nba": {"mae": 11.67, "mae_minus_nv0_ci": "[-1.45, -1.12]", "verdict_vs_zero": "✓ beats", "brier": 0.2258, "brier_minus_naive_ci": "[-0.026, -0.018]", "verdict_vs_naive_brier": "✓ beats", "strategy": "parameters at local optimum; gains require new features (rest/travel/back-to-backs)"},
+    "nfl": {"mae": 10.70, "mae_minus_nv0_ci": "[-1.01, -0.15]", "verdict_vs_zero": "✓ beats", "brier": 0.2320, "brier_minus_naive_ci": "[-0.026, -0.006]", "verdict_vs_naive_brier": "✓ beats", "strategy": "parameters at local optimum; gains require new features (positional injury, rest)"},
+    "mlb": {"mae": 3.48, "mae_minus_nv0_ci": "[-0.071, -0.014]", "verdict_vs_zero": "✓ beats (trivial effect)", "brier": 0.2449, "brier_minus_naive_ci": "[-0.006, -0.002]", "verdict_vs_naive_brier": "✓ beats (small)", "strategy": "statistically significant but effect is trivial (d≈0.01); structural gains likely require bullpen + rest, not parameter tweaks"},
+    "nhl": {"mae": 2.16, "mae_minus_nv0_ci": "[-0.095, -0.047]", "verdict_vs_zero": "✓ beats (small effect)", "brier": 0.2444, "brier_minus_naive_ci": "[-0.006, -0.001]", "verdict_vs_naive_brier": "✓ beats (small)", "strategy": "starting goalie is the most-cited missing signal; defer to after soccer Poisson"},
+    "mls": {"mae": 1.35, "mae_minus_nv0_ci": "[-0.046, +0.035]", "verdict_vs_zero": "~ tie", "brier": 0.2281, "brier_minus_naive_ci": "[-0.020, -0.006]", "verdict_vs_naive_brier": "✓ beats", "strategy": "margin model indistinguishable from predict-zero — soccer Poisson/Skellam is the priority"},
+    "epl": {"mae": 1.36, "mae_minus_nv0_ci": "[-0.039, +0.093]", "verdict_vs_zero": "~ tie (test slice ✗ LOSES but N=140)", "brier": 0.2140, "brier_minus_naive_ci": "[-0.042, -0.024]", "verdict_vs_naive_brier": "✓ beats (largest)", "strategy": "same as MLS; winner model works but margin model provides no value — Poisson first"}
   },
   "council_debts_open": 23,
   "council_debts_closed_this_session": 10,

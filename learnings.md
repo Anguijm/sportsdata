@@ -144,6 +144,65 @@ Accumulated patterns, anti-patterns, and insights from scraping, analysis, and p
 - **INSIGHT**: Track record must be gated at N≥30 — displaying 3/5 (60%) accuracy is statistically meaningless
 - **INSIGHT**: Probable pitchers are in ESPN's scoreboard response but were never parsed — one normalizer change unlocks MLB-specific modeling
 
+### v4-spread-injury-integration (2026-04-14)
+- **KEEP**: Same `INJURY_COMPENSATION = 0.4` factor applies cleanly to both win-prob (v5 sigmoid) and margin (v4-spread) — Bradley-Terry framework allows this
+- **KEEP**: Per-player impact clamp prevents a single ESPN schema-drift outlier from blowing up the prediction (NBA 40 PPG, NFL 17 games, MLB 1.5 OPS, NHL/soccer 1.5-2.0)
+- **KEEP**: UI surfaces `home_out_impact` / `away_out_impact` on spread cards when injury signal shifted the margin — users can see why tonight's pick changed
+- **KEEP**: Soccer cards show "Injury-adjusted: no" disclaimer because we hard-disable injury fetching for MLS/EPL (no public lineup feed)
+- **IMPROVE**: ESPN injury endpoint is undocumented and 404s unpredictably — added 3-attempt retry with exponential backoff (500ms → 1s → 2s ± 25% jitter) + 10s timeout per attempt. Retries 5xx only (4xx is deterministic).
+- **IMPROVE**: Codex caught a runtime ReferenceError — I referenced `reasoning.features` but the parsed object was scoped to `rj` inside try/catch. Hoisted to function scope with optional chaining.
+- **CRITICAL**: User pushback on "we're not backtesting" forced me to distinguish CAN'T-test vs HAVEN'T-tested:
+  - CAN'T: ATS performance (no historical odds), injury-adjusted vs naive historically (no historical injury data)
+  - HAVEN'T: v4-spread margin MAE on 12,813 backfilled games (we have final scores, never measured baseline)
+  - **Filed P0 debt #13** — should have done this when v4-spread shipped. Don't conflate constraints with omissions.
+- **CRITICAL**: When extending an existing model, compute every backtest the existing data permits BEFORE shipping. The new feature inherits all existing measurement gaps.
+
+### injury-source-research (2026-04-14)
+- **CONFIRMED DEAD-END**: NBA.com and NFL.com don't expose public JSON injury APIs (404 / HTML-only)
+- **CONFIRMED DEAD-END**: basketball-reference returns 403 to programmatic UA (would need spoofing + HTML parser, not worth it for secondary signal)
+- **CONFIRMED DEAD-END**: CBS Sports injury page is HTML-rendered, scrapable but blocks
+- **DECISION**: Hardened ESPN (only working free source for NBA/NFL/MLB/NHL); filed concrete trigger criterion ("≥3 ESPN failures/week for 2 consecutive weeks" → debt #19) for when to invest in alt sources
+- **INSIGHT**: TheOddsAPI player props could serve as orthogonal injury signal (missing prop = market thinks player out) — would require storing prop snapshots across cycles, deferred to backlog
+- **INSIGHT**: Soccer (MLS/EPL) lineup data is released ~1hr before kickoff by clubs — no good free feed exists; injury signal honestly disabled for these leagues
+
+### session-handoff-discipline (2026-04-14, hard-won lesson)
+
+User pushback after a botched session-end handoff. Capturing both rules so they outlive context windows.
+
+**Rule 1: Validate main before writing any handoff doc.**
+
+I wrote a session-close-prep that listed PRs #24 and #25 as OPEN with merge instructions. Both had been merged ~30 minutes earlier. Cause: I was operating from local branch state and never ran `git fetch origin main` + `git log origin/main..HEAD` before writing the handoff. The session log, session_state.json, DEPLOY.md, and the priority queue all had to be rewritten because they referenced a branch state that no longer existed.
+
+**Concrete checklist for session close:**
+1. `git fetch origin main` then `git checkout main && git pull` to sync local
+2. For every PR I'm aware of in this session: `mcp__github__pull_request_read get` to confirm `state` and `merged` flags
+3. THEN write the handoff doc against the *post-merge* state
+4. The "Next Session Pickup" block should describe what the world looks like for someone walking up cold — not what was true an hour ago on my branch
+
+**Rule 2: Check PR status before stacking commits.**
+
+I pushed a "session handoff" commit to `claude/injury-v4-and-alt-sources` after PR #25 had already been merged. The commit was orphaned — it lived on the branch but was never going to land on main without a separate PR. Cause: I assumed the PR was still open because that's where it was when I started writing the doc.
+
+**Concrete rule:**
+- Before `git push` to any feature branch, run `mcp__github__pull_request_read get` on the PR for that branch
+- If `merged: true`, do NOT push more commits to the branch — they will be orphaned
+- Either: (a) cherry-pick onto main directly (only with explicit user permission), or (b) create a new branch from current main and open a fresh PR
+
+**Bonus rule: A "session close" is itself a deliverable that must be reviewable.**
+
+Session-close docs are not exempt from review. They drive the next session. If they reference orphaned commits, stale branches, or merged-but-listed-as-open PRs, the next session starts confused. Treat the handoff as carefully as production code.
+
+**Rule 3: Council reviews docs-only PRs too. There is no exception.**
+
+User reminder after I tried to ship PR #26 without council review: "You forgot to run everything past council." The locked council protocol says EVERY plan, EVERY implementation, EVERY test. Doc-only PRs are implementations of communication; they affect every future session. Math expert sits out (no calculations) but the other four reviewers must always weigh in.
+
+Council on PR #26 surfaced THREE real issues I missed:
+- Data Quality: I claimed deploy status without verifying — same class of error as the original handoff botch, just at a different layer (deploy state vs merge state). Mandate forced me to actually `curl /api/health`, find that `last_scrape_at` is stale and no predictions yet have `home_out_impact`, and document the real state instead of the assumed state.
+- Prediction Accuracy: Debt #13 said "compute MAE" without specifying metrics, baselines, or pass criterion — the next session would have shipped a number with no statistical bounds. Mandate forced refinement: per-sport MAE+RMSE, bootstrap CI, two baselines, ≥4/6 sport pass criterion.
+- Domain Expert: I described the v4-spread model without noting MLB pitcher ERA is intentional. A future session might "clean up" the MLB-specific code without realizing it's load-bearing.
+
+**Concrete rule:** Before opening any PR (including docs/config/learnings), run a council pass. If 4× CLEAR, ship. Otherwise iterate. Math expert sits out for non-computational changes per their persona spec.
+
 ### codebase-review-p0-p3 (2026-04-12)
 - **KEEP**: Full 5-expert council review with 35 issues identified (P0-P3) — systematic quality sweep
 - **KEEP**: Mathematics expert as 5th council member — catches both computational AND theoretical errors

@@ -1,7 +1,7 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-13 (end of Sprint 10.6 mega-session)
+Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 
 ---
 
@@ -9,95 +9,121 @@ Last updated: 2026-04-13 (end of Sprint 10.6 mega-session)
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log before acting on it. Git history is the authoritative timeline.
 
-**Status as of 2026-04-13:**
+**Status as of 2026-04-14:** Sprint 10.7 shipped. All work merged to main (PRs #23, #24, #25). No open PRs. No active branches needing attention. Next session starts clean.
 
-### Current branch state
-- **Branch:** `claude/injury-signal` (1 commit ahead of main)
-- **PR #22:** https://github.com/Anguijm/sportsdata/pull/22 — injury-based prediction signal. NOT YET MERGED. Merge + run predict cron to activate.
-- **PR #21 (v5 continuous model):** MERGED to main
+### What shipped since Sprint 10
 
-### What shipped this session (22 PRs)
+25 PRs (see Sprint-by-Sprint Log for detail):
 
-| PR | What |
-|----|------|
-| #2-3 | Scrape pipeline repair (missing /api/trigger/scrape, backfillDays, silent failure removal) |
+| PRs | Theme |
+|-----|-------|
+| #1-3 | Scrape pipeline repair (missing /api/trigger/scrape, backfillDays, silent failure removal) |
 | #4 | Global sport selector (all 6 leagues on frontend) |
 | #5-6 | Spread prediction model (v4-spread + MLB pitchers + findings math fix) |
 | #7 | Multi-sport predictions + stale upcoming fix |
-| #8 | P0 fixes: backups, draws, resolver UNION, sport-specific baselines, season field |
-| #9-10 | Backup workflow fixes (sqlite3 in Docker, contents:write permission) |
-| #11 | P1 fixes: XSS, JSONL memory, ON CONFLICT, bookmaker consensus, overtime, etc. |
-| #12 | P2 fixes: pagination, BDL overtime, coreSeason, validators, responsive, etc. |
-| #13 | P3 fixes: ID comments, cron alerting, deploy-pages workflow_dispatch |
+| #8-13 | Full codebase review (33/35 issues: P0/P1/P2/P3) |
 | #14-16 | Historical backfill script + /api/trigger/backfill + GitHub Actions workflow |
-| #17 | Model improvements: recalibration, ratchet trigger, draw labels, MLB pitchers |
-| #18-19 | Lookahead scraping (multi-day predictions) + predict error visibility |
-| #20 | Predictions UNIQUE constraint migration for production DB |
-| #21 | v5 continuous sigmoid model (unique probability per game) |
-| #22 | **PENDING** — Injury signal (ESPN scraper + v5 adjustment) |
+| #17 | Model recalibration from 12,813 backfill predictions |
+| #18-20 | Multi-day predictions + constraint migration |
+| #21 | v5 continuous sigmoid model (replaces v2's 4 discrete buckets) |
+| #22 | Injury signal — ESPN scraper + v5 adjustment |
+| #23 | Session log: documented PRs #1-21 since Sprint 10.5 |
+| #24 | Injury 502 fix + Codex fixes on #22 |
+| #25 | v4-spread injury integration + ESPN scraper hardening + backtesting honesty |
+
+### Live model state (post-#25 merge)
+
+- **v5** (winner prediction): continuous sigmoid + injury adjustment for NBA/NFL/MLB/NHL
+- **v4-spread** (margin/ATS): continuous margin model + injury adjustment for NBA/NFL/MLB/NHL, **PLUS MLB pitcher ERA factor (`±0.3 runs per 1.0 ERA gap`)** — this MLB-specific term is intentional, not a special case to "clean up"
+- **MLS/EPL**: both models run but injury signal disabled (no public lineup feed); UI shows "Injury-adjusted: no" disclaimer
+- **ESPN injury scraper**: 3-attempt retry with exponential backoff (500ms→1s→2s ± 25% jitter), 10s timeout per attempt
+- **Critical fail-closed semantic**: injury endpoint failures do NOT fail the cycle (filtered from critical failure sweep) — model degrades gracefully without injury data
 
 ### Current data state
-- **21,433 games** across 6 sports (2-3 seasons per sport)
+
+- **21,516 games** across 6 sports (2-3 seasons per sport)
 - **12,813 backfill predictions** (v2) resolved with accuracy metrics
-- **v5 live predictions** generating with unique probabilities per game
-- **Injury data** will flow once PR #22 is merged and cron runs
+- **v5 live predictions** generating with unique probabilities per game (injury-adjusted for NBA/NFL/MLB/NHL since PR #22 merged)
+- **v4-spread live predictions** running for games with odds (injury-adjusted since PR #25 merged; first cron with the new code at next 22:00 UTC run)
+- **Injury data** flowing since PR #22; ESPN scraper hardened (3-attempt retry + 10s timeout) since PR #25
 - **Automated backups** running nightly at 3am UTC
 
-### Backlog (prioritized)
+### Priority queue for next session
 
-**Ready to merge:**
-1. PR #22 — Injury signal (MERGED 2026-04-13)
-2. PR #24 — Codex fixes on #22 + session log + injury 502 fix (OPEN)
-3. PR TBD — v4-spread injury integration + scraper hardening (this branch `claude/injury-v4-and-alt-sources`)
+**P0 — first task next session, shippable with existing data:**
+1. **v4-spread margin MAE baseline** — run `predictMargin()` (no injuries, no historical odds needed) on all 12,813 backfilled games, compare predicted margin to actual final margin. Establishes the MAE baseline that was never measured when v4-spread shipped. See council debt #13.
 
-**P0 — shippable with existing data:**
-4. **v4-spread margin MAE baseline** — run `predictMargin()` (no injuries, no historical odds needed) on all 12,813 backfilled games, compare predicted margin to actual final margin. Establishes MAE baseline that was never measured. This is the backtest v4-spread should have had at launch.
+**HIGH after baseline exists:**
+2. **Shadow-prediction logging** — store naive (no-injury) prediction alongside adjusted on every live v4-spread pick. After N≥30 resolved, compute injury-adjusted vs naive MAE delta. Only way to A/B-test the injury signal — can't do historically (no injury data before 2026-04-13). See council debt #14.
 
-**HIGH — unblocks forward A/B:**
-5. **Shadow-prediction logging** — for every live v4-spread pick, store naive (no-injury) prediction alongside adjusted. After N≥30 resolved live picks, compute injury-adjusted vs naive MAE delta. This is the only way to A/B-test injury signal (can't do historically because no injury data before 2026-04-13).
+**Then:**
+3. Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) — biggest quality win on existing signal. Council debt #16.
+4. Run ratchet per sport via Actions workflow to regenerate artifacts with v5 + honest baselines.
+5. NHL goalie matchups — ESPN scoreboard doesn't include goalie data; need boxscore or external source.
+6. MLS/EPL draw model — spread model doesn't account for draws (~25% of soccer outcomes).
 
-**Ready to build:**
-6. Run ratchet for each sport (Actions → Run Ratchet) to regenerate artifacts with v5 + honest baselines
-7. NHL goalie matchups — ESPN scoreboard doesn't include goalie data. Need to explore ESPN boxscore or external source.
-8. MLS/EPL draw model — spread model doesn't account for draws (~25% of soccer outcomes). Needs three-outcome model.
-9. Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) — biggest quality win on existing injury signal.
+**Backlog (lower priority):**
+- Player stats scraper in cron (currently stale Sprint 5 ingest)
+- Held-out v5 scale validation (fitted in-sample on backfill)
+- Historical odds ingest (Kaggle / paid) to unlock real v4-spread ATS backtest
+- Full lineup integration from official league APIs
+- Second injury data provider (trigger: ≥3 ESPN failures/week for 2 weeks)
 
-**Needs research:**
-10. Full lineup integration — per-game starting lineups from official league APIs (NBA, NFL).
-11. Held-out validation — v5 scale and injury compensation factor are fitted on backfill (in-sample). Need cross-validation.
-12. Player stats scraper in cron — currently one-time Sprint 5 ingest, not refreshed. Add to predict-cron schedule.
-13. **Historical odds ingest** — Kaggle has historical NBA/NFL spread data; paid feeds for all sports. Unlocks real v4-spread ATS backtest (not just margin MAE).
+**Verification (run at end of this session, 2026-04-14 17:33 UTC):**
 
-**Council governance:**
-- 5-expert council (Data Quality, Statistical Validity, Prediction Accuracy, Domain Expert, Mathematics Expert)
-- Mathematics expert covers both computational correctness AND theoretical soundness
-- All plans reviewed before implementation, all implementations reviewed before shipping
-- User mandated: "don't forget to run council on everything"
+| Check | Result | Status |
+|-------|--------|--------|
+| `/api/health` reachable | ✓ status:ok, 21,516 games, 21,364 results | PASS |
+| `last_scrape_at` fresh | 2026-04-14T16:35:03 (~1h before check) | STALE — cron next at 22:00 UTC |
+| v5 prediction has `home_out_impact` field | NO — current predictions pre-date the merge | PENDING — confirm after next cron |
+| v4-spread prediction has `home_out_impact` field | NO — current predictions pre-date the merge | PENDING — confirm after next cron |
+| Cloudflare Pages deploy ran on merge | NOT VERIFIED (no `gh` access from this session) | TODO next session |
+| Fly API deploy ran on merge | NOT VERIFIED — but `/api/health` returns 200 | LIKELY OK, verify |
 
-### Key architecture facts
+**What this means for next session:**
+1. Wait for or trigger the next predict cron, then re-check both upcoming prediction endpoints for `home_out_impact` in `reasoning_json.features`
+2. If field still absent → check `gh run list --workflow=deploy-fly.yml` to confirm the merge deployed
+3. If field present but always 0 → confirm the injury scrape is populating `player_injuries` (`SELECT COUNT(*) FROM player_injuries GROUP BY sport`)
+
+### Key architecture (unchanged from Sprint 10.6)
+
 - v5 is the active winner-prediction model (continuous sigmoid, replaces v2's 4 buckets)
 - v4-spread is the active spread model (margin prediction vs bookmaker line)
 - Predictions table has UNIQUE(game_id, model_version, prediction_source) — 3-column constraint
 - Track record: v5 live + v2 backfill (backfill predates v5, shown as calibration baseline)
-- Injury signal: 7-day recency filter to avoid double-counting with team differential
-- All deploy is automated: push to main → deploy-fly.yml + deploy-pages.yml
-- Daily cron: scrape all sports + odds + injuries → predict all sports → resolve outcomes
+- Injury signal: 7-day recency filter on `first_seen_at` (persists across scrape cycles)
+- v4-spread inherits same `INJURY_COMPENSATION = 0.4` factor as v5 (council debt #18 to fit separately)
+- Deploy is automated: push to main → deploy-fly.yml + deploy-pages.yml
+- Cron: 05:00 + 22:00 UTC — scrape all sports + odds + injuries → predict all sports → resolve outcomes
 
-**What's live right now:**
-- https://sportsdata.pages.dev — Section 07 "Does the model mean what it says?" shows ECE 0.0892, verdict DISCRETE, the v2 model's 2-value finding
-- https://sportsdata-api.fly.dev/api/predictions/calibration?sport=nba returns 200
-- Sprint 9 mobile layout fixes (streak top/bottom 5, sport tab selector, etc.) also live
+### Council governance reminder
 
-**Critical lesson from this session (DO NOT forget):** The Cloudflare Pages GitHub Actions workflow had been silently failing for 4 days — CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID secrets were never set. Every deploy since Sprint 6 failed. Always verify the live site actually reflects your commit, not just that git push succeeded. See `DEPLOY.md` for the full runbook.
+5-expert council (Data Quality, Statistical Validity, Prediction Accuracy, Domain Expert, Mathematics Expert). **Every sprint MUST run:**
+1. Plan review → iterate until CLEAR (or WARN with mitigations)
+2. Implementation review → iterate if FAIL
+3. Test/results review
 
-**Key finding that should not be relearned:** The v2 NBA prediction model is a DISCRETE classifier — it only emits probability 60% or 75%, nothing in between. Surfaced by Sprint 10 calibration plot, now headline content. **Full numbers + forward paths:** see PAI memory `project_v2_model_discrete_finding.md` (canonical) and the Sprint 10 entry below in this log. Don't re-derive the table.
+User should never be the first reviewer. Mathematics expert only votes when calculation/model is involved. See `.harness/council/*.md`.
 
-**Open council debts carrying forward** (see backlog below):
-- Ratchet media query consolidation (Sprint 9 Engineer nit)
-- Player name line-wrap in ranked list (Sprint 9 Designer nit)
-- `eceHighConfOnly` refactor to shared helper (Sprint 10 Engineer nit)
-- `canonical_game_id` schema migration (still open from Sprint 8.5, P0)
-- Stale Cloudflare direct-git deploy source (dashboard cleanup, not blocking)
+### Backtesting honesty (from Sprint 10.7 user pushback)
+
+Three constraints that were conflated before:
+
+| What | Status | Why |
+|------|--------|-----|
+| v4-spread vs historical bookmaker spreads | Cannot test | No historical odds data |
+| Injury-adjusted vs naive on historical games | Cannot test | Injury data only exists from 2026-04-13 forward |
+| v4-spread margin MAE on 12,813 backfill games | Can test, haven't | Filed P0 debt #13 |
+| Forward A/B via shadow predictions | Can set up, haven't | Filed HIGH debt #14 |
+
+**Key lesson:** v4-spread was shipped without baseline margin MAE. Don't ship a model without computing every backtest the existing data permits.
+
+### Critical lessons that must not be relearned
+
+- **Cloudflare Pages secrets.** The Pages GH Actions deploy silently failed for 4 days in Sprint 10.5 because `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` were never set. Always verify the live site reflects the commit. See `DEPLOY.md`.
+- **v2 was a discrete classifier.** Only emitted 60% or 75%. Surfaced in Sprint 10 calibration plot. Replaced by v5 continuous sigmoid in PR #21.
+- **Silent scrape failures.** Pre-Sprint 10.6, predict-cron hit a nonexistent `/api/trigger/scrape` behind `|| echo "non-fatal"`. Never mask cron failures.
+- **Council discipline.** User has repeatedly mandated: plans → implementations → tests all reviewed by council. User should never be first reviewer.
 
 ---
 
@@ -492,21 +518,25 @@ Three overlapping constraints were conflated in the first council writeup:
 - Basketball-Reference / CBS Sports — blocked by 403 or HTML-only (requires UA spoofing + parser; not worth it for a secondary signal)
 - **Result:** Hardened what we have (ESPN with retries); filed concrete criteria for when to invest in alt sources
 
+### Sprint 10.7 session-handoff council review (PR #26)
+
+After PR #26 was opened (the docs-only handoff), user reminded that even doc-only PRs run through council. Review:
+
+- **Data Quality (6/10 WARN):** I claimed deploy/cron status without verifying. Fix: ran live curls during the review, documented actual state in the verification table — `last_scrape_at` stale (next cron 22:00 UTC), no `home_out_impact` field in current predictions yet (DB has pre-merge predictions; will populate after next cron).
+- **Statistical Validity (8/10 CLEAR):** Mandate to audit "23 open debts" — performed, none silently resolved by merged code, debt #22 relabeled (v3 → v4-spread streak adjustments — same code, different model).
+- **Prediction Accuracy (7/10 WARN):** Debt #13 was vague. Fix: spec'd as per-sport MAE+RMSE with bootstrap CI, two baselines (v0-margin = always home advantage, v3-margin = no injuries), pass criterion (improvement on ≥4/6 sports).
+- **Domain Expert (7/10 WARN):** Fix: noted MLB pitcher ERA factor in v4-spread is intentional (not to "clean up"); added per-sport breakdown requirement to debt #13.
+- **Mathematics:** sat out (no calculations).
+
+Verdict after second round: 4× CLEAR. **SHIP.**
+
 ---
 
-## Backlog (Post-Sprint 10)
+## Backlog (Post-Sprint 10.7)
 
-### Sprint 11 Candidates (user's next pick)
+See the **Next Session Pickup** block above for the prioritized next-task queue. This section is the canonical list of council debts.
 
-**NHL ratchet + cross-sport comparison** — the #1 priority after Sprint 10. The ratchet CLI already takes `sport` as an arg, so the machinery is sport-generic, but the v2 iterations (home/away differential, point diff streaks) are tuned for NBA. Three scoping options on the table (user has not picked):
-
-1. **Same recipe, new sport** — run existing v2 iteration sequence against NHL unchanged. Fast (~1-2 hours). Story: "the recipe generalizes" or "it doesn't."
-2. **NHL-specific iterations** — design hockey-native features (goalie quality, back-to-back fatigue, low-scoring regime). Half day+. Better story.
-3. **Start (1), decide based on results** — pragmatic middle ground.
-
-**Cross-sport comparison chart** is the same regardless — once both sports have ratchet artifacts, a new section shows best-Brier-vs-baseline improvement side-by-side.
-
-### Council Debts Filed
+### Council Debts (Open)
 
 | # | Item | Source | Priority |
 |---|------|--------|----------|
@@ -518,35 +548,41 @@ Three overlapping constraints were conflated in the first council writeup:
 | 6 | Player name line-wrap in ranked list | Sprint 9 Designer | Low (cosmetic) |
 | 7 | eceHighConfOnly → shared computeECE helper | Sprint 10 Engineer | Low (refactor) |
 | 8 | Disable stale Cloudflare direct-git deploy source | Sprint 10.5 ops | Dashboard only |
-| 9 | ESPN per-call retry jitter | Sprint 8 Engineer | Low |
-| 10 | Seed-stability test for v2 winning margin | Sprint 6 Skeptic | Low |
-| 11 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
-| 12 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After live cohort grows |
-| 13 | **v4-spread margin MAE baseline on 12,813 backfill games** (no injuries needed — actual final scores available) | Sprint 10.7 Statistical Validity | **P0 — shippable today** |
+| 9 | Seed-stability test for v2 winning margin | Sprint 6 Skeptic | Low |
+| 10 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
+| 11 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After live cohort grows |
+| 12 | v5 sigmoid scale cross-validation on held-out data | Sprint 10.6i Math Expert | HIGH |
+| 13 | **v4-spread margin MAE baseline on 12,813 backfill games.** Spec (refined by Sprint 10.7 council, Prediction Accuracy + Domain Expert): (a) compute per-sport MAE AND RMSE separately — single-number across all sports is meaningless because NBA dominates the corpus, (b) include 1000-resample bootstrap 95% CI per metric, (c) compare against TWO baselines: `v0-margin = SPORT_HOME_ADVANTAGE` (always predict home advantage) and `v3-margin = predictMargin without injuries` (the model that shipped). Pass criterion: v3-margin MAE < v0-margin MAE on ≥4 of 6 sports. No injuries or historical odds needed — uses existing `game_results.home_score - away_score`. | Sprint 10.7 Statistical Validity + Prediction Accuracy + Domain Expert | **P0 — shippable today, FIRST TASK NEXT SESSION** |
 | 14 | **Shadow-prediction logging**: for every live v4-spread pick, store the naive (no-injury) prediction alongside the adjusted one. Enables forward A/B after N≥30 resolved picks. | Sprint 10.7 Statistical Validity | **HIGH — before live track record stabilizes** |
 | 15 | v5↔v4-spread injury consistency check (same sign on all games, post-merge) | Sprint 10.7 Mathematics | Medium |
 | 16 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Sprint 10.7 Domain Expert | Medium (biggest quality win) |
 | 17 | Minimum-impact threshold (skip adjustment below 2 units) | Sprint 10.7 Prediction Accuracy | Low (refinement) |
 | 18 | Fit INJURY_COMPENSATION separately for margin vs winprob | Sprint 10.7 Statistical Validity | After N≥200 resolved per model |
 | 19 | Second injury data provider (criteria: ≥3 ESPN failures/week for 2 weeks) | Sprint 10.7 Data Quality | Watch metric |
-| 20 | Historical odds ingest (Kaggle / paid feed) to enable ATS backtest | Sprint 10.7 Prediction Accuracy | High — unlocks real v4-spread validation |
+| 20 | Historical odds ingest (Kaggle / paid feed) to enable ATS backtest | Sprint 10.7 Prediction Accuracy | HIGH — unlocks real v4-spread validation |
+| 21 | ERA coefficient recalibration at N>200 (gated on live MLB sample) | Sprint 10.6c Domain Expert | Medium — gated |
+| 22 | **v4-spread streak adjustments** (homeColdStreak −50% homeAdv, awayHotStreak −30% homeAdv) not empirically calibrated. (Originally filed against v3; v3 is rejected dead code, but the same streak logic moved into `predictMargin()` and is live in v4-spread.) | Sprint 10.6c Statistical Validity (relabeled Sprint 10.7) | Medium |
+| 23 | Clamp [0.15, 0.85] Brier bias for NHL/soccer (Math expert noted in Sprint 10.6i) | Sprint 10.6i Math Expert | Low |
 
-| # | Item | Source | Priority |
-|---|------|--------|----------|
-| 1 | canonical_game_id schema migration | Sprint 8.5 Skeptic | P0 |
-| 2 | MLB doubleheader handling | Sprint 8.5 Pragmatist | Before generalizing beyond NBA |
-| 3 | Test fixture covering both ID shapes | Sprint 8.5 Tester | With canonical migration |
-| 4 | Vegas frontend rendering | Sprint 8 deferred | Quick win |
-| 5 | Calibration plot (now unlocked by backfill n=2500) | Researcher Sprint 7 | HIGH — user's next pick |
-| 6 | NHL ratchet (cross-sport story) | Recommendation | HIGH — user's next pick |
-| 7 | ESPN per-call retry jitter | Sprint 8 Engineer | Low |
-| 8 | Seed-stability test for v2 winning margin | Sprint 6 Skeptic | Low |
-| 9 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
-| 10 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After calibration plot |
+**Audit performed Sprint 10.7 (council Statistical Validity mandate):** All 23 debts above were re-checked against current `main` after PR #25 merged. None silently resolved by merged code. Debt #22 was relabeled (v3 → v4-spread) because v3 is dead but the same streak code lives in `predictMargin()`. Gating noted on debts #11 (live N≥100), #19 (ESPN failure rate metric), #21 (live MLB N≥200).
 
-### Deferred (Sprint 10+)
+### Council Debts Closed (in the last session)
 
-- **Predictions for non-NBA sports** — need validated per-sport models
+| Item | Closed By |
+|------|-----------|
+| Calibration plot | Sprint 10 |
+| Vegas baseline instrumentation | PR #12 (P2 fix) |
+| Sport-specific v0 baseline (was using 1.0) | PR #8 (P0-4) |
+| Draw handling for MLS/EPL | PR #8 (P0-2) |
+| Resolver cross-namespace UNION | PR #8 (P0-3) |
+| Season utility centralization | PR #8 (P0-5) |
+| Automated SQLite backup | PR #8 (P0-1) |
+| ESPN per-call retry jitter | PR #25 (ESPN injury scraper hardening) |
+| Predictions for non-NBA sports | PRs #4, #7, #14 (all 6 leagues) |
+| v2 discrete output bug (only 60/75% probabilities) | PR #21 (v5 sigmoid) |
+
+### Deferred (no timeline)
+
 - **Player-based predictions** — "Does SGA score >30 tonight?"
 - **Kaggle historical NBA import** — 1946-present for deeper findings
 - **Headshots on hero cards** — licensing/hosting complexity
@@ -561,17 +597,7 @@ Three overlapping constraints were conflated in the first council writeup:
 - **Single-team drill-down page** (Sprint 4 Viz 5)
 - **Per-sport Brier breakdown**
 - **Rolling 30-day Brier**
-
----
-
-## User's Priority Queue (from last conversation)
-
-> "Let's hit your recommendations in order."
-
-1. **Mobile layout fixes** (in progress — Sprint 9)
-2. **Calibration plot** — unlocked by backfill (n=2,500 resolved)
-3. **NHL ratchet + cross-sport comparison** — big story value
-4. **Vegas frontend rendering** — 30-minute close-the-loop
+- **MLE logistic regression** for sigmoid scale fitting (proper v6)
 
 ---
 
@@ -686,39 +712,35 @@ npm run viz           # Both API + Vite together
 
 ## Git Commit History Highlights
 
+For an up-to-date list, use `git log --oneline main`. Major milestones:
+
 ```
-ff0f43a Sprint 8.5: Backfill prediction history from ratchet test set
-093bc0b Fix prediction resolver: cross-namespace match by team+date
-7ab82ec Sprint 8: Council debts cleared — ESPN hardening, Vegas baseline, hero polish
-985bf01 Fix slow cold starts: bundle tsx, bump memory, always-on machine
-c5ab5a1 Sprint 7: Live predictions — apply ratchet to upcoming games
-76d0572 Sprint 6: Ratchet loop first run + pace-adjusted margins
-4a93ef5 Player stats for all 6 sports + council-mandated qualifier filter
-ed9a8f4 Context-aware findings: per-season streaks, point differential, clutch
-5c869f9 Dark mode redesign — actually interesting visualization
-9bab877 Production deploy fixes
-6c0978c Add deployment infrastructure: Cloudflare Pages + Fly.io + GitHub Actions
-aea4258 Viz: interesting things detector, data API, web scaffold
-483ac66 Add README, update design.md
-e31d4e7 Sprint 3: game outcomes, team mappings, BallDontLie
-0abd772 Add Premier League and MLS support
-278c70d Sprint 2: SQLite persistence, scheduler, CLI tables, Odds API client
-aa3b309 Initial scaffold
+PR #26 (this PR, OPEN) Session handoff doc refresh + handoff-discipline lesson
+PR #25 v4-spread injury integration + scraper hardening + backtesting honesty
+PR #24 Injury 502 fix + Codex fixes on #22 + session log refresh
+PR #23 Session log: documented PRs #1-21 since Sprint 10.5
+#22    Injury signal — ESPN scraper + v5 adjustment
+#21    v5 continuous sigmoid model (replaces v2's 4 discrete buckets)
+#14-16 Historical backfill + /api/trigger/backfill + Actions workflow
+#8-13  Full codebase review (33/35 P0-P3 fixes)
+#5-6   v4-spread margin model + MLB pitchers + findings math fix
+#4     Global sport selector (all 6 leagues)
+#2-3   Scrape pipeline repair
+Sprint 10  Calibration plot (DISCRETE verdict)
+Sprint 9   Mobile layout fixes
+Sprint 8.5 Backfill + resolver cross-namespace fix
+Sprint 8   ESPN hardening + Vegas baseline + hero polish
+Sprint 7   Live predictions (cron + bearer auth)
+Sprint 6   Ratchet loop first run (v2: 0.2486 Brier)
+Sprint 5   Player stats for all 6 sports
+Sprint 4   Interesting-things detector + web scaffold
+Sprint 3   Game outcomes + team mappings + BDL
+Sprint 2   SQLite + scheduler + CLI + Odds API
+Sprint 1   Foundation scaffold
 ```
 
 ---
 
 ## Next Session Pickup Points
 
-1. **Sprint 9 mobile fixes** — plan approved (3 WARN / 1 CLEAR), build not started.
-   - Drafted streak grid renderer with top-5/bottom-5 + `<details>` in working memory, not committed.
-   - Global overflow guards need `overflow-x: hidden` on body/html.
-   - Use native `<details>` for all progressive disclosure.
-
-2. **Calibration plot** (after mobile fixes) — unlocked by backfill n=2,500.
-
-3. **NHL ratchet** (after calibration) — extends v2 to NHL with same code path.
-
-4. **Vegas frontend rendering** (30-min task) — artifact has data.
-
-5. **Context is about to be cleared** — rely on this document plus the memory system to resume.
+See the **🎯 Next Session Pickup** block at the top of this file — it is the authoritative handoff for the next session and is refreshed at session end.

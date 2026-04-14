@@ -1,19 +1,32 @@
 {
-  "current_phase": "sprint_10_6_complete",
-  "last_completed_sprint": "sprint_10_6i_v5_sigmoid",
-  "next_session_type": "user_picks_direction",
-  "next_action": "No active queue — user should pick next direction. See SESSION_LOG.md 'What's Next' for candidates.",
+  "current_phase": "sprint_10_7_complete_all_merged",
+  "last_completed_sprint": "sprint_10_7_v4_spread_injury_integration",
+  "next_session_type": "ship_p0_backtest_debt",
+  "next_action": "Implement council debt #13: v4-spread margin MAE baseline on 12,813 backfilled games. Pure analysis on existing data — no historical odds or injury data needed. Establishes the baseline that should have shipped with v4-spread.",
+  "open_prs": [
+    {
+      "number": 26,
+      "title": "Session handoff (post-merge): refresh docs + capture handoff-discipline lesson",
+      "branch": "claude/post-merge-handoff",
+      "url": "https://github.com/Anguijm/sportsdata/pull/26",
+      "status": "this PR — merge to land the handoff doc itself"
+    }
+  ],
   "pipeline": {
-    "phase": "live_predictions_all_sports",
-    "last_log_update": "2026-04-13",
+    "phase": "live_predictions_all_sports_both_models_with_injury",
+    "last_log_update": "2026-04-14",
     "active_hypotheses": 0,
-    "models_live": ["v5-sigmoid", "v4-spread"],
+    "models_live": ["v5-sigmoid+injury", "v4-spread+injury"],
     "predictions_backfilled": 12813,
     "predictions_live_accumulating": true,
-    "sports_with_predictions": ["nba", "nfl", "mlb", "nhl", "mls", "epl"]
+    "sports_with_predictions": ["nba", "nfl", "mlb", "nhl", "mls", "epl"],
+    "injury_signal_active_v5": true,
+    "injury_signal_active_v4_spread": true,
+    "injury_disabled_for": ["mls", "epl"]
   },
   "sources_status": {
-    "espn": "active_hardened_all_sports",
+    "espn": "active_hardened",
+    "espn_injuries": "active_with_retry_3x_backoff_10s_timeout",
     "odds_api": "active_accumulating",
     "balldontlie": "active",
     "sportsdata_io": "untested",
@@ -22,22 +35,16 @@
   "models": {
     "v0": "baseline — sport-specific home-win rate",
     "v1": "v0 + flip when visitor has 10+ more wins",
-    "v2": "v1 + point differential (recalibrated from 12,813 predictions, discrete)",
-    "v3": "v2 + cold streak (rejected by ratchet, kept for reference)",
-    "v4-spread": "continuous margin model — predicts game margins, compares to bookmaker spreads",
-    "v5": "continuous sigmoid — prob = sigmoid(scale * (homeDiff - awayDiff + homeAdv)), unique prob per game"
-  },
-  "portfolio": {
-    "total_sports": 6,
-    "backfilled_predictions": 12813,
-    "live_predictions_accumulating": true,
-    "v2_test_brier": 0.2486,
-    "v2_test_accuracy": 0.614,
-    "v5_status": "live, in-sample calibrated, needs held-out validation"
+    "v2": "v1 + point differential (4 discrete buckets, superseded by v5)",
+    "v3": "v2 + cold streak (rejected by ratchet)",
+    "v4-spread": "continuous margin model + INJURY adjustment + MLB pitcher ERA",
+    "v5": "continuous sigmoid + INJURY adjustment — prob = sigmoid(scale * (homeDiff - awayDiff + homeAdv + injuryAdj))"
   },
   "database": {
-    "sports_active": ["nba", "nfl", "mlb", "nhl", "mls", "epl"],
+    "games": 21516,
+    "sports_active": ["nfl", "nba", "mlb", "nhl", "mls", "epl"],
     "historical_seasons": "2-3 per sport (2023-2026)",
+    "backfilled_predictions": 12813,
     "backup": "daily to GitHub Releases, 7-day retention"
   },
   "visualization": {
@@ -54,7 +61,8 @@
       "08_players"
     ],
     "global_sport_selector": true,
-    "sports_switchable": ["nba", "nfl", "mlb", "nhl", "mls", "epl"]
+    "sports_switchable": ["nba", "nfl", "mlb", "nhl", "mls", "epl"],
+    "spread_card_injury_row": true
   },
   "deploy": {
     "frontend_url": "https://sportsdata.pages.dev",
@@ -66,6 +74,15 @@
     "cron_predict": "0 5,22 * * * (all 6 sports)",
     "cron_backup": "daily 3am UTC to GitHub Releases"
   },
-  "prs_merged_since_sprint_10": 21,
-  "last_pr": "#21 — v5 continuous sigmoid model"
+  "backtesting_status": {
+    "v4_spread_margin_mae_baseline": "NOT DONE — P0 debt #13, shippable with existing data, FIRST TASK NEXT SESSION",
+    "v4_spread_ats_backtest": "CANNOT DO — no historical odds data",
+    "injury_adjusted_vs_naive_historical": "CANNOT DO — no injury data before 2026-04-13",
+    "shadow_prediction_forward_ab": "NOT SET UP — HIGH debt #14"
+  },
+  "council_debts_open": 23,
+  "council_debts_closed_this_session": 10,
+  "prs_merged_since_sprint_10": 25,
+  "prs_open": 1,
+  "prs_open_note": "PR #26 is this very session's handoff doc. After it merges, prs_open returns to 0 and the next session starts clean."
 }

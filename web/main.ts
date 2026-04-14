@@ -667,11 +667,11 @@ function renderSpreadPicks(
         const awayAbbr = p.away_team_id.split(':')[1] ?? p.away_team_id;
         const dateLabel = formatGameDate(p.game_date);
 
-        let spread: SpreadReasoning['spread'] | undefined;
+        let reasoning: SpreadReasoning | undefined;
         try {
-          const rj = JSON.parse(p.reasoning_json) as SpreadReasoning;
-          spread = rj.spread;
+          reasoning = JSON.parse(p.reasoning_json) as SpreadReasoning;
         } catch { /* ignore */ }
+        const spread = reasoning?.spread;
 
         const tier = spread?.confidence_tier ?? 'skip';
         const pickAbbr = spread?.pick_side === 'home' ? homeAbbr : awayAbbr;
@@ -690,8 +690,8 @@ function renderSpreadPicks(
         // Injury adjustment display (council Prediction Accuracy mandate):
         // When injury signal shifted the margin, surface it so users understand
         // tonight's pick differs from what a pure team-differential model would say.
-        const homeOut = reasoning.features?.home_out_impact ?? 0;
-        const awayOut = reasoning.features?.away_out_impact ?? 0;
+        const homeOut = reasoning?.features?.home_out_impact ?? 0;
+        const awayOut = reasoning?.features?.away_out_impact ?? 0;
         const hasInjuryAdj = homeOut > 0 || awayOut > 0;
         const injuryRowHtml = hasInjuryAdj ? `
               <div class="spread-detail-row spread-injury-row">

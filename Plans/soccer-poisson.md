@@ -125,3 +125,56 @@ After six corrections:
 Five-expert verdict: **CLEAR to implement**.
 
 Deviating from this plan during implementation requires a fresh council pass — no silent scope drift.
+
+---
+
+## Post-implementation addendum (2026-04-14, post-#29 merge)
+
+### Ship-gate outcome
+
+Per pre-declared ship rules above, the Poisson v1 A/B produced these 95% bootstrap paired-diff CIs:
+
+| League | Poisson MAE − predict-zero | Poisson MAE − v4-spread | Draw Brier − naive |
+|---|---|---|---|
+| MLS (N=1159) | −0.007 [−0.049, +0.032] ~ tie | −0.003 [−0.011, +0.005] ~ tie | −0.0023 [−0.0051, +0.0006] ~ tie |
+| EPL (N=699)  | +0.007 [−0.053, +0.067] ~ tie | **−0.019 [−0.036, −0.002] ✓ beats** | +0.0003 [−0.0033, +0.0044] ~ tie |
+
+Primary ship gate fails on both leagues → per rule 3, did NOT ship as v4-spread replacement. Infrastructure shipped, model swap did not. Recorded in SESSION_LOG Sprint 10.8 and `learnings.md`.
+
+### Math-expert finding that reframed the v2 plan
+
+When council was re-convened to plan "Dixon-Coles next", the math expert verified that the DC τ correction (the obvious reading of "add Dixon-Coles") **cannot change E[margin]**, and therefore cannot change margin MAE — the exact metric PR #29's primary ship gate measures.
+
+**Derivation (for the record):** The DC τ correction modifies P(i,j) in 4 cells:
+- `τ(0,0) = 1 − λh·λa·ρ`
+- `τ(0,1) = 1 + λh·ρ`
+- `τ(1,0) = 1 + λa·ρ`
+- `τ(1,1) = 1 − ρ`
+- `τ(i,j) = 1` elsewhere.
+
+For `E[H−A] = ΣΣ (i−j)·τ(i,j)·P(i,j)`:
+- (0,0) contributes `0·anything = 0`
+- (1,1) contributes `0·anything = 0`
+- (0,1) shift: `−1 · (λh·ρ) · λa·e^(−λh−λa) = −λh·λa·ρ·e^(−λh−λa)`
+- (1,0) shift: `+1 · (λa·ρ) · λh·e^(−λh−λa) = +λh·λa·ρ·e^(−λh−λa)`
+- Sum of shifts: 0.
+
+Normalizer `Z = ΣΣ τ·P = 1 + ρ · [−λh·λa·e^(−λh−λa) + λh·λa·e^(−λh−λa) + λh·λa·e^(−λh−λa) − λh·λa·e^(−λh−λa)] = 1` (exact).
+
+So `E[margin]_DC = E[margin]_independent` exactly; no renormalization; margin MAE is guaranteed identical across the two models on any dataset.
+
+**What DC τ *does* improve:** scoreline-specific probabilities (especially 0-0, 1-1) and draw-Brier. Both are genuinely valuable, neither is on our current ship-gate metric set.
+
+### v2 direction (council-endorsed, documented but not scheduled)
+
+The obvious "add τ and re-run" was rejected by unanimous council vote. The correct v2 soccer sequence is:
+
+1. **Debt #26 — Pre-2024 soccer scrape.** FBref or Understat (Understat includes xG). Unblocks proper train/test split AND grows N by 5-10× per league. Minimum detectable effect halves.
+2. **Debt #25 — Dixon-Coles ξ time-decay + MLE fit.** The *actually* margin-moving half of the 1997 paper: weight recent matches more, MLE-fit α/β/μ_home over all history. Reduces estimator variance and captures recent-form drift. Blocked on #26.
+3. **Debt #24 — Dixon-Coles τ correction.** Lowest priority. Optional polish on scoreline/draw calibration *after* steps 1-2 lift margin MAE off the predict-zero floor. Not on the ship-gate critical path.
+
+**Zero-risk parallel track (P0 next session per Sprint 10.8 council):** Debt #11 reliability diagrams generalized across all sports from the 16,777-game baseline. Not part of the soccer v2 plan proper, but the measurement infra that every v2 attempt (soccer or otherwise) will benefit from.
+
+### Do not edit the plan-proper above
+
+The council-CLEAR plan sections above this addendum are the audit record of what was promised and what shipped. They should not be back-edited. Any further changes to the soccer model go into a new plan document (`Plans/soccer-poisson-v2.md` or similar) with its own council pass.

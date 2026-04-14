@@ -343,3 +343,27 @@ Built independent-Poisson/Skellam margin model (v6-poisson-soccer) per Plans/soc
   - MLE fitting of α, β, μ_home over all pre-cutoff matches (once pre-cutoff soccer data is scraped) — gets away from the in-sample concern
   - Recent-form weighting (exponential decay on last N matches) per Dixon-Coles
   - Scraping pre-2024 soccer data to get a real out-of-sample holdout
+
+
+### dixon-coles-invariance-finding (2026-04-14, post-#29)
+
+When asked "Dixon-Coles next" after PR #29 merged, the math expert verified a result that reframed the whole "what's next?" question before any code was written. Result is worth preserving:
+
+**Theorem**: For the Dixon-Coles τ correction with parameter ρ applied to independent Poisson goal models (`λ_h`, `λ_a`), the expected margin `E[H − A]` is unchanged: `E[H−A]_DC = E[H−A]_independent`. The normalizer `Z = ΣΣ τ(i,j)·P(i,j)` equals exactly 1.
+
+**Proof sketch**: τ deviates from 1 in only 4 cells.
+- (0,0) and (1,1) contribute `(i−j) = 0` → zero contribution to E[margin] regardless of τ.
+- (0,1) contribution shift: `−1 · λh·ρ · λa·e^(−λh−λa) = −λh·λa·ρ·e^(−λh−λa)`
+- (1,0) contribution shift: `+1 · λa·ρ · λh·e^(−λh−λa) = +λh·λa·ρ·e^(−λh−λa)`
+- Sum: 0. The normalizer Z works out to 1 by the same symmetric cancellation.
+
+**Implication for our work**: our primary ship gate (margin MAE, PR #29 rule 1) measures `|actual_margin − E[margin]|`. Since E[margin] is identical under DC, the MAE is identical. DC τ correction **cannot** close the predict-zero gap PR #29 exposed. DC τ improves scoreline-specific probabilities and draw-Brier; that is genuinely valuable but not on our current ship-gate metric set.
+
+**Lesson #1 — "Dixon-Coles" is two ideas, not one.** The 1997 paper's enduring contributions are (a) the τ low-score correction AND (b) time-decay MLE fitting (ξ parameter). Our open debt #18 "Dixon-Coles" conflated them. Only (b) is margin-moving. Split into #24 (τ, low priority) and #25 (ξ+MLE, high priority but blocked on pre-2024 data).
+
+- **KEEP**: Math expert mandate — when a council member can *prove* a proposed change won't move a ship-gate metric, they should say so BEFORE code is written. Saved a PR cycle here.
+- **KEEP**: Asking "what's the expected shift under the proposed change?" is cheap and telling. For DC τ, it's zero. For ξ+MLE, it's nonzero but bounded by estimator-variance reduction.
+- **INSIGHT**: Paper-level folk wisdom ("just add Dixon-Coles") is two distinct ideas with very different payoffs on different metrics. When importing a model from literature, write down which metric each piece moves BEFORE picking it up.
+- **INSIGHT**: The PR #29 null result wasn't "Poisson doesn't work for soccer" — it was "N is too small to detect the expected-size effect." Different diagnosis, different fix. Fixing the diagnosis (scrape more data, debt #26) unlocks the model tier (ξ+MLE, debt #25) that can actually move the metric.
+- **INSIGHT**: Zero-risk infra ratchet steps (reliability diagrams, shadow-logging) are the right choice when the frontier of model work is blocked on data. They sharpen measurement capability, which makes every subsequent model change more surgical.
+- **INSIGHT**: The ship-gate discipline from PR #29 (pre-declared rules, "don't ship if primary CI straddles zero") cascades forward: because we didn't ship Poisson-with-τ as an "obvious improvement", we avoided shipping a change that by math cannot move the metric we'd be shipping to improve. Writing down the math first is a cheap insurance policy.

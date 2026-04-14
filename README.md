@@ -307,7 +307,13 @@ Picks classified as **Strong** (edge ≥ threshold), **Lean**, or **Skip**. Only
 
 ### Known Limitations (Council Debt)
 
-- MLS/EPL: draw probability not modeled (affects Asian handicap spreads)
+**Backtesting status:**
+- **v4-spread margin accuracy**: NOT yet measured against the 12,813-game backfill corpus. We have the data (final scores) but the baseline MAE was never computed. Filed P0.
+- **v4-spread ATS performance**: Cannot backtest — no historical bookmaker odds. Track record accumulates live (displays at N≥30).
+- **Injury-adjusted vs naive v4-spread**: Cannot test historically — injury data only exists from 2026-04-13 forward. Forward A/B setup (shadow predictions) filed as HIGH council debt.
+
+**Model limitations:**
+- MLS/EPL: draw probability not modeled; injury signal disabled (no public lineup feed)
 - NHL: no goalie matchup data (ESPN scoreboard doesn't include it)
 - No per-game starting lineups (except MLB pitchers) — injury signal is partial
 - In-sample calibration (scale + compensation factor fitted on backfill, no held-out validation yet)

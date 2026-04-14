@@ -595,6 +595,10 @@ interface SpreadReasoning {
     confidence_tier: string;
     pick_side: string;
   };
+  features?: {
+    home_out_impact?: number;
+    away_out_impact?: number;
+  };
 }
 
 function renderSpreadPicks(
@@ -604,15 +608,20 @@ function renderSpreadPicks(
 ) {
   const term = sportTerm();
 
-  // Disclaimer — council mandate: no "safe to bet" language, unbacktested
+  // Disclaimer — council mandate: no "safe to bet" language, unbacktested.
+  // Injury-adjusted availability varies by league: ESPN feed covers NA leagues;
+  // MLS/EPL are NOT injury-adjusted (council Domain Expert mandate — soccer
+  // lineups release <1h before kickoff; no public feed).
+  const soccerBlind = term.leagueName === 'MLS' || term.leagueName === 'Premier League';
   const disclaimerHtml = `
     <div class="spread-disclaimer">
       Experimental model (v4-spread, launched 2026-04-12) — no backtesting, no proven edge.
       Break-even at -110 vig is 52.4%. Track record accumulates live and may not be statistically
       meaningful until 100+ picks resolve. All picks prior to this version are invalidated.
-      ${term.leagueName === 'MLB' ? 'Uses starting pitcher ERA (conservative 0.3 runs/ERA gap). Does not model bullpen or park factors. '
-        : term.leagueName === 'NHL' ? 'Does not account for goalie matchups. '
-        : term.leagueName === 'MLS' || term.leagueName === 'Premier League' ? 'Draw probability is not modeled. '
+      ${term.leagueName === 'MLB' ? 'Uses starting pitcher ERA (conservative 0.3 runs/ERA gap). Does not model bullpen or park factors. Injury-adjusted for position players. '
+        : term.leagueName === 'NHL' ? 'Does not account for goalie matchups. Injury-adjusted for skaters. '
+        : soccerBlind ? 'Draw probability is not modeled. <strong>Injury-adjusted: no</strong> (no public lineup feed for this league). '
+        : term.leagueName === 'NBA' || term.leagueName === 'NFL' ? 'Injury-adjusted (ESPN feed). '
         : ''}This is not financial advice.
     </div>
   `;
@@ -678,6 +687,21 @@ function renderSpreadPicks(
           : '';
         const edgeStr = spread ? Math.abs(spread.edge).toFixed(1) : '?';
 
+        // Injury adjustment display (council Prediction Accuracy mandate):
+        // When injury signal shifted the margin, surface it so users understand
+        // tonight's pick differs from what a pure team-differential model would say.
+        const homeOut = reasoning.features?.home_out_impact ?? 0;
+        const awayOut = reasoning.features?.away_out_impact ?? 0;
+        const hasInjuryAdj = homeOut > 0 || awayOut > 0;
+        const injuryRowHtml = hasInjuryAdj ? `
+              <div class="spread-detail-row spread-injury-row">
+                <span class="spread-label">Injuries</span>
+                <span class="spread-value spread-injury-value">
+                  ${homeOut > 0 ? `${homeAbbr} −${homeOut.toFixed(1)}` : ''}${homeOut > 0 && awayOut > 0 ? ' · ' : ''}${awayOut > 0 ? `${awayAbbr} −${awayOut.toFixed(1)}` : ''}
+                  <span class="spread-injury-hint">${term.unit} of missing player impact</span>
+                </span>
+              </div>` : '';
+
         return `
           <div class="spread-card tier-${tier}">
             <div class="spread-card-header">
@@ -705,7 +729,7 @@ function renderSpreadPicks(
               <div class="spread-detail-row">
                 <span class="spread-label">Edge</span>
                 <span class="spread-value edge-value">${edgeStr} ${term.unit}</span>
-              </div>
+              </div>${injuryRowHtml}
             </div>
           </div>
         `;

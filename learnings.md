@@ -192,6 +192,17 @@ I pushed a "session handoff" commit to `claude/injury-v4-and-alt-sources` after 
 
 Session-close docs are not exempt from review. They drive the next session. If they reference orphaned commits, stale branches, or merged-but-listed-as-open PRs, the next session starts confused. Treat the handoff as carefully as production code.
 
+**Rule 3: Council reviews docs-only PRs too. There is no exception.**
+
+User reminder after I tried to ship PR #26 without council review: "You forgot to run everything past council." The locked council protocol says EVERY plan, EVERY implementation, EVERY test. Doc-only PRs are implementations of communication; they affect every future session. Math expert sits out (no calculations) but the other four reviewers must always weigh in.
+
+Council on PR #26 surfaced THREE real issues I missed:
+- Data Quality: I claimed deploy status without verifying — same class of error as the original handoff botch, just at a different layer (deploy state vs merge state). Mandate forced me to actually `curl /api/health`, find that `last_scrape_at` is stale and no predictions yet have `home_out_impact`, and document the real state instead of the assumed state.
+- Prediction Accuracy: Debt #13 said "compute MAE" without specifying metrics, baselines, or pass criterion — the next session would have shipped a number with no statistical bounds. Mandate forced refinement: per-sport MAE+RMSE, bootstrap CI, two baselines, ≥4/6 sport pass criterion.
+- Domain Expert: I described the v4-spread model without noting MLB pitcher ERA is intentional. A future session might "clean up" the MLB-specific code without realizing it's load-bearing.
+
+**Concrete rule:** Before opening any PR (including docs/config/learnings), run a council pass. If 4× CLEAR, ship. Otherwise iterate. Math expert sits out for non-computational changes per their persona spec.
+
 ### codebase-review-p0-p3 (2026-04-12)
 - **KEEP**: Full 5-expert council review with 35 issues identified (P0-P3) — systematic quality sweep
 - **KEEP**: Mathematics expert as 5th council member — catches both computational AND theoretical errors

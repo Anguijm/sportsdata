@@ -34,7 +34,7 @@ Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 ### Live model state (post-#25 merge)
 
 - **v5** (winner prediction): continuous sigmoid + injury adjustment for NBA/NFL/MLB/NHL
-- **v4-spread** (margin/ATS): continuous margin model + injury adjustment for NBA/NFL/MLB/NHL, MLB pitcher ERA also factored in
+- **v4-spread** (margin/ATS): continuous margin model + injury adjustment for NBA/NFL/MLB/NHL, **PLUS MLB pitcher ERA factor (`±0.3 runs per 1.0 ERA gap`)** — this MLB-specific term is intentional, not a special case to "clean up"
 - **MLS/EPL**: both models run but injury signal disabled (no public lineup feed); UI shows "Injury-adjusted: no" disclaimer
 - **ESPN injury scraper**: 3-attempt retry with exponential backoff (500ms→1s→2s ± 25% jitter), 10s timeout per attempt
 - **Critical fail-closed semantic**: injury endpoint failures do NOT fail the cycle (filtered from critical failure sweep) — model degrades gracefully without injury data
@@ -69,10 +69,21 @@ Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 - Full lineup integration from official league APIs
 - Second injury data provider (trigger: ≥3 ESPN failures/week for 2 weeks)
 
-**Verification before P0 work:**
-- [ ] `curl https://sportsdata-api.fly.dev/api/health` — confirm `last_scrape_at` is fresh and 502 from injury endpoint is gone (was the original symptom that prompted the session-end PRs)
-- [ ] `curl https://sportsdata-api.fly.dev/api/predictions/upcoming?sport=nba` and inspect `reasoning_json.features` for `home_out_impact` field (should appear once cron has run with PR #25 deployed)
-- [ ] Confirm Cloudflare Pages and Fly auto-deploy ran on the merge commits (check `gh run list --workflow=deploy-pages.yml --limit 2` and `gh run list --workflow=deploy-fly.yml --limit 2`)
+**Verification (run at end of this session, 2026-04-14 17:33 UTC):**
+
+| Check | Result | Status |
+|-------|--------|--------|
+| `/api/health` reachable | ✓ status:ok, 21,516 games, 21,364 results | PASS |
+| `last_scrape_at` fresh | 2026-04-14T16:35:03 (~1h before check) | STALE — cron next at 22:00 UTC |
+| v5 prediction has `home_out_impact` field | NO — current predictions pre-date the merge | PENDING — confirm after next cron |
+| v4-spread prediction has `home_out_impact` field | NO — current predictions pre-date the merge | PENDING — confirm after next cron |
+| Cloudflare Pages deploy ran on merge | NOT VERIFIED (no `gh` access from this session) | TODO next session |
+| Fly API deploy ran on merge | NOT VERIFIED — but `/api/health` returns 200 | LIKELY OK, verify |
+
+**What this means for next session:**
+1. Wait for or trigger the next predict cron, then re-check both upcoming prediction endpoints for `home_out_impact` in `reasoning_json.features`
+2. If field still absent → check `gh run list --workflow=deploy-fly.yml` to confirm the merge deployed
+3. If field present but always 0 → confirm the injury scrape is populating `player_injuries` (`SELECT COUNT(*) FROM player_injuries GROUP BY sport`)
 
 ### Key architecture (unchanged from Sprint 10.6)
 
@@ -507,6 +518,18 @@ Three overlapping constraints were conflated in the first council writeup:
 - Basketball-Reference / CBS Sports — blocked by 403 or HTML-only (requires UA spoofing + parser; not worth it for a secondary signal)
 - **Result:** Hardened what we have (ESPN with retries); filed concrete criteria for when to invest in alt sources
 
+### Sprint 10.7 session-handoff council review (PR #26)
+
+After PR #26 was opened (the docs-only handoff), user reminded that even doc-only PRs run through council. Review:
+
+- **Data Quality (6/10 WARN):** I claimed deploy/cron status without verifying. Fix: ran live curls during the review, documented actual state in the verification table — `last_scrape_at` stale (next cron 22:00 UTC), no `home_out_impact` field in current predictions yet (DB has pre-merge predictions; will populate after next cron).
+- **Statistical Validity (8/10 CLEAR):** Mandate to audit "23 open debts" — performed, none silently resolved by merged code, debt #22 relabeled (v3 → v4-spread streak adjustments — same code, different model).
+- **Prediction Accuracy (7/10 WARN):** Debt #13 was vague. Fix: spec'd as per-sport MAE+RMSE with bootstrap CI, two baselines (v0-margin = always home advantage, v3-margin = no injuries), pass criterion (improvement on ≥4/6 sports).
+- **Domain Expert (7/10 WARN):** Fix: noted MLB pitcher ERA factor in v4-spread is intentional (not to "clean up"); added per-sport breakdown requirement to debt #13.
+- **Mathematics:** sat out (no calculations).
+
+Verdict after second round: 4× CLEAR. **SHIP.**
+
 ---
 
 ## Backlog (Post-Sprint 10.7)
@@ -529,7 +552,7 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 10 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
 | 11 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After live cohort grows |
 | 12 | v5 sigmoid scale cross-validation on held-out data | Sprint 10.6i Math Expert | HIGH |
-| 13 | **v4-spread margin MAE baseline on 12,813 backfill games** (no injuries needed — actual final scores available) | Sprint 10.7 Statistical Validity | **P0 — shippable today** |
+| 13 | **v4-spread margin MAE baseline on 12,813 backfill games.** Spec (refined by Sprint 10.7 council, Prediction Accuracy + Domain Expert): (a) compute per-sport MAE AND RMSE separately — single-number across all sports is meaningless because NBA dominates the corpus, (b) include 1000-resample bootstrap 95% CI per metric, (c) compare against TWO baselines: `v0-margin = SPORT_HOME_ADVANTAGE` (always predict home advantage) and `v3-margin = predictMargin without injuries` (the model that shipped). Pass criterion: v3-margin MAE < v0-margin MAE on ≥4 of 6 sports. No injuries or historical odds needed — uses existing `game_results.home_score - away_score`. | Sprint 10.7 Statistical Validity + Prediction Accuracy + Domain Expert | **P0 — shippable today, FIRST TASK NEXT SESSION** |
 | 14 | **Shadow-prediction logging**: for every live v4-spread pick, store the naive (no-injury) prediction alongside the adjusted one. Enables forward A/B after N≥30 resolved picks. | Sprint 10.7 Statistical Validity | **HIGH — before live track record stabilizes** |
 | 15 | v5↔v4-spread injury consistency check (same sign on all games, post-merge) | Sprint 10.7 Mathematics | Medium |
 | 16 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Sprint 10.7 Domain Expert | Medium (biggest quality win) |
@@ -537,9 +560,11 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 18 | Fit INJURY_COMPENSATION separately for margin vs winprob | Sprint 10.7 Statistical Validity | After N≥200 resolved per model |
 | 19 | Second injury data provider (criteria: ≥3 ESPN failures/week for 2 weeks) | Sprint 10.7 Data Quality | Watch metric |
 | 20 | Historical odds ingest (Kaggle / paid feed) to enable ATS backtest | Sprint 10.7 Prediction Accuracy | HIGH — unlocks real v4-spread validation |
-| 21 | ERA coefficient recalibration at N>200 | Sprint 10.6c Domain Expert | Medium |
-| 22 | v3 streak adjustments not empirically calibrated | Sprint 10.6c Statistical Validity | Medium |
-| 23 | Clamp [0.15, 0.85] Brier bias for NHL/soccer | Sprint 10.6i Math Expert | Low |
+| 21 | ERA coefficient recalibration at N>200 (gated on live MLB sample) | Sprint 10.6c Domain Expert | Medium — gated |
+| 22 | **v4-spread streak adjustments** (homeColdStreak −50% homeAdv, awayHotStreak −30% homeAdv) not empirically calibrated. (Originally filed against v3; v3 is rejected dead code, but the same streak logic moved into `predictMargin()` and is live in v4-spread.) | Sprint 10.6c Statistical Validity (relabeled Sprint 10.7) | Medium |
+| 23 | Clamp [0.15, 0.85] Brier bias for NHL/soccer (Math expert noted in Sprint 10.6i) | Sprint 10.6i Math Expert | Low |
+
+**Audit performed Sprint 10.7 (council Statistical Validity mandate):** All 23 debts above were re-checked against current `main` after PR #25 merged. None silently resolved by merged code. Debt #22 was relabeled (v3 → v4-spread) because v3 is dead but the same streak code lives in `predictMargin()`. Gating noted on debts #11 (live N≥100), #19 (ESPN failure rate metric), #21 (live MLB N≥200).
 
 ### Council Debts Closed (in the last session)
 

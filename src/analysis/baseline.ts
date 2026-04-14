@@ -32,6 +32,7 @@ import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
 import { v5, predictMargin } from './predict.js';
 import type { TeamState } from './predict.js';
+import { isSoccer, predictPoisson } from './poisson.js';
 
 const SPORTS: Sport[] = ['nba', 'nfl', 'mlb', 'nhl', 'mls', 'epl'];
 
@@ -61,6 +62,12 @@ interface ReplayedGame {
   sport: Sport;
   predictedProb: number;
   predictedMargin: number;
+  /** Poisson predicted margin (Skellam mean). Only populated for MLS/EPL;
+   *  null for other sports. Coexists with predictedMargin (v4-spread
+   *  sigmoid-derived) so the A/B can compare them on the same game set. */
+  poissonMargin: number | null;
+  /** Poisson draw probability: P(Skellam = 0). Only populated for MLS/EPL. */
+  poissonDrawProb: number | null;
   actualMargin: number;      // signed: home_score - away_score
   homeWin: 0 | 1;            // 1 only if home won strictly (draws = 0)
   isDraw: boolean;
@@ -119,6 +126,24 @@ export interface BaselineMetrics {
   marginMAE_minus_naiveZero: CI;
   marginMAE_minus_naiveHomeAdv: CI;
   brierScore_minus_naiveBrier: CI;
+  /** Whether this slice has Poisson predictions populated (MLS/EPL only).
+   *  When false, the poisson* fields below are present but meaningless. */
+  hasPoisson: boolean;
+  /** Poisson (Skellam-mean) margin MAE with bootstrap CI. MLS/EPL only. */
+  poissonMAE: CI;
+  /** Draw-probability Brier: mean((P(Skellam=0) - isDraw)^2) over all
+   *  games in the slice. Secondary metric, not ship-gated. */
+  drawBrier: CI;
+  /** Closed-form naive-draw Brier: drawRate*(1-drawRate). */
+  naiveDrawBrier: CI;
+  /** Paired diff CI (poisson MAE − predict-zero MAE). Primary ship gate:
+   *  must be entirely below zero for Poisson to beat the constant. */
+  poissonMAE_minus_naiveZero: CI;
+  /** Paired diff CI (poisson MAE − v4-spread MAE). Secondary: informs
+   *  fallback ship rule (Poisson can ship in a tie with v4-spread). */
+  poissonMAE_minus_v4spread: CI;
+  /** Paired diff CI (poisson draw-Brier − naive-draw Brier). */
+  drawBrier_minus_naiveDraw: CI;
 }
 
 export interface SportBaseline {
@@ -139,6 +164,8 @@ export interface BaselineReport {
   models: {
     winner: 'v5';
     margin: 'v4-spread';
+    /** Added 2026-04-14 in soccer-poisson branch. Soccer-only (MLS/EPL). */
+    soccerMargin: 'v6-poisson-soccer';
   };
   totals: {
     games: number;
@@ -291,11 +318,23 @@ function replaySport(sport: Sport): { games: ReplayedGame[]; skipped: number } {
       undefined,  // no historical injury data
     );
 
+    // Poisson margin + draw prob — MLS/EPL only. Other sports get null so
+    // downstream metrics can cleanly skip non-soccer slices.
+    let poissonMargin: number | null = null;
+    let poissonDrawProb: number | null = null;
+    if (isSoccer(sport)) {
+      const pois = predictPoisson(sport, home, away);
+      poissonMargin = pois.margin;
+      poissonDrawProb = pois.probs.pDraw;
+    }
+
     out.push({
       date: g.date,
       sport,
       predictedProb,
       predictedMargin,
+      poissonMargin,
+      poissonDrawProb,
       actualMargin: g.home_score - g.away_score,
       homeWin: g.home_win === 1 && g.is_draw !== 1 ? 1 : 0,
       isDraw: g.is_draw === 1,
@@ -382,17 +421,23 @@ const NAIVE_HOME_ADV: Record<Sport, number> = {
 /** Per-game pre-computed quantities, so the bootstrap inner loop is a
  *  single pass over resampled indices with no per-game branching. */
 interface GameAggregates {
-  absError: number;        // |predicted - actual|
-  sqError: number;         // (predicted - actual)^2
-  signedError: number;     // predicted - actual
+  absError: number;        // |v4-spread predicted - actual|
+  sqError: number;         // (v4-spread predicted - actual)^2
+  signedError: number;     // v4-spread predicted - actual
   actualMargin: number;
-  predictedMargin: number;
+  predictedMargin: number; // v4-spread predicted margin
   absActual: number;       // |actual| — naive-zero MAE term
   absHomeAdv: number;      // |homeAdv - actual| — naive-homeAdv MAE term
   eligible: boolean;       // not draw AND not low-confidence
   homeWin: 0 | 1;
   brierContrib: number;    // (prob - homeWin)^2 on eligible, else 0
   winnerCorrect: 0 | 1;    // pick matches homeWin on eligible, else 0
+  // Poisson-only (null for non-soccer sports — kept as NaN sentinel so the
+  // bootstrap inner loop can stay branchless; Poisson metrics are only
+  // consumed when hasPoisson is true for the slice).
+  poissonAbsError: number;
+  poissonDrawProb: number;      // P(Skellam = 0) per game; 0 if non-soccer
+  drawBrierContrib: number;     // (poissonDrawProb - isDraw)^2 for soccer
 }
 
 function precompute(sport: Sport, games: ReplayedGame[]): GameAggregates[] {
@@ -403,6 +448,16 @@ function precompute(sport: Sport, games: ReplayedGame[]): GameAggregates[] {
     const pickHome = g.predictedProb >= 0.5;
     const correct = eligible && ((pickHome && g.homeWin === 1) || (!pickHome && g.homeWin === 0)) ? 1 : 0;
     const brier = eligible ? (g.predictedProb - g.homeWin) ** 2 : 0;
+    // Soccer-specific fields: Poisson error and draw-probability Brier.
+    // For non-soccer sports these are zeroed so bootstrap sums are
+    // mathematically valid but consumers must guard via hasPoisson.
+    const poissonAbsError = g.poissonMargin != null
+      ? Math.abs(g.poissonMargin - g.actualMargin)
+      : 0;
+    const poissonDrawProb = g.poissonDrawProb ?? 0;
+    const drawBrierContrib = g.poissonDrawProb != null
+      ? (g.poissonDrawProb - (g.isDraw ? 1 : 0)) ** 2
+      : 0;
     return {
       absError: Math.abs(err),
       sqError: err * err,
@@ -415,6 +470,9 @@ function precompute(sport: Sport, games: ReplayedGame[]): GameAggregates[] {
       homeWin: g.homeWin,
       brierContrib: brier,
       winnerCorrect: correct as 0 | 1,
+      poissonAbsError,
+      poissonDrawProb,
+      drawBrierContrib,
     };
   });
 }
@@ -428,6 +486,13 @@ function pointStats(agg: GameAggregates[]): {
   marginMAE_minus_naiveZero: number;
   marginMAE_minus_naiveHomeAdv: number;
   brierScore_minus_naiveBrier: number;
+  // Poisson-specific (zero-filled for non-soccer; consumers guard via hasPoisson)
+  poissonMAE: number;
+  drawBrier: number;
+  naiveDrawBrier: number;
+  poissonMAE_minus_naiveZero: number;
+  poissonMAE_minus_v4spread: number;
+  drawBrier_minus_naiveDraw: number;
 } {
   const n = agg.length;
   if (n === 0) {
@@ -439,13 +504,21 @@ function pointStats(agg: GameAggregates[]): {
       marginMAE_minus_naiveZero: 0,
       marginMAE_minus_naiveHomeAdv: 0,
       brierScore_minus_naiveBrier: 0,
+      poissonMAE: 0, drawBrier: 0, naiveDrawBrier: 0,
+      poissonMAE_minus_naiveZero: 0,
+      poissonMAE_minus_v4spread: 0,
+      drawBrier_minus_naiveDraw: 0,
     };
   }
   let sumAbs = 0, sumSq = 0, sumSigned = 0, sumAbsAct = 0, sumAbsHA = 0;
+  let sumPoisAbs = 0, sumDrawBrier = 0, drawCount = 0;
   let eligN = 0, homeWinSum = 0, brierSum = 0, correctSum = 0;
   for (const g of agg) {
     sumAbs += g.absError; sumSq += g.sqError; sumSigned += g.signedError;
     sumAbsAct += g.absActual; sumAbsHA += g.absHomeAdv;
+    sumPoisAbs += g.poissonAbsError;
+    sumDrawBrier += g.drawBrierContrib;
+    if (g.actualMargin === 0) drawCount++;
     if (g.eligible) {
       eligN++; homeWinSum += g.homeWin; brierSum += g.brierContrib; correctSum += g.winnerCorrect;
     }
@@ -462,6 +535,16 @@ function pointStats(agg: GameAggregates[]): {
   // which is the Brier-minimizing constant. Tightest naive baseline.
   // On eligible games: Σ(p - y)^2 = eligN * p*(1-p) when y∈{0,1}.
   const naiveBrier = eligN > 0 ? homeWinRate * (1 - homeWinRate) : 0;
+
+  // Poisson: MAE uses poissonAbsError (0 for non-soccer → zero-valued but
+  // meaningless; hasPoisson gates consumption). drawBrier is per-game mean
+  // of (drawProb - isDraw)^2 on all games (not just eligible). The naive
+  // draw-Brier uses the in-slice draw rate, same closed-form as naiveBrier.
+  const poissonMAE = sumPoisAbs / n;
+  const drawBrier = sumDrawBrier / n;
+  const drawRate = drawCount / n;
+  const naiveDrawBrier = drawRate * (1 - drawRate);
+
   return {
     marginMAE, marginRMSE, marginBias,
     naiveZeroMAE, naiveHomeAdvMAE,
@@ -470,6 +553,10 @@ function pointStats(agg: GameAggregates[]): {
     marginMAE_minus_naiveZero: marginMAE - naiveZeroMAE,
     marginMAE_minus_naiveHomeAdv: marginMAE - naiveHomeAdvMAE,
     brierScore_minus_naiveBrier: brierScore - naiveBrier,
+    poissonMAE, drawBrier, naiveDrawBrier,
+    poissonMAE_minus_naiveZero: poissonMAE - naiveZeroMAE,
+    poissonMAE_minus_v4spread: poissonMAE - marginMAE,
+    drawBrier_minus_naiveDraw: drawBrier - naiveDrawBrier,
   };
 }
 
@@ -488,6 +575,10 @@ function bootstrapStats(
     'marginMAE_minus_naiveZero',
     'marginMAE_minus_naiveHomeAdv',
     'brierScore_minus_naiveBrier',
+    'poissonMAE', 'drawBrier', 'naiveDrawBrier',
+    'poissonMAE_minus_naiveZero',
+    'poissonMAE_minus_v4spread',
+    'drawBrier_minus_naiveDraw',
   ];
   const out: Record<string, number[]> = {};
   for (const k of keys) out[k] = [];
@@ -497,11 +588,15 @@ function bootstrapStats(
   const rng = mulberry32(seed);
   for (let b = 0; b < B; b++) {
     let sumAbs = 0, sumSq = 0, sumSigned = 0, sumAbsAct = 0, sumAbsHA = 0;
+    let sumPoisAbs = 0, sumDrawBrier = 0, drawCount = 0;
     let eligN = 0, homeWinSum = 0, brierSum = 0, correctSum = 0;
     for (let i = 0; i < n; i++) {
       const g = agg[Math.floor(rng() * n)];
       sumAbs += g.absError; sumSq += g.sqError; sumSigned += g.signedError;
       sumAbsAct += g.absActual; sumAbsHA += g.absHomeAdv;
+      sumPoisAbs += g.poissonAbsError;
+      sumDrawBrier += g.drawBrierContrib;
+      if (g.actualMargin === 0) drawCount++;
       if (g.eligible) {
         eligN++; homeWinSum += g.homeWin; brierSum += g.brierContrib; correctSum += g.winnerCorrect;
       }
@@ -515,6 +610,10 @@ function bootstrapStats(
     const brierScore = eligN > 0 ? brierSum / eligN : 0;
     const winnerAccuracy = eligN > 0 ? correctSum / eligN : 0;
     const naiveBrier = eligN > 0 ? homeWinRate * (1 - homeWinRate) : 0;
+    const poissonMAE = sumPoisAbs / n;
+    const drawBrier = sumDrawBrier / n;
+    const drawRate = drawCount / n;
+    const naiveDrawBrier = drawRate * (1 - drawRate);
     out.marginMAE.push(marginMAE);
     out.marginRMSE.push(marginRMSE);
     out.marginBias.push(marginBias);
@@ -526,6 +625,12 @@ function bootstrapStats(
     out.marginMAE_minus_naiveZero.push(marginMAE - naiveZeroMAE);
     out.marginMAE_minus_naiveHomeAdv.push(marginMAE - naiveHomeAdvMAE);
     out.brierScore_minus_naiveBrier.push(brierScore - naiveBrier);
+    out.poissonMAE.push(poissonMAE);
+    out.drawBrier.push(drawBrier);
+    out.naiveDrawBrier.push(naiveDrawBrier);
+    out.poissonMAE_minus_naiveZero.push(poissonMAE - naiveZeroMAE);
+    out.poissonMAE_minus_v4spread.push(poissonMAE - marginMAE);
+    out.drawBrier_minus_naiveDraw.push(drawBrier - naiveDrawBrier);
   }
   return out;
 }
@@ -552,6 +657,8 @@ function computeMetrics(
   const ci = (name: string, est: number): CI =>
     ciFrom(est, boots[name] ?? []);
 
+  const hasPoisson = isSoccer(sport) && n > 0;
+
   return {
     n, nLowConfidence, nDraws,
     nWinnerEligible: point.nWinnerEligible,
@@ -571,6 +678,16 @@ function computeMetrics(
       ci('marginMAE_minus_naiveHomeAdv', point.marginMAE_minus_naiveHomeAdv),
     brierScore_minus_naiveBrier:
       ci('brierScore_minus_naiveBrier', point.brierScore_minus_naiveBrier),
+    hasPoisson,
+    poissonMAE: ci('poissonMAE', point.poissonMAE),
+    drawBrier: ci('drawBrier', point.drawBrier),
+    naiveDrawBrier: ci('naiveDrawBrier', point.naiveDrawBrier),
+    poissonMAE_minus_naiveZero:
+      ci('poissonMAE_minus_naiveZero', point.poissonMAE_minus_naiveZero),
+    poissonMAE_minus_v4spread:
+      ci('poissonMAE_minus_v4spread', point.poissonMAE_minus_v4spread),
+    drawBrier_minus_naiveDraw:
+      ci('drawBrier_minus_naiveDraw', point.drawBrier_minus_naiveDraw),
   };
 }
 
@@ -625,7 +742,7 @@ export function computeBaseline(): BaselineReport {
     trainCutoffSeason: TRAIN_CUTOFF_SEASON,
     holdoutTestFrac: HOLDOUT_TEST_FRAC,
     bootstrapIterations: N_BOOTSTRAP,
-    models: { winner: 'v5', margin: 'v4-spread' },
+    models: { winner: 'v5', margin: 'v4-spread', soccerMargin: 'v6-poisson-soccer' },
     totals: {
       games: totalGames,
       lowConfidence: totalLowConf,
@@ -681,6 +798,17 @@ function renderSportBlock(s: SportBaseline): string {
       lines.push(`    Brier        ${ciStr(m.brierScore, 4)}   nvBr ${ciStr(m.naiveBrier, 4)}`);
       lines.push(`    Brier − nvBr ${ciStr(m.brierScore_minus_naiveBrier, 4, true)}  → ${verdict(sigBrier)} naive Brier`);
     }
+    if (m.hasPoisson) {
+      const sigPoisZero = significance(m.poissonMAE_minus_naiveZero);
+      const sigPoisV4 = significance(m.poissonMAE_minus_v4spread);
+      const sigDrawBrier = significance(m.drawBrier_minus_naiveDraw);
+      lines.push(`    [v6-poisson-soccer]`);
+      lines.push(`    poisson MAE  ${ciStr(m.poissonMAE)}  (v4-spread MAE ${ciStr(m.marginMAE)}; nv0 ${ciStr(m.naiveZeroMAE)})`);
+      lines.push(`    pois − nv0   ${ciStr(m.poissonMAE_minus_naiveZero, 3, true)}  → ${verdict(sigPoisZero)} predict-zero  [PRIMARY SHIP GATE]`);
+      lines.push(`    pois − v4sp  ${ciStr(m.poissonMAE_minus_v4spread, 3, true)}  → ${verdict(sigPoisV4)} v4-spread`);
+      lines.push(`    drawBrier    ${ciStr(m.drawBrier, 4)}  nvDraw ${ciStr(m.naiveDrawBrier, 4)}`);
+      lines.push(`    drawB − nvDr ${ciStr(m.drawBrier_minus_naiveDraw, 4, true)}  → ${verdict(sigDrawBrier)} naive draw Brier  [secondary]`);
+    }
   }
   return lines.join('\n');
 }
@@ -688,7 +816,7 @@ function renderSportBlock(s: SportBaseline): string {
 export function renderReport(report: BaselineReport): string {
   const lines: string[] = [];
   lines.push(`Baseline Analysis — generated ${report.generatedAt}`);
-  lines.push(`Models: winner=${report.models.winner}, margin=${report.models.margin}`);
+  lines.push(`Models: winner=${report.models.winner}, margin=${report.models.margin}, soccer-margin=${report.models.soccerMargin}`);
   lines.push(`Train cutoff: season ${report.trainCutoffSeason} (analyzing post-cutoff held-out games)`);
   lines.push(`Holdout split: earliest ${((1 - report.holdoutTestFrac) * 100).toFixed(0)}% / latest ${(report.holdoutTestFrac * 100).toFixed(0)}% by date`);
   lines.push(`Bootstrap: ${report.bootstrapIterations} resamples with replacement (deterministic seed per sport:slice)`);

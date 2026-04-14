@@ -195,13 +195,28 @@ export function computeInjuryImpact(sport: Sport, teamId: string): number {
   // NFL: games_played as proxy for starter importance (TDs was rejected)
   // MLB: batting.OPS (better than RBIs per sabermetrics)
   // NHL: offensive.points / games (goals + assists per game)
-  const IMPACT_CONFIG: Record<string, { stat: string; isPerGame: boolean; fallbackPerGame: number }> = {
-    nba: { stat: 'offensive.avgPoints', isPerGame: true, fallbackPerGame: 10 },
-    nfl: { stat: 'general.gamesStarted', isPerGame: false, fallbackPerGame: 3 },
-    mlb: { stat: 'batting.OPS', isPerGame: true, fallbackPerGame: 0.3 },
-    nhl: { stat: 'offensive.points', isPerGame: false, fallbackPerGame: 0.5 },
-    mls: { stat: 'offensive.totalGoals', isPerGame: false, fallbackPerGame: 0.2 },
-    epl: { stat: 'offensive.totalGoals', isPerGame: false, fallbackPerGame: 0.2 },
+  //
+  // MAX_INDIVIDUAL: per-player clamp (council Math Expert mandate).
+  // If ESPN returns a schema-drifted value (e.g. 250 PPG from a missing
+  // decimal), one player's impact can't overwhelm the model. Values set
+  // above any realistic all-time leader:
+  //   NBA: 40 PPG (>Wilt's 50.4 season avg but protects against drift)
+  //   NFL: 17 games started (full season starter)
+  //   MLB: 1.5 OPS (Babe Ruth's peak was ~1.38)
+  //   NHL: 2.0 pts/game (Gretzky's peak)
+  //   Soccer: 1.5 goals/game (>Messi's 2011-12 peak of ~1.0)
+  const IMPACT_CONFIG: Record<string, {
+    stat: string;
+    isPerGame: boolean;
+    fallbackPerGame: number;
+    maxIndividual: number;
+  }> = {
+    nba: { stat: 'offensive.avgPoints',    isPerGame: true,  fallbackPerGame: 10,  maxIndividual: 40 },
+    nfl: { stat: 'general.gamesStarted',   isPerGame: false, fallbackPerGame: 3,   maxIndividual: 17 },
+    mlb: { stat: 'batting.OPS',            isPerGame: true,  fallbackPerGame: 0.3, maxIndividual: 1.5 },
+    nhl: { stat: 'offensive.points',       isPerGame: false, fallbackPerGame: 0.5, maxIndividual: 2.0 },
+    mls: { stat: 'offensive.totalGoals',   isPerGame: false, fallbackPerGame: 0.2, maxIndividual: 1.5 },
+    epl: { stat: 'offensive.totalGoals',   isPerGame: false, fallbackPerGame: 0.2, maxIndividual: 1.5 },
   };
   const config = IMPACT_CONFIG[sport] ?? IMPACT_CONFIG['nba'];
 
@@ -234,7 +249,12 @@ export function computeInjuryImpact(sport: Sport, teamId: string): number {
       const stats = JSON.parse(row.stats_json) as Record<string, number>;
       const value = stats[config.stat] ?? config.fallbackPerGame;
       const perGame = config.isPerGame ? value : value / row.games_played;
-      totalImpact += perGame;
+      // Clamp per-player contribution to protect against ESPN schema drift
+      const clampedPerGame = Math.min(Math.max(perGame, 0), config.maxIndividual);
+      if (perGame > config.maxIndividual) {
+        console.warn(`  ⚠ Injury impact clamped for ${inj.playerName}: ${perGame.toFixed(2)} → ${config.maxIndividual}`);
+      }
+      totalImpact += clampedPerGame;
     } catch { /* skip */ }
   }
   return totalImpact;

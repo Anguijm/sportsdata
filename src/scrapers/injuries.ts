@@ -113,9 +113,9 @@ async function fetchWithRetry(
       clearTimeout(timer);
       lastErr = err;
     }
-    // Exponential backoff with jitter: 500ms, 1000ms, 2000ms ± 25%
+    // Exponential backoff with jitter: 500ms, 1000ms, 2000ms, ±25%
     const base = 500 * Math.pow(2, attempt - 1);
-    const jitter = base * 0.25 * (Math.random() - 0.5) * 2;
+    const jitter = base * (Math.random() * 0.5 - 0.25); // uniform in [-0.25, +0.25] × base
     await new Promise((r) => setTimeout(r, base + jitter));
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

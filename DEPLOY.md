@@ -1,6 +1,6 @@
 # Deploy Runbook
 
-Last updated: 2026-04-13 (v5 model + injury signal + full codebase review)
+Last updated: 2026-04-14 (v5 model + injury signal in v5+v4-spread + scraper hardening)
 
 ## Topology
 
@@ -209,7 +209,7 @@ The token must match between GH Actions and Fly, otherwise the cron 401s.
 
 ## SQLite volume (Fly)
 
-The API uses SQLite at `/app/data/sqlite/sportsdata.db`, mounted from the Fly volume `sportsdata_vol` defined in `fly.toml`. This is the single source of truth for games, predictions, player stats, and prediction history. **If this volume is lost, you lose the backfilled 2,500 predictions and all scrape history.**
+The API uses SQLite at `/app/data/sqlite/sportsdata.db`, mounted from the Fly volume `sportsdata_vol` defined in `fly.toml`. This is the single source of truth for games, predictions, player stats, injury history, and scrape history. **If this volume is lost, you lose 21,516 games + 12,813 backfilled predictions + all injury/scrape history.** Daily SQLite backup to GitHub Releases (3am UTC, 7-day retention) provides the recovery path — see `.github/workflows/backup-db.yml`.
 
 **Inspect:**
 ```

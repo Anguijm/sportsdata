@@ -249,10 +249,17 @@ export async function runCycle(
   // log sweep is the only reliable way to detect upstream breakage. Scoped
   // to entries whose timestamp is >= startIso so we don't count stale
   // failures from prior runs.
+  //
+  // Injuries are SUPPLEMENTARY — not all sports have injury endpoints, and
+  // the endpoint is undocumented and can 404 unpredictably. A missing or
+  // broken injury feed must NOT fail the whole cycle; the model degrades
+  // gracefully by falling back to non-injury-adjusted predictions.
+  const SUPPLEMENTARY_DATATYPES = new Set(['injuries']);
   const logEntries = readLog<ScrapeLogEntry>('scrape');
   const failures = logEntries
     .filter((e) => (e.source === 'espn' || e.source === 'odds-api') && e.gate === 'FAIL' && e.timestamp >= startIso)
     .filter((e) => config.sports.includes(e.sport as Sport))
+    .filter((e) => !SUPPLEMENTARY_DATATYPES.has(e.dataType))
     .map((e) => ({ sport: e.sport, dataType: e.dataType, error: e.error, timestamp: e.timestamp }));
 
   if (failures.length > 0) {

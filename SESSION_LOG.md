@@ -43,9 +43,9 @@ Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 
 - **21,516 games** across 6 sports (2-3 seasons per sport)
 - **12,813 backfill predictions** (v2) resolved with accuracy metrics
-- **v5 live predictions** generating with unique probabilities per game
-- **v4-spread live predictions** running for games with odds (will include injury adjustment once #25 merges)
-- **Injury data** flowing since PR #22 merged; resilience hardening waiting in #25
+- **v5 live predictions** generating with unique probabilities per game (injury-adjusted for NBA/NFL/MLB/NHL since PR #22 merged)
+- **v4-spread live predictions** running for games with odds (injury-adjusted since PR #25 merged; first cron with the new code at next 22:00 UTC run)
+- **Injury data** flowing since PR #22; ESPN scraper hardened (3-attempt retry + 10s timeout) since PR #25
 - **Automated backups** running nightly at 3am UTC
 
 ### Priority queue for next session
@@ -715,8 +715,10 @@ npm run viz           # Both API + Vite together
 For an up-to-date list, use `git log --oneline main`. Major milestones:
 
 ```
-(open) PR #25 v4-spread injury integration + scraper hardening + backtesting honesty
-(open) PR #24 Injury 502 fix + Codex fixes on #22 + session log refresh
+PR #26 (this PR, OPEN) Session handoff doc refresh + handoff-discipline lesson
+PR #25 v4-spread injury integration + scraper hardening + backtesting honesty
+PR #24 Injury 502 fix + Codex fixes on #22 + session log refresh
+PR #23 Session log: documented PRs #1-21 since Sprint 10.5
 #22    Injury signal — ESPN scraper + v5 adjustment
 #21    v5 continuous sigmoid model (replaces v2's 4 discrete buckets)
 #14-16 Historical backfill + /api/trigger/backfill + Actions workflow

@@ -3,7 +3,15 @@
   "last_completed_sprint": "sprint_10_7_v4_spread_injury_integration",
   "next_session_type": "ship_p0_backtest_debt",
   "next_action": "Implement council debt #13: v4-spread margin MAE baseline on 12,813 backfilled games. Pure analysis on existing data — no historical odds or injury data needed. Establishes the baseline that should have shipped with v4-spread.",
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 26,
+      "title": "Session handoff (post-merge): refresh docs + capture handoff-discipline lesson",
+      "branch": "claude/post-merge-handoff",
+      "url": "https://github.com/Anguijm/sportsdata/pull/26",
+      "status": "this PR — merge to land the handoff doc itself"
+    }
+  ],
   "pipeline": {
     "phase": "live_predictions_all_sports_both_models_with_injury",
     "last_log_update": "2026-04-14",
@@ -75,5 +83,6 @@
   "council_debts_open": 23,
   "council_debts_closed_this_session": 10,
   "prs_merged_since_sprint_10": 25,
-  "prs_open": 0
+  "prs_open": 1,
+  "prs_open_note": "PR #26 is this very session's handoff doc. After it merges, prs_open returns to 0 and the next session starts clean."
 }

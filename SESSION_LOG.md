@@ -439,6 +439,38 @@ gh run list --workflow=deploy-pages.yml
 
 ---
 
+### Sprint 10.7 — v4-spread Injury Integration + Scraper Hardening (2026-04-14)
+
+**Trigger:** Post-PR #22 review surfaced a gap: v5 winner model reflected injuries, but v4-spread predicted margins as if injured players were available. ATS picks were stale in exactly the cases that matter most (key player out). Separately, a cron run hit 502 because the failure sweep was counting injury-endpoint errors as critical.
+
+**Built (commits `99ce896`, `ac5ed2a`):**
+
+**Injury signal extension:**
+- `predictMargin()` now accepts optional `InjuryImpact` param; applies `INJURY_COMPENSATION = 0.4` shift same as v5
+- `computeInjuryImpact()` exported from predict-runner so spread-runner can reuse the recency-filtered calculation
+- `spread-runner.ts` computes impact for both teams, passes to `predictMargin`, surfaces `home_out_impact`/`away_out_impact` in reasoning_json
+- Per-player impact clamp: `maxIndividual` per sport (NBA 40 PPG, NFL 17 games, MLB 1.5 OPS, NHL/soccer 1.5-2.0 pts/g) protects against ESPN schema drift
+- `console.warn` fires when clamp triggers so drift is visible
+
+**Scraper hardening:**
+- `fetchWithRetry()` in injuries.ts: 3 attempts with exponential backoff (500ms → 1s → 2s ± 25%), 10s timeout, retries 5xx only (4xx deterministic)
+- Scheduler failure sweep excludes `dataType: 'injuries'` — supplementary feeds must not fail the cycle (earlier fix in PR #24)
+
+**Frontend:**
+- Spread cards now show `Injuries: LAL −8.3 points of missing player impact` when signal shifted the margin
+- Disclaimer explicitly states injury-adjusted status per league: "Injury-adjusted (ESPN feed)" for NBA/NFL, "for skaters" for NHL, "for position players" for MLB, "**no** (no public lineup feed for this league)" for MLS/EPL
+
+**Council review (2 rounds):**
+- **Round 1:** 4× WARN. Must-fixes: per-player clamp (Math), UI surfacing (Prediction Accuracy), soccer disclaimer (Domain), jitter cleanup (Data Quality).
+- **Round 2:** 4× CLEAR + 1 accepted WARN (Statistical Validity on "no backfill A/B of injury-adjusted v4-spread" — pre-existing condition of v4-spread, filed as debt not blocker). Verdict: **SHIP.**
+
+**Investigated but dropped:**
+- NBA.com / NFL.com public JSON feeds — don't exist (NBA.com 404 on injury endpoints, NFL.com HTML only)
+- Basketball-Reference / CBS Sports — blocked by 403 or HTML-only (requires UA spoofing + parser; not worth it for a secondary signal)
+- **Result:** Hardened what we have (ESPN with retries); filed concrete criteria for when to invest in alt sources
+
+---
+
 ## Backlog (Post-Sprint 10)
 
 ### Sprint 11 Candidates (user's next pick)
@@ -467,6 +499,12 @@ gh run list --workflow=deploy-pages.yml
 | 10 | Seed-stability test for v2 winning margin | Sprint 6 Skeptic | Low |
 | 11 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
 | 12 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After live cohort grows |
+| 13 | Backfill A/B: v4-spread injury-adjusted vs naive on resolved games | Sprint 10.7 Statistical Validity | HIGH (before ATS track record stabilizes) |
+| 14 | v5↔v4-spread injury consistency check (same sign on all games) | Sprint 10.7 Mathematics | Post-merge validation |
+| 15 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Sprint 10.7 Domain Expert | Medium (biggest quality win) |
+| 16 | Minimum-impact threshold (skip adjustment below 2 units) | Sprint 10.7 Prediction Accuracy | Low (refinement) |
+| 17 | Fit INJURY_COMPENSATION separately for margin vs winprob | Sprint 10.7 Statistical Validity | After N≥200 resolved per model |
+| 18 | Second injury data provider (criteria: ≥3 ESPN failures/week for 2 weeks) | Sprint 10.7 Data Quality | Watch metric |
 
 | # | Item | Source | Priority |
 |---|------|--------|----------|

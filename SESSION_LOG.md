@@ -46,17 +46,27 @@ Last updated: 2026-04-13 (end of Sprint 10.6 mega-session)
 ### Backlog (prioritized)
 
 **Ready to merge:**
-1. PR #22 — Injury signal (needs merge + cron run to activate)
+1. PR #22 — Injury signal (MERGED 2026-04-13)
+2. PR #24 — Codex fixes on #22 + session log + injury 502 fix (OPEN)
+3. PR TBD — v4-spread injury integration + scraper hardening (this branch `claude/injury-v4-and-alt-sources`)
+
+**P0 — shippable with existing data:**
+4. **v4-spread margin MAE baseline** — run `predictMargin()` (no injuries, no historical odds needed) on all 12,813 backfilled games, compare predicted margin to actual final margin. Establishes MAE baseline that was never measured. This is the backtest v4-spread should have had at launch.
+
+**HIGH — unblocks forward A/B:**
+5. **Shadow-prediction logging** — for every live v4-spread pick, store naive (no-injury) prediction alongside adjusted. After N≥30 resolved live picks, compute injury-adjusted vs naive MAE delta. This is the only way to A/B-test injury signal (can't do historically because no injury data before 2026-04-13).
 
 **Ready to build:**
-2. Run ratchet for each sport (Actions → Run Ratchet) to regenerate artifacts with v5 + honest baselines
-3. NHL goalie matchups — ESPN scoreboard doesn't include goalie data. Need to explore ESPN boxscore or external source.
-4. MLS/EPL draw model — spread model doesn't account for draws (~25% of soccer outcomes). Needs three-outcome model (home/draw/away).
+6. Run ratchet for each sport (Actions → Run Ratchet) to regenerate artifacts with v5 + honest baselines
+7. NHL goalie matchups — ESPN scoreboard doesn't include goalie data. Need to explore ESPN boxscore or external source.
+8. MLS/EPL draw model — spread model doesn't account for draws (~25% of soccer outcomes). Needs three-outcome model.
+9. Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) — biggest quality win on existing injury signal.
 
 **Needs research:**
-5. Full lineup integration — per-game starting lineups from official league APIs (NBA, NFL). Enables position-by-position matchup analysis.
-6. Held-out validation — v5 scale and injury compensation factor are fitted on backfill (in-sample). Need cross-validation or train/test split.
-7. Player stats scraper in cron — currently one-time Sprint 5 ingest, not refreshed. Add to predict-cron schedule.
+10. Full lineup integration — per-game starting lineups from official league APIs (NBA, NFL).
+11. Held-out validation — v5 scale and injury compensation factor are fitted on backfill (in-sample). Need cross-validation.
+12. Player stats scraper in cron — currently one-time Sprint 5 ingest, not refreshed. Add to predict-cron schedule.
+13. **Historical odds ingest** — Kaggle has historical NBA/NFL spread data; paid feeds for all sports. Unlocks real v4-spread ATS backtest (not just margin MAE).
 
 **Council governance:**
 - 5-expert council (Data Quality, Statistical Validity, Prediction Accuracy, Domain Expert, Mathematics Expert)
@@ -462,7 +472,20 @@ gh run list --workflow=deploy-pages.yml
 
 **Council review (2 rounds):**
 - **Round 1:** 4× WARN. Must-fixes: per-player clamp (Math), UI surfacing (Prediction Accuracy), soccer disclaimer (Domain), jitter cleanup (Data Quality).
-- **Round 2:** 4× CLEAR + 1 accepted WARN (Statistical Validity on "no backfill A/B of injury-adjusted v4-spread" — pre-existing condition of v4-spread, filed as debt not blocker). Verdict: **SHIP.**
+- **Round 2:** 4× CLEAR + 1 WARN (Statistical Validity on backtesting). Verdict: **SHIP with debts filed.**
+
+**Backtesting — honest status (clarified after user pushback):**
+
+Three overlapping constraints were conflated in the first council writeup:
+
+| What | Status | Why |
+|------|--------|-----|
+| v4-spread vs historical bookmaker spreads | **Cannot test** | No historical odds data. ESPN doesn't publish; Odds API free tier returns current lines only. |
+| Injury-adjusted vs naive on historical games | **Cannot test** | Injury data only exists from 2026-04-13 forward. ESPN's `/injuries` endpoint is point-in-time, no history. |
+| v4-spread margin accuracy (actual game margins) | **Can test but haven't** | 12,813 resolved games with final scores; no injury data needed. Filed as P0 debt (item 13). |
+| Forward A/B injury-adjusted vs naive | **Can set up, haven't** | Requires shadow-prediction logging from cron forward. Filed as HIGH debt (item 14). |
+
+**Key takeaway:** v4-spread was shipped without baseline MAE against the 12,813-game corpus — a miss from Sprint 10.6c. Injury extension inherits that miss. The answer isn't "we can't backtest spreads" (true but incomplete); it's "we can backtest margin accuracy today and should."
 
 **Investigated but dropped:**
 - NBA.com / NFL.com public JSON feeds — don't exist (NBA.com 404 on injury endpoints, NFL.com HTML only)
@@ -499,12 +522,14 @@ gh run list --workflow=deploy-pages.yml
 | 10 | Seed-stability test for v2 winning margin | Sprint 6 Skeptic | Low |
 | 11 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
 | 12 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After live cohort grows |
-| 13 | Backfill A/B: v4-spread injury-adjusted vs naive on resolved games | Sprint 10.7 Statistical Validity | HIGH (before ATS track record stabilizes) |
-| 14 | v5↔v4-spread injury consistency check (same sign on all games) | Sprint 10.7 Mathematics | Post-merge validation |
-| 15 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Sprint 10.7 Domain Expert | Medium (biggest quality win) |
-| 16 | Minimum-impact threshold (skip adjustment below 2 units) | Sprint 10.7 Prediction Accuracy | Low (refinement) |
-| 17 | Fit INJURY_COMPENSATION separately for margin vs winprob | Sprint 10.7 Statistical Validity | After N≥200 resolved per model |
-| 18 | Second injury data provider (criteria: ≥3 ESPN failures/week for 2 weeks) | Sprint 10.7 Data Quality | Watch metric |
+| 13 | **v4-spread margin MAE baseline on 12,813 backfill games** (no injuries needed — actual final scores available) | Sprint 10.7 Statistical Validity | **P0 — shippable today** |
+| 14 | **Shadow-prediction logging**: for every live v4-spread pick, store the naive (no-injury) prediction alongside the adjusted one. Enables forward A/B after N≥30 resolved picks. | Sprint 10.7 Statistical Validity | **HIGH — before live track record stabilizes** |
+| 15 | v5↔v4-spread injury consistency check (same sign on all games, post-merge) | Sprint 10.7 Mathematics | Medium |
+| 16 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Sprint 10.7 Domain Expert | Medium (biggest quality win) |
+| 17 | Minimum-impact threshold (skip adjustment below 2 units) | Sprint 10.7 Prediction Accuracy | Low (refinement) |
+| 18 | Fit INJURY_COMPENSATION separately for margin vs winprob | Sprint 10.7 Statistical Validity | After N≥200 resolved per model |
+| 19 | Second injury data provider (criteria: ≥3 ESPN failures/week for 2 weeks) | Sprint 10.7 Data Quality | Watch metric |
+| 20 | Historical odds ingest (Kaggle / paid feed) to enable ATS backtest | Sprint 10.7 Prediction Accuracy | High — unlocks real v4-spread validation |
 
 | # | Item | Source | Priority |
 |---|------|--------|----------|

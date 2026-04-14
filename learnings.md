@@ -243,3 +243,41 @@ Council on PR #26 surfaced THREE real issues I missed:
 - **IMPROVE**: Recency filter (7 days) required to avoid double-counting chronic injuries already in teamDiff
 - **IMPROVE**: Name matching is fragile — added fuzzy last-name fallback + console.warn on misses
 - **CRITICAL**: Council feedback "do not ship without recency filter" — without it, the model double-counts every chronic absence
+
+### per-sport-baseline-debt13 (2026-04-14)
+
+Computed per-sport margin MAE / RMSE / bias / Brier / winner accuracy on 16,777 post-2023 held-out games across all 6 sports, with naive baselines (predict-zero, predict-home_advantage, constant-home-rate). Closes council debt #13. Artifact: `data/baselines/baseline-2026-04-14.{json,txt}`.
+
+**In-sample caveat up-front**: sigmoid_scale, home_advantage, and win-gap bucket constants were calibrated against this same data. The 80/20 date split is a fingerprint, not a clean out-of-sample test. Numbers below are the parameters' best-case performance.
+
+**Headline per-sport table** (all slices):
+
+| sport | N | MAE | nv0MAE | lift vs zero | Winner acc | Brier | nvBr | lift vs naive |
+|------|------|------|--------|--------------|------------|-------|------|---------------|
+| NBA  | 5196 | 11.67 | 12.96 | **9.9%** | 63.1% | 0.2258 | 0.2477 | 8.8% |
+| NFL  |  621 | 10.70 | 11.28 | 5.1% | 63.1% | 0.2320 | 0.2487 | 6.7% |
+| MLB  | 6270 |  3.48 |  3.52 | **1.1%** | 56.0% | 0.2449 | 0.2485 | **1.4%** |
+| NHL  | 2832 |  2.16 |  2.23 | **3.1%** | 55.6% | 0.2444 | 0.2482 | **1.5%** |
+| MLS  | 1159 |  1.35 |  1.35 | **0.0%** | 63.1% | 0.2281 | 0.2417 | 5.6% |
+| EPL  |  699 |  1.36 |  1.33 | **-2.3%** | 66.0% | 0.2140 | 0.2474 | 13.5% |
+
+- **KEEP**: `data/baselines/baseline-<date>.json` as the reference point — every future tweak measured against this file
+- **KEEP**: Naive baselines (predict-zero, predict-home_adv, constant-home-rate) in the report — a bare MAE/Brier number is meaningless without them
+- **KEEP**: 80/20 date split per sport — fingerprint slice for future tweak A/B
+- **KEEP**: Honest disclosure banner in `baseline.ts` header — in-sample numbers must be flagged as such or they will be overinterpreted
+- **KEEP**: Bias column near zero across all sports (max |bias|=0.60 NBA) — MAE is variance-dominated, not shift-correctable. Don't waste a sprint tuning home_advantage; the gains would be <1 MAE point.
+
+**Findings that drive the next per-sport tweaks:**
+- **CRITICAL**: EPL margin model is **worse than predict-zero** (MAE 1.36 vs 1.33 nv0MAE). MLS ties predict-zero (1.35 = 1.35). Confirms the council's math-expert verdict: binary sigmoid applied to a ternary outcome is the wrong structural model for soccer. **Poisson/Skellam is not optional** — the current model is actively losing to a constant.
+- **CRITICAL**: MLB and NHL are the worst-performing sports on the winner side — accuracy 56.0% and 55.6%, barely above naive base rates. Brier lift vs naive: 1.4% MLB, 1.5% NHL. These sports beat the "always pick home at base rate" reference by a whisker. Top targets for per-sport knob tweaks.
+- **CONFIRMED**: EPL's 13.5% winner Brier lift is the largest in the dataset — the v5 sigmoid *is* picking up real team-strength signal in soccer, even while the margin model is structurally broken. Two separate problems.
+- **INSIGHT**: NBA wins-vs-naive gap (8.8% Brier, 9.9% MAE) is the upper bound of what a well-tuned generic sigmoid gets on a high-variance sport. Further gains in NBA/NFL likely require structural features (rest, travel, back-to-backs), not parameter sweeps.
+
+**Sequencing implication for next sprint:**
+1. **MLS + EPL Poisson/Skellam model** (expected MAE drop: the naive-zero gap closes, draws become a real output). Math expert CLEAR, domain CLEAR. This is the clear next step.
+2. Once soccer is restructured, MLB and NHL tweaks (INJURY_COMPENSATION principled sweep + possibly scale refinement). Expected lift: small, needs holdout discipline.
+3. **DO NOT** touch NBA/NFL parameters — they're already at a sensible local optimum for the current feature set; further tweaks risk overfitting to the same backfill.
+
+- **INSIGHT**: MAE naive-zero baseline is a devastating sanity check. Every margin model should be required to beat it, and EPL's failure would not have surfaced without it. Filed as a ratchet criterion for future margin models: if the new model doesn't beat predict-zero on >4/6 sports, don't ship.
+- **INSIGHT**: "Compute every backtest the existing data permits BEFORE shipping" (previous session's lesson) paid off immediately — the EPL-worse-than-zero finding was undetectable from aggregate Brier or winner-accuracy numbers alone. Per-sport naive baselines are where failures live.
+

@@ -1,8 +1,8 @@
 {
-  "current_phase": "sprint_10_7_complete_all_merged",
-  "last_completed_sprint": "sprint_10_7_v4_spread_injury_integration",
-  "next_session_type": "ship_p0_backtest_debt",
-  "next_action": "Implement council debt #13: v4-spread margin MAE baseline on 12,813 backfilled games. Pure analysis on existing data — no historical odds or injury data needed. Establishes the baseline that should have shipped with v4-spread.",
+  "current_phase": "per_sport_baseline_complete_debt13_closed",
+  "last_completed_sprint": "sprint_10_8_per_sport_baseline_analysis",
+  "next_session_type": "ship_soccer_poisson_model",
+  "next_action": "Build Poisson/Skellam goal model for MLS+EPL as a separate margin model. Baseline analysis (PR #?, 2026-04-14) showed EPL margin is WORSE than predict-zero (MAE 1.36 vs 1.33) and MLS ties it — binary sigmoid is structurally wrong for soccer's ternary outcome. Math expert + domain expert both CLEAR. Target: beat predict-zero on both MLS and EPL, surface draws as a real probability. Defer MLB/NHL tweaks to follow-up sprint.",
   "open_prs": [
     {
       "number": 26,
@@ -75,10 +75,18 @@
     "cron_backup": "daily 3am UTC to GitHub Releases"
   },
   "backtesting_status": {
-    "v4_spread_margin_mae_baseline": "NOT DONE — P0 debt #13, shippable with existing data, FIRST TASK NEXT SESSION",
+    "v4_spread_margin_mae_baseline": "DONE 2026-04-14 — data/baselines/baseline-2026-04-14.json, 16,777 games across 6 sports, closes debt #13. Key finding: EPL margin is WORSE than predict-zero (MAE 1.36 vs 1.33), MLS ties (1.35 = 1.35). Binary sigmoid is structurally wrong for soccer.",
     "v4_spread_ats_backtest": "CANNOT DO — no historical odds data",
     "injury_adjusted_vs_naive_historical": "CANNOT DO — no injury data before 2026-04-13",
     "shadow_prediction_forward_ab": "NOT SET UP — HIGH debt #14"
+  },
+  "per_sport_baseline_findings_2026_04_14": {
+    "nba": {"mae": 11.67, "nv0_mae": 12.96, "lift_vs_zero": "9.9%", "winner_acc": "63.1%", "brier": 0.2258, "verdict": "at local optimum, do not tweak"},
+    "nfl": {"mae": 10.70, "nv0_mae": 11.28, "lift_vs_zero": "5.1%", "winner_acc": "63.1%", "brier": 0.2320, "verdict": "at local optimum, do not tweak"},
+    "mlb": {"mae": 3.48, "nv0_mae": 3.52, "lift_vs_zero": "1.1%", "winner_acc": "56.0%", "brier": 0.2449, "verdict": "weak lift vs naive, candidate for principled tweak sprint"},
+    "nhl": {"mae": 2.16, "nv0_mae": 2.23, "lift_vs_zero": "3.1%", "winner_acc": "55.6%", "brier": 0.2444, "verdict": "weak lift vs naive, candidate for principled tweak sprint"},
+    "mls": {"mae": 1.35, "nv0_mae": 1.35, "lift_vs_zero": "0.0%", "winner_acc": "63.1%", "brier": 0.2281, "verdict": "margin model ties predict-zero — soccer Poisson needed"},
+    "epl": {"mae": 1.36, "nv0_mae": 1.33, "lift_vs_zero": "-2.3%", "winner_acc": "66.0%", "brier": 0.2140, "verdict": "margin model WORSE than predict-zero — soccer Poisson urgent"}
   },
   "council_debts_open": 23,
   "council_debts_closed_this_session": 10,

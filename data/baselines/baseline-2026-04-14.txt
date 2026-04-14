@@ -1,0 +1,59 @@
+Baseline Analysis — generated 2026-04-14T18:33:03.283Z
+Models: winner=v5, margin=v4-spread
+Train cutoff: season 2023 (analyzing post-cutoff held-out games)
+Holdout split: earliest 80% / latest 20% by date
+Totals: 16777 games, 268 low-confidence, 631 draws
+
+Note: margin model = v4-spread predictMargin() with no pitcher/injury data
+      winner model = v5.predict() sigmoid, no injury adjustment
+      In-sample w.r.t. the parameter calibration. See honest disclosure in baseline.ts.
+
+━━━ NBA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+slice                   N  lowCnf  draws    σ_act    MAE   RMSE   bias  nv0MAE  nvHMAE     acc  Brier   nvBr
+all                  5196      17     10    16.17  11.67  15.01 + 0.60   12.96   12.80   63.1%  0.2258  0.2477
+train (<2026-01-25T01:00Z)   4156      13      8    15.80  11.37  14.63 + 0.56   12.60   12.46   63.2%  0.2268  0.2478
+test  (>=2026-01-25T01:00Z)   1040       4      2    17.59  12.90  16.44 + 0.79   14.38   14.16   62.7%  0.2218  0.2472
+
+━━━ NFL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+slice                   N  lowCnf  draws    σ_act    MAE   RMSE   bias  nv0MAE  nvHMAE     acc  Brier   nvBr
+all                   621       2      4    14.37  10.70  13.78 + 0.09   11.28   11.20   63.1%  0.2320  0.2487
+train (<2025-11-16T21:25Z)    496       1      4    14.38  10.66  13.86 -0.12   11.32   11.23   63.5%  0.2309  0.2484
+test  (>=2025-11-16T21:25Z)    125       1      0    14.27  10.86  13.43 + 0.96   11.10   11.07   61.3%  0.2363  0.2494
+
+━━━ MLB ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+slice                   N  lowCnf  draws    σ_act    MAE   RMSE   bias  nv0MAE  nvHMAE     acc  Brier   nvBr
+all                  6270      90    157     4.50   3.48   4.50 + 0.35    3.52    3.49   56.0%  0.2449  0.2485
+train (<2025-08-21T20:05Z)   5016      90    133     4.47   3.45   4.48 + 0.37    3.49    3.47   56.1%  0.2445  0.2487
+test  (>=2025-08-21T20:05Z)   1254       0     24     4.61   3.56   4.59 + 0.28    3.62    3.58   55.4%  0.2462  0.2477
+
+━━━ NHL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+slice                   N  lowCnf  draws    σ_act    MAE   RMSE   bias  nv0MAE  nvHMAE     acc  Brier   nvBr
+all                  2832      13      4     2.59   2.16   2.58 + 0.04    2.23    2.21   55.6%  0.2444  0.2482
+train (<2026-01-13T00:00Z)   2265      13      3     2.59   2.16   2.58 + 0.01    2.24    2.21   56.8%  0.2432  0.2476
+test  (>=2026-01-13T00:00Z)    567       0      1     2.56   2.17   2.57 + 0.18    2.21    2.20   50.7%  0.2492  0.2497
+
+━━━ MLS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+slice                   N  lowCnf  draws    σ_act    MAE   RMSE   bias  nv0MAE  nvHMAE     acc  Brier   nvBr
+all                  1159      82    279     1.76   1.35   1.74 -0.00    1.35    1.39   63.1%  0.2281  0.2417
+train (<2025-08-31T00:30Z)    927      82    232     1.70   1.31   1.69 + 0.03    1.31    1.35   61.2%  0.2285  0.2427
+test  (>=2025-08-31T00:30Z)    232       0     47     1.98   1.47   1.91 -0.14    1.52    1.53   69.7%  0.2267  0.2377
+
+━━━ EPL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+slice                   N  lowCnf  draws    σ_act    MAE   RMSE   bias  nv0MAE  nvHMAE     acc  Brier   nvBr
+all                   699      64    177     1.76   1.36   1.68 + 0.16    1.33    1.41   66.0%  0.2140  0.2474
+train (<2025-12-28T16:30Z)    559      64    132     1.81   1.40   1.73 + 0.14    1.39    1.45   68.8%  0.2085  0.2457
+test  (>=2025-12-28T16:30Z)    140       0     45     1.49   1.22   1.48 + 0.22    1.10    1.23   54.7%  0.2361  0.2500
+
+Column legend:
+  N        total games in slice
+  lowCnf   games with <5 state games (excluded from winner metrics)
+  draws    soccer draws (excluded from winner metrics, kept in margin metrics)
+  σ_act    population SD of actual signed margin (points/runs/goals)
+  MAE      mean |predicted_margin - actual_margin|
+  RMSE     sqrt(mean((predicted - actual)^2)) — heavy-tail sensitive
+  bias     mean(predicted - actual); + = model over-predicts home margin
+  nv0MAE   MAE of "always predict 0" baseline — contextualizes MAE
+  nvHMAE   MAE of "always predict home_advantage" baseline
+  acc      v5 winner accuracy (excl low-conf and draws)
+  Brier    v5 Brier score (excl low-conf and draws)
+  nvBr     Brier of constant home_win_rate prediction — reference

@@ -88,9 +88,46 @@ interface EspnInjuryResponse {
   }>;
 }
 
-/** Fetch and parse injury data for a sport */
+/** Fetch with a timeout + up to N retries with exponential backoff.
+ *  ESPN's injuries endpoint is undocumented and occasionally returns 5xx
+ *  or times out. A transient failure should not fail the whole cycle. */
+async function fetchWithRetry(
+  url: string,
+  timeoutMs = 10_000,
+  maxAttempts = 3,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      // Retry on 5xx; 4xx is deterministic and won't change on retry
+      if (response.status >= 500 && attempt < maxAttempts) {
+        lastErr = new Error(`HTTP ${response.status}`);
+      } else {
+        return response;
+      }
+    } catch (err) {
+      clearTimeout(timer);
+      lastErr = err;
+    }
+    // Exponential backoff with jitter: 500ms, 1000ms, 2000ms ± 25%
+    const base = 500 * Math.pow(2, attempt - 1);
+    const jitter = base * 0.25 * (Math.random() - 0.5) * 2;
+    await new Promise((r) => setTimeout(r, base + jitter));
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+/** Fetch and parse injury data for a sport from ESPN's undocumented endpoint.
+ *  Retries on transient errors; returns [] on permanent failure (fail-closed
+ *  per council mandate — the scheduler excludes injuries from the critical
+ *  failure sweep, so empty lists do NOT fail the cycle). */
 export async function fetchInjuries(sport: Sport): Promise<InjuryEntry[]> {
-  // Soccer leagues may not have injury endpoints
+  // Soccer leagues don't have ESPN injury endpoints (returns 404).
+  // When a league-specific provider is added later, route here.
   if (sport === 'mls' || sport === 'epl') return [];
 
   const url = `${ESPN_BASE}/${SPORT_PATHS[sport]}/injuries`;
@@ -99,7 +136,7 @@ export async function fetchInjuries(sport: Sport): Promise<InjuryEntry[]> {
   const now = new Date().toISOString();
 
   try {
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
     if (!response.ok) {
       appendLog('scrape', {
         timestamp: now,

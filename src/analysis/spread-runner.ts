@@ -15,8 +15,8 @@ import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
 import type { GameOdds } from '../schema/game.js';
 import { predictMargin, compareToSpread } from './predict.js';
-import type { ConfidenceTier, SpreadComparison, PitcherMatchup } from './predict.js';
-import { buildTeamStateUpTo } from './predict-runner.js';
+import type { ConfidenceTier, SpreadComparison, PitcherMatchup, InjuryImpact } from './predict.js';
+import { buildTeamStateUpTo, computeInjuryImpact } from './predict-runner.js';
 import type { PredictionRecord } from './predict-runner.js';
 
 interface ScheduledGameWithOdds {
@@ -41,6 +41,10 @@ interface SpreadReasoningJson {
     home_cold_streak: boolean;
     away_hot_streak: boolean;
     low_confidence: boolean;
+    /** Total PPG/points-equivalent of recently-out home players (0 if no data) */
+    home_out_impact: number;
+    /** Total PPG/points-equivalent of recently-out away players (0 if no data) */
+    away_out_impact: number;
   };
   spread: {
     predicted_margin: number;
@@ -163,6 +167,16 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
       } catch { /* ignore */ }
     }
 
+    // Compute injury impact (same orthogonal signal used by v5 winner model).
+    // When key players are out, the expected margin shifts — without this,
+    // v4-spread predicts a margin as if the injured player is playing, so
+    // the ATS edge is stale in exactly the cases that matter most.
+    const injuries: InjuryImpact = {
+      homeOutImpact: computeInjuryImpact(game.sport, game.home_team_id),
+      awayOutImpact: computeInjuryImpact(game.sport, game.away_team_id),
+    };
+    const hasInjuryData = injuries.homeOutImpact > 0 || injuries.awayOutImpact > 0;
+
     // Predict margin
     const margin = predictMargin(
       {
@@ -175,6 +189,7 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
       },
       ctx,
       pitchers,
+      hasInjuryData ? injuries : undefined,
     );
 
     // Compare to spread
@@ -206,6 +221,8 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
         home_cold_streak: homeColdStreak,
         away_hot_streak: awayHotStreak,
         low_confidence: lowConfidence,
+        home_out_impact: hasInjuryData ? injuries.homeOutImpact : 0,
+        away_out_impact: hasInjuryData ? injuries.awayOutImpact : 0,
       },
       spread: {
         predicted_margin: comparison.predictedMargin,

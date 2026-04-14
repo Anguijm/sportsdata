@@ -176,7 +176,7 @@ function generateReasoningText(
  *  - Use sport-appropriate impact metrics (not NFL touchdowns)
  *  - Log unmatched players so silent degradation is visible
  */
-function computeInjuryImpact(sport: Sport, teamId: string): number {
+export function computeInjuryImpact(sport: Sport, teamId: string): number {
   const injuries = getTeamInjuries(sport, teamId);
   if (injuries.length === 0) return 0;
 

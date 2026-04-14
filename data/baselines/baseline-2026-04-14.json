@@ -1,7 +1,8 @@
 {
-  "generatedAt": "2026-04-14T18:33:03.283Z",
+  "generatedAt": "2026-04-14T18:52:19.246Z",
   "trainCutoffSeason": 2023,
   "holdoutTestFrac": 0.2,
+  "bootstrapIterations": 1000,
   "models": {
     "winner": "v5",
     "margin": "v4-spread"
@@ -9,7 +10,8 @@
   "totals": {
     "games": 16777,
     "lowConfidence": 268,
-    "draws": 631
+    "draws": 631,
+    "skippedSnapshots": 0
   },
   "bySport": [
     {
@@ -20,16 +22,63 @@
         "nDraws": 10,
         "nWinnerEligible": 5169,
         "homeWinRate": 0.5484619849100406,
-        "sigmaActualMargin": 16.171544841203275,
-        "sigmaPredictedMargin": 6.961273281267005,
-        "marginMAE": 11.672975959040722,
-        "marginRMSE": 15.007212091479836,
-        "marginBias": 0.6049663380690617,
-        "winnerAccuracy": 0.6306829173921454,
-        "brierScore": 0.22576717172277136,
-        "naiveBrier": 0.2476514360185872,
-        "naiveZeroMAE": 12.955927636643572,
-        "naiveHomeAdvMAE": 12.799268668206313
+        "sigmaActualMargin": 16.173101219132985,
+        "sigmaPredictedMargin": 6.961943246456109,
+        "marginMAE": {
+          "estimate": 11.672975959040722,
+          "low": 11.424789012298055,
+          "high": 11.950741295047617
+        },
+        "marginRMSE": {
+          "estimate": 15.007212091479836,
+          "low": 14.695972302368443,
+          "high": 15.342925024672715
+        },
+        "marginBias": {
+          "estimate": 0.6049663380690617,
+          "low": 0.1837889128530754,
+          "high": 1.0118622871764753
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6306829173921454,
+          "low": 0.6186398866899885,
+          "high": 0.6438532293099589
+        },
+        "brierScore": {
+          "estimate": 0.22576717172277136,
+          "low": 0.22170933854420333,
+          "high": 0.2295976410002418
+        },
+        "naiveBrier": {
+          "estimate": 0.247651436018579,
+          "low": 0.24621192398097505,
+          "high": 0.24871322915210572
+        },
+        "naiveZeroMAE": {
+          "estimate": 12.955927636643572,
+          "low": 12.692523094688221,
+          "high": 13.230595650500385
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 12.799268668206313,
+          "low": 12.523075442648192,
+          "high": 13.09163298691301
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -1.282951677602851,
+          "low": -1.4524430994318045,
+          "high": -1.11623806736155
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -1.1262927091655914,
+          "low": -1.3014592590931588,
+          "high": -0.9653504005657737
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.021884264295807643,
+          "low": -0.025632224295019743,
+          "high": -0.018240193925131216
+        }
       },
       "trainEarlier80": {
         "n": 4156,
@@ -37,16 +86,63 @@
         "nDraws": 8,
         "nWinnerEligible": 4135,
         "homeWinRate": 0.5472793228536881,
-        "sigmaActualMargin": 15.79643297534649,
-        "sigmaPredictedMargin": 7.1005540683354225,
-        "marginMAE": 11.365973379149931,
-        "marginRMSE": 14.627420014340665,
-        "marginBias": 0.5585046625874693,
-        "winnerAccuracy": 0.6316807738814993,
-        "brierScore": 0.2267685239145926,
-        "naiveBrier": 0.24776466563050636,
-        "naiveZeroMAE": 12.598652550529355,
-        "naiveHomeAdvMAE": 12.459095283926853
+        "sigmaActualMargin": 15.798333755447869,
+        "sigmaPredictedMargin": 7.101408475903443,
+        "marginMAE": {
+          "estimate": 11.365973379149931,
+          "low": 11.10212801445138,
+          "high": 11.635632134772443
+        },
+        "marginRMSE": {
+          "estimate": 14.627420014340665,
+          "low": 14.296884328627602,
+          "high": 14.971738283168342
+        },
+        "marginBias": {
+          "estimate": 0.5585046625874693,
+          "low": 0.14879507768131783,
+          "high": 0.9912057558892569
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6316807738814993,
+          "low": 0.617559899261372,
+          "high": 0.6470051372726664
+        },
+        "brierScore": {
+          "estimate": 0.2267685239145926,
+          "low": 0.2221852892371943,
+          "high": 0.2311811590404425
+        },
+        "naiveBrier": {
+          "estimate": 0.24776466563049673,
+          "low": 0.24602255747367308,
+          "high": 0.24904060153621507
+        },
+        "naiveZeroMAE": {
+          "estimate": 12.598652550529355,
+          "low": 12.28656761308951,
+          "high": 12.884293792107794
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 12.459095283926853,
+          "low": 12.148869104908565,
+          "high": 12.759281761308952
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -1.2326791713794236,
+          "low": -1.430756634835051,
+          "high": -1.0391269066749942
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -1.0931219047769218,
+          "low": -1.2872867389984615,
+          "high": -0.9189043932924109
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.020996141715904137,
+          "low": -0.0252331472741204,
+          "high": -0.016946975861658033
+        }
       },
       "testLatest20": {
         "n": 1040,
@@ -54,16 +150,63 @@
         "nDraws": 2,
         "nWinnerEligible": 1034,
         "homeWinRate": 0.5531914893617021,
-        "sigmaActualMargin": 17.590217341376544,
-        "sigmaPredictedMargin": 6.374139650574222,
-        "marginMAE": 12.899805499450345,
-        "marginRMSE": 16.43755213630829,
-        "marginBias": 0.7906343412435771,
-        "winnerAccuracy": 0.6266924564796905,
-        "brierScore": 0.2217627313812035,
-        "naiveBrier": 0.24717066545948552,
-        "naiveZeroMAE": 14.383653846153846,
-        "naiveHomeAdvMAE": 14.158653846153847
+        "sigmaActualMargin": 17.59868028020697,
+        "sigmaPredictedMargin": 6.37720635253205,
+        "marginMAE": {
+          "estimate": 12.899805499450345,
+          "low": 12.234977594884128,
+          "high": 13.500576638064818
+        },
+        "marginRMSE": {
+          "estimate": 16.43755213630829,
+          "low": 15.661761778707412,
+          "high": 17.142857040488934
+        },
+        "marginBias": {
+          "estimate": 0.7906343412435771,
+          "low": -0.13257540797080233,
+          "high": 1.7592071778752414
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6266924564796905,
+          "low": 0.5982575024201355,
+          "high": 0.6570048309178744
+        },
+        "brierScore": {
+          "estimate": 0.2217627313812035,
+          "low": 0.21326970863697642,
+          "high": 0.22974684980898205
+        },
+        "naiveBrier": {
+          "estimate": 0.24717066545948393,
+          "low": 0.24282340136296757,
+          "high": 0.24943754264089976
+        },
+        "naiveZeroMAE": {
+          "estimate": 14.383653846153846,
+          "low": 13.7478125,
+          "high": 14.996177884615385
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 14.158653846153847,
+          "low": 13.506682692307692,
+          "high": 14.7809375
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -1.4838483467035015,
+          "low": -1.8378789516786,
+          "high": -1.1368148543732242
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -1.2588483467035019,
+          "low": -1.5975362160625737,
+          "high": -0.9233523103187644
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.02540793407828043,
+          "low": -0.032473848016925905,
+          "high": -0.01785597663578662
+        }
       },
       "splitDate": "2026-01-25T01:00Z"
     },
@@ -75,16 +218,63 @@
         "nDraws": 4,
         "nWinnerEligible": 615,
         "homeWinRate": 0.5365853658536586,
-        "sigmaActualMargin": 14.369699995406895,
-        "sigmaPredictedMargin": 6.10360501853146,
-        "marginMAE": 10.696420179543912,
-        "marginRMSE": 13.775087451554406,
-        "marginBias": 0.09421168804949906,
-        "winnerAccuracy": 0.6308943089430894,
-        "brierScore": 0.23195717179927502,
-        "naiveBrier": 0.24866151100535486,
-        "naiveZeroMAE": 11.27536231884058,
-        "naiveHomeAdvMAE": 11.197262479871176
+        "sigmaActualMargin": 14.381283794140446,
+        "sigmaPredictedMargin": 6.10852529745909,
+        "marginMAE": {
+          "estimate": 10.696420179543912,
+          "low": 10.020950116596568,
+          "high": 11.374317874030863
+        },
+        "marginRMSE": {
+          "estimate": 13.775087451554406,
+          "low": 12.970055399121142,
+          "high": 14.551754373356895
+        },
+        "marginBias": {
+          "estimate": 0.09421168804949906,
+          "low": -0.9768993678645348,
+          "high": 1.1713879425934712
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6308943089430894,
+          "low": 0.5928338762214984,
+          "high": 0.6677713461271033
+        },
+        "brierScore": {
+          "estimate": 0.23195717179927502,
+          "low": 0.22138785003426134,
+          "high": 0.2427153143234974
+        },
+        "naiveBrier": {
+          "estimate": 0.24866151100535394,
+          "low": 0.2439919680998669,
+          "high": 0.2499894585933547
+        },
+        "naiveZeroMAE": {
+          "estimate": 11.27536231884058,
+          "low": 10.595772946859904,
+          "high": 11.963204508856682
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 11.197262479871176,
+          "low": 10.52246376811594,
+          "high": 11.862479871175523
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.578942139296668,
+          "low": -1.010750468257743,
+          "high": -0.14624289223470296
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.500842300327264,
+          "low": -0.9492828908370279,
+          "high": -0.06927747056850025
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.016704339206078916,
+          "low": -0.02594354939655084,
+          "high": -0.005867837447816765
+        }
       },
       "trainEarlier80": {
         "n": 496,
@@ -92,16 +282,63 @@
         "nDraws": 4,
         "nWinnerEligible": 491,
         "homeWinRate": 0.539714867617108,
-        "sigmaActualMargin": 14.381379364235332,
-        "sigmaPredictedMargin": 6.148429414740662,
-        "marginMAE": 10.656180354937893,
-        "marginRMSE": 13.861004877049773,
-        "marginBias": -0.12428660847681271,
-        "winnerAccuracy": 0.6354378818737271,
-        "brierScore": 0.23087160976029217,
-        "naiveBrier": 0.24842272929015607,
-        "naiveZeroMAE": 11.320564516129032,
-        "naiveHomeAdvMAE": 11.22983870967742
+        "sigmaActualMargin": 14.395898680769438,
+        "sigmaPredictedMargin": 6.154636816033631,
+        "marginMAE": {
+          "estimate": 10.656180354937893,
+          "low": 9.869838169428249,
+          "high": 11.477583263780009
+        },
+        "marginRMSE": {
+          "estimate": 13.861004877049773,
+          "low": 12.902456336327912,
+          "high": 14.788877209451405
+        },
+        "marginBias": {
+          "estimate": -0.12428660847681271,
+          "low": -1.2623069310955422,
+          "high": 1.1173129384779774
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6354378818737271,
+          "low": 0.5894099895683275,
+          "high": 0.6775674383806476
+        },
+        "brierScore": {
+          "estimate": 0.23087160976029217,
+          "low": 0.21895354843995687,
+          "high": 0.24369180930395506
+        },
+        "naiveBrier": {
+          "estimate": 0.2484227292901556,
+          "low": 0.24352678260823715,
+          "high": 0.2499837835147779
+        },
+        "naiveZeroMAE": {
+          "estimate": 11.320564516129032,
+          "low": 10.530141129032257,
+          "high": 12.174243951612903
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 11.22983870967742,
+          "low": 10.481854838709678,
+          "high": 12.038608870967742
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.6643841611911387,
+          "low": -1.1597249729101606,
+          "high": -0.12267161267150488
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.5736583547395266,
+          "low": -1.0756045700299832,
+          "high": -0.082728854265831
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.017551119529863435,
+          "low": -0.028389183422389205,
+          "high": -0.0056667299584176175
+        }
       },
       "testLatest20": {
         "n": 125,
@@ -109,16 +346,63 @@
         "nDraws": 0,
         "nWinnerEligible": 124,
         "homeWinRate": 0.5241935483870968,
-        "sigmaActualMargin": 14.265603947958182,
-        "sigmaPredictedMargin": 5.91408078280851,
-        "marginMAE": 10.856091803580584,
-        "marginRMSE": 13.428750060388492,
-        "marginBias": 0.9612129286659039,
-        "winnerAccuracy": 0.6129032258064516,
-        "brierScore": 0.23625564729234455,
-        "naiveBrier": 0.24941467221644106,
-        "naiveZeroMAE": 11.096,
-        "naiveHomeAdvMAE": 11.068
+        "sigmaActualMargin": 14.32301103683476,
+        "sigmaPredictedMargin": 5.937879996803271,
+        "marginMAE": {
+          "estimate": 10.856091803580584,
+          "low": 9.53973765358624,
+          "high": 12.338791383421102
+        },
+        "marginRMSE": {
+          "estimate": 13.428750060388492,
+          "low": 11.926035856771229,
+          "high": 14.945944427862687
+        },
+        "marginBias": {
+          "estimate": 0.9612129286659039,
+          "low": -1.4353561424446235,
+          "high": 3.359606435338248
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6129032258064516,
+          "low": 0.5241935483870968,
+          "high": 0.6935483870967742
+        },
+        "brierScore": {
+          "estimate": 0.23625564729234455,
+          "low": 0.21522458885303195,
+          "high": 0.2615435829112492
+        },
+        "naiveBrier": {
+          "estimate": 0.2494146722164412,
+          "low": 0.23900884495317376,
+          "high": 0.25
+        },
+        "naiveZeroMAE": {
+          "estimate": 11.096,
+          "low": 9.416,
+          "high": 12.672
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 11.068,
+          "low": 9.2596,
+          "high": 12.668999999999999
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.23990819641941563,
+          "low": -1.0801625011614777,
+          "high": 0.7387468044175945
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.21190819641941516,
+          "low": -1.0557388249678434,
+          "high": 0.7469640774331869
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.013159024924096652,
+          "low": -0.0317148548916253,
+          "high": 0.013944705298138946
+        }
       },
       "splitDate": "2025-11-16T21:25Z"
     },
@@ -130,16 +414,63 @@
         "nDraws": 157,
         "nWinnerEligible": 6039,
         "homeWinRate": 0.5388309322735553,
-        "sigmaActualMargin": 4.500764332186263,
-        "sigmaPredictedMargin": 1.1535798936162165,
-        "marginMAE": 3.4757267265753296,
-        "marginRMSE": 4.5019048297284945,
-        "marginBias": 0.35129900907248857,
-        "winnerAccuracy": 0.5598609041231992,
-        "brierScore": 0.24486836298072034,
-        "naiveBrier": 0.24849215869879257,
-        "naiveZeroMAE": 3.5178628389154705,
-        "naiveHomeAdvMAE": 3.492822966507177
+        "sigmaActualMargin": 4.501123287750272,
+        "sigmaPredictedMargin": 1.1536718966385437,
+        "marginMAE": {
+          "estimate": 3.4757267265753296,
+          "low": 3.4069178620146574,
+          "high": 3.5506375759331785
+        },
+        "marginRMSE": {
+          "estimate": 4.5019048297284945,
+          "low": 4.406035248208728,
+          "high": 4.600190939599099
+        },
+        "marginBias": {
+          "estimate": 0.35129900907248857,
+          "low": 0.24304500466588885,
+          "high": 0.45551398265445064
+        },
+        "winnerAccuracy": {
+          "estimate": 0.5598609041231992,
+          "low": 0.5471067665220869,
+          "high": 0.5720442461049239
+        },
+        "brierScore": {
+          "estimate": 0.24486836298072034,
+          "low": 0.2425870514751974,
+          "high": 0.24718901573233865
+        },
+        "naiveBrier": {
+          "estimate": 0.24849215869876656,
+          "low": 0.247401573223757,
+          "high": 0.2492780725505343
+        },
+        "naiveZeroMAE": {
+          "estimate": 3.5178628389154705,
+          "low": 3.449110845295056,
+          "high": 3.5904465709728868
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 3.492822966507177,
+          "low": 3.4214912280701753,
+          "high": 3.5647767145135565
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.04213611234014092,
+          "low": -0.07144832844234415,
+          "high": -0.013742041665301637
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.01709623993184728,
+          "low": -0.04242016431833148,
+          "high": 0.011238678414370387
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.003623795718046219,
+          "low": -0.005559301250095642,
+          "high": -0.0015012184151431181
+        }
       },
       "trainEarlier80": {
         "n": 5016,
@@ -147,16 +478,63 @@
         "nDraws": 133,
         "nWinnerEligible": 4809,
         "homeWinRate": 0.5364940736119775,
-        "sigmaActualMargin": 4.471446531604154,
-        "sigmaPredictedMargin": 1.2046739616110373,
-        "marginMAE": 3.454449587408715,
-        "marginRMSE": 4.4785094363745355,
-        "marginBias": 0.3683951077419308,
-        "winnerAccuracy": 0.561447286338116,
-        "brierScore": 0.24453718563086746,
-        "naiveBrier": 0.24866818259120022,
-        "naiveZeroMAE": 3.492822966507177,
-        "naiveHomeAdvMAE": 3.4708931419457736
+        "sigmaActualMargin": 4.471892316614145,
+        "sigmaPredictedMargin": 1.2047940626991789,
+        "marginMAE": {
+          "estimate": 3.454449587408715,
+          "low": 3.372199091777129,
+          "high": 3.5369534016036925
+        },
+        "marginRMSE": {
+          "estimate": 4.4785094363745355,
+          "low": 4.3720668645048635,
+          "high": 4.58317095018604
+        },
+        "marginBias": {
+          "estimate": 0.3683951077419308,
+          "low": 0.23943451327152704,
+          "high": 0.4866174686614262
+        },
+        "winnerAccuracy": {
+          "estimate": 0.561447286338116,
+          "low": 0.5468348430310835,
+          "high": 0.57625
+        },
+        "brierScore": {
+          "estimate": 0.24453718563086746,
+          "low": 0.24201768793297895,
+          "high": 0.24697774097021652
+        },
+        "naiveBrier": {
+          "estimate": 0.24866818259120357,
+          "low": 0.2473473055893889,
+          "high": 0.2495107874174816
+        },
+        "naiveZeroMAE": {
+          "estimate": 3.492822966507177,
+          "low": 3.4158642344497605,
+          "high": 3.571381578947368
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 3.4708931419457736,
+          "low": 3.3889503588516745,
+          "high": 3.5540320972886765
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.038373379098461946,
+          "low": -0.07118975082728422,
+          "high": -0.004977033253207432
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.016443554537058702,
+          "low": -0.04805807655607581,
+          "high": 0.014200868449807202
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.004130996960336114,
+          "low": -0.0065426717001269485,
+          "high": -0.0017937538286764262
+        }
       },
       "testLatest20": {
         "n": 1254,
@@ -164,16 +542,63 @@
         "nDraws": 24,
         "nWinnerEligible": 1230,
         "homeWinRate": 0.5479674796747968,
-        "sigmaActualMargin": 4.614618389833144,
-        "sigmaPredictedMargin": 0.9202686312217192,
-        "marginMAE": 3.560835283241815,
-        "marginRMSE": 4.594295200885627,
-        "marginBias": 0.28291461439472043,
-        "winnerAccuracy": 0.5536585365853659,
-        "brierScore": 0.2461631856436795,
-        "naiveBrier": 0.24769912089365007,
-        "naiveZeroMAE": 3.618022328548644,
-        "naiveHomeAdvMAE": 3.580542264752791
+        "sigmaActualMargin": 4.616459450504767,
+        "sigmaPredictedMargin": 0.9206357840913918,
+        "marginMAE": {
+          "estimate": 3.560835283241815,
+          "low": 3.39973220534644,
+          "high": 3.711996016532446
+        },
+        "marginRMSE": {
+          "estimate": 4.594295200885627,
+          "low": 4.371960731575112,
+          "high": 4.814462851573856
+        },
+        "marginBias": {
+          "estimate": 0.28291461439472043,
+          "low": 0.03604702954949698,
+          "high": 0.5435489091325014
+        },
+        "winnerAccuracy": {
+          "estimate": 0.5536585365853659,
+          "low": 0.5269093207102996,
+          "high": 0.5817170520954758
+        },
+        "brierScore": {
+          "estimate": 0.2461631856436795,
+          "low": 0.24209253160813513,
+          "high": 0.25011260224341897
+        },
+        "naiveBrier": {
+          "estimate": 0.24769912089364796,
+          "low": 0.24433798952964814,
+          "high": 0.2496343783040847
+        },
+        "naiveZeroMAE": {
+          "estimate": 3.618022328548644,
+          "low": 3.4601275917065393,
+          "high": 3.777551834130781
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 3.580542264752791,
+          "low": 3.4154306220095694,
+          "high": 3.738456937799043
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.057187045306829276,
+          "low": -0.11310435666703675,
+          "high": -0.006609360283478469
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.019706981510976274,
+          "low": -0.06950199181073272,
+          "high": 0.02722649296987241
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.0015359352499684509,
+          "low": -0.004894577670979268,
+          "high": 0.002285043947506957
+        }
       },
       "splitDate": "2025-08-21T20:05Z"
     },
@@ -185,16 +610,63 @@
         "nDraws": 4,
         "nWinnerEligible": 2815,
         "homeWinRate": 0.5428063943161634,
-        "sigmaActualMargin": 2.585205316152001,
-        "sigmaPredictedMargin": 0.6946149875272417,
-        "marginMAE": 2.1637912682240903,
-        "marginRMSE": 2.5793711593247552,
-        "marginBias": 0.04357723889037414,
-        "winnerAccuracy": 0.555595026642984,
-        "brierScore": 0.24442581511968484,
-        "naiveBrier": 0.2481676126056451,
-        "naiveZeroMAE": 2.234816384180791,
-        "naiveHomeAdvMAE": 2.2104519774011213
+        "sigmaActualMargin": 2.5856618645557643,
+        "sigmaPredictedMargin": 0.6947376568416687,
+        "marginMAE": {
+          "estimate": 2.1637912682240903,
+          "low": 2.114629059816764,
+          "high": 2.2153493173987306
+        },
+        "marginRMSE": {
+          "estimate": 2.5793711593247552,
+          "low": 2.5249124933765197,
+          "high": 2.6360600290263276
+        },
+        "marginBias": {
+          "estimate": 0.04357723889037414,
+          "low": -0.044115750353065045,
+          "high": 0.13027043491464615
+        },
+        "winnerAccuracy": {
+          "estimate": 0.555595026642984,
+          "low": 0.5369567553089263,
+          "high": 0.5740686450499477
+        },
+        "brierScore": {
+          "estimate": 0.24442581511968484,
+          "low": 0.24167080352342768,
+          "high": 0.24718305156018955
+        },
+        "naiveBrier": {
+          "estimate": 0.24816761260564912,
+          "low": 0.2461568386714418,
+          "high": 0.24938134749183719
+        },
+        "naiveZeroMAE": {
+          "estimate": 2.234816384180791,
+          "low": 2.187146892655367,
+          "high": 2.28319209039548
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 2.2104519774011213,
+          "low": 2.162851341807902,
+          "high": 2.2590466101694853
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.0710251159567008,
+          "low": -0.0945666046666343,
+          "high": -0.04659095885839831
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.04666070917703102,
+          "low": -0.07053786515544495,
+          "high": -0.023709308135811236
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.0037417974859642877,
+          "low": -0.006346110039052545,
+          "high": -0.000891758014602276
+        }
       },
       "trainEarlier80": {
         "n": 2265,
@@ -202,16 +674,63 @@
         "nDraws": 3,
         "nWinnerEligible": 2249,
         "homeWinRate": 0.5491329479768786,
-        "sigmaActualMargin": 2.59082673679176,
-        "sigmaPredictedMargin": 0.7167734689139804,
-        "marginMAE": 2.1625213851212695,
-        "marginRMSE": 2.5829086100850756,
-        "marginBias": 0.00919910417791486,
-        "winnerAccuracy": 0.5678079146287239,
-        "brierScore": 0.2432333534287618,
-        "naiveBrier": 0.2475859534231066,
-        "naiveZeroMAE": 2.2410596026490066,
-        "naiveHomeAdvMAE": 2.2131125827814477
+        "sigmaActualMargin": 2.5913988526730387,
+        "sigmaPredictedMargin": 0.716931749465521,
+        "marginMAE": {
+          "estimate": 2.1625213851212695,
+          "low": 2.102203179858304,
+          "high": 2.2221385692942737
+        },
+        "marginRMSE": {
+          "estimate": 2.5829086100850756,
+          "low": 2.516838809428843,
+          "high": 2.6498552162006477
+        },
+        "marginBias": {
+          "estimate": 0.00919910417791486,
+          "low": -0.10601524509672108,
+          "high": 0.12414122765995793
+        },
+        "winnerAccuracy": {
+          "estimate": 0.5678079146287239,
+          "low": 0.5463806494872376,
+          "high": 0.5880802525961536
+        },
+        "brierScore": {
+          "estimate": 0.2432333534287618,
+          "low": 0.2397859446335658,
+          "high": 0.24664641047346628
+        },
+        "naiveBrier": {
+          "estimate": 0.24758595342310133,
+          "low": 0.2451281623908425,
+          "high": 0.24924424759614458
+        },
+        "naiveZeroMAE": {
+          "estimate": 2.2410596026490066,
+          "low": 2.1898344370860925,
+          "high": 2.298046357615894
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 2.2131125827814477,
+          "low": 2.1603885209712907,
+          "high": 2.2692891832229454
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.07853821752773715,
+          "low": -0.10943966158096666,
+          "high": -0.04782615066681332
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.05059119766017828,
+          "low": -0.08064965653985695,
+          "high": -0.02336127179865573
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.00435259999433954,
+          "low": -0.007511029734499456,
+          "high": -0.0009449083469092962
+        }
       },
       "testLatest20": {
         "n": 567,
@@ -219,16 +738,63 @@
         "nDraws": 1,
         "nWinnerEligible": 566,
         "homeWinRate": 0.5176678445229682,
-        "sigmaActualMargin": 2.558675064772491,
-        "sigmaPredictedMargin": 0.5978550654553052,
-        "marginMAE": 2.1688640816771794,
-        "marginRMSE": 2.565191407335057,
-        "marginBias": 0.18090788284755271,
-        "winnerAccuracy": 0.5070671378091873,
-        "brierScore": 0.2491640595417436,
-        "naiveBrier": 0.24968784726991014,
-        "naiveZeroMAE": 2.2098765432098766,
-        "naiveHomeAdvMAE": 2.1998236331569667
+        "sigmaActualMargin": 2.5609343809431735,
+        "sigmaPredictedMargin": 0.5983829729007266,
+        "marginMAE": {
+          "estimate": 2.1688640816771794,
+          "low": 2.057556736048409,
+          "high": 2.2862843893442926
+        },
+        "marginRMSE": {
+          "estimate": 2.565191407335057,
+          "low": 2.442347303235938,
+          "high": 2.687104894002112
+        },
+        "marginBias": {
+          "estimate": 0.18090788284755271,
+          "low": -0.027068473285176302,
+          "high": 0.3935721452084239
+        },
+        "winnerAccuracy": {
+          "estimate": 0.5070671378091873,
+          "low": 0.466410529661413,
+          "high": 0.549469964664311
+        },
+        "brierScore": {
+          "estimate": 0.2491640595417436,
+          "low": 0.2435010518420673,
+          "high": 0.255212437288204
+        },
+        "naiveBrier": {
+          "estimate": 0.24968784726991222,
+          "low": 0.24677918754709557,
+          "high": 0.24999922236841693
+        },
+        "naiveZeroMAE": {
+          "estimate": 2.2098765432098766,
+          "low": 2.1022927689594355,
+          "high": 2.3174603174603177
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 2.1998236331569667,
+          "low": 2.092186948853616,
+          "high": 2.306349206349206
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.04101246153269722,
+          "low": -0.09219047299752048,
+          "high": 0.012004145670036551
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.03095955147978735,
+          "low": -0.07676555814345921,
+          "high": 0.017968830194581942
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.0005237877281686343,
+          "low": -0.005424944023683998,
+          "high": 0.005793535859834947
+        }
       },
       "splitDate": "2026-01-13T00:00Z"
     },
@@ -240,16 +806,63 @@
         "nDraws": 279,
         "nWinnerEligible": 822,
         "homeWinRate": 0.5912408759124088,
-        "sigmaActualMargin": 1.7634179121750821,
-        "sigmaPredictedMargin": 0.6830366221706987,
-        "marginMAE": 1.345047825670479,
-        "marginRMSE": 1.7394609794889837,
-        "marginBias": -0.00305436574812047,
-        "winnerAccuracy": 0.6313868613138686,
-        "brierScore": 0.2280641415864149,
-        "naiveBrier": 0.24167510256273633,
-        "naiveZeroMAE": 1.348576358930112,
-        "naiveHomeAdvMAE": 1.388265746333047
+        "sigmaActualMargin": 1.7641791545641656,
+        "sigmaPredictedMargin": 0.6833314793491944,
+        "marginMAE": {
+          "estimate": 1.345047825670479,
+          "low": 1.2787611228779348,
+          "high": 1.4089733457297497
+        },
+        "marginRMSE": {
+          "estimate": 1.7394609794889837,
+          "low": 1.6550948896794353,
+          "high": 1.8161367765763994
+        },
+        "marginBias": {
+          "estimate": -0.00305436574812047,
+          "low": -0.10593332476393807,
+          "high": 0.09917893919449274
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6313868613138686,
+          "low": 0.5970094042733312,
+          "high": 0.6642073154308186
+        },
+        "brierScore": {
+          "estimate": 0.2280641415864149,
+          "low": 0.2207270235571073,
+          "high": 0.23507570130110028
+        },
+        "naiveBrier": {
+          "estimate": 0.24167510256273642,
+          "low": 0.23403453914324487,
+          "high": 0.24674102554956784
+        },
+        "naiveZeroMAE": {
+          "estimate": 1.348576358930112,
+          "low": 1.2829810181190682,
+          "high": 1.4167601380500432
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 1.388265746333047,
+          "low": 1.3275237273511653,
+          "high": 1.4538610871440962
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.003528533259633093,
+          "low": -0.04606688745935188,
+          "high": 0.03521769096167436
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.04321792066256802,
+          "low": -0.07727265936900204,
+          "high": -0.011016445176844669
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.013610960976321529,
+          "low": -0.02020431723277842,
+          "high": -0.006300492285097072
+        }
       },
       "trainEarlier80": {
         "n": 927,
@@ -257,16 +870,63 @@
         "nDraws": 232,
         "nWinnerEligible": 637,
         "homeWinRate": 0.5855572998430141,
-        "sigmaActualMargin": 1.7037167573168488,
-        "sigmaPredictedMargin": 0.6918083772897384,
-        "marginMAE": 1.312863553838454,
-        "marginRMSE": 1.6927769189220667,
-        "marginBias": 0.0300143492031863,
-        "winnerAccuracy": 0.6122448979591837,
-        "brierScore": 0.22846130397566067,
-        "naiveBrier": 0.24267994844357163,
-        "naiveZeroMAE": 1.3052858683926645,
-        "naiveHomeAdvMAE": 1.352319309600864
+        "sigmaActualMargin": 1.7046364425429743,
+        "sigmaPredictedMargin": 0.6921818231346366,
+        "marginMAE": {
+          "estimate": 1.312863553838454,
+          "low": 1.2453147844771737,
+          "high": 1.3768596036602019
+        },
+        "marginRMSE": {
+          "estimate": 1.6927769189220667,
+          "low": 1.6084214318070056,
+          "high": 1.7750821064962439
+        },
+        "marginBias": {
+          "estimate": 0.0300143492031863,
+          "low": -0.08131206201342743,
+          "high": 0.13768024628832345
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6122448979591837,
+          "low": 0.5749031877451821,
+          "high": 0.6519701043467128
+        },
+        "brierScore": {
+          "estimate": 0.22846130397566067,
+          "low": 0.21981457074963462,
+          "high": 0.2372122371690626
+        },
+        "naiveBrier": {
+          "estimate": 0.24267994844357257,
+          "low": 0.23456963884679208,
+          "high": 0.2478951223331197
+        },
+        "naiveZeroMAE": {
+          "estimate": 1.3052858683926645,
+          "low": 1.231903991370011,
+          "high": 1.37651024811219
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 1.352319309600864,
+          "low": 1.2836785329018363,
+          "high": 1.4179126213592217
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": 0.007577685445789628,
+          "low": -0.039056511534592206,
+          "high": 0.054649138586028476
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.039455755762410005,
+          "low": -0.07774907436361411,
+          "high": -0.000669499001533246
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.014218644467911906,
+          "low": -0.02146814650830846,
+          "high": -0.005784332018640823
+        }
       },
       "testLatest20": {
         "n": 232,
@@ -274,16 +934,63 @@
         "nDraws": 47,
         "nWinnerEligible": 185,
         "homeWinRate": 0.6108108108108108,
-        "sigmaActualMargin": 1.978288627019698,
-        "sigmaPredictedMargin": 0.6467874512744717,
-        "marginMAE": 1.4736461876889588,
-        "marginRMSE": 1.9146689157330643,
-        "marginBias": -0.13518668798890213,
-        "winnerAccuracy": 0.6972972972972973,
-        "brierScore": 0.22669661487317344,
-        "naiveBrier": 0.23772096420745117,
-        "naiveZeroMAE": 1.521551724137931,
-        "naiveHomeAdvMAE": 1.5318965517241374
+        "sigmaActualMargin": 1.9825660128286189,
+        "sigmaPredictedMargin": 0.6481859122612477,
+        "marginMAE": {
+          "estimate": 1.4736461876889588,
+          "low": 1.310602552971347,
+          "high": 1.6303902696882289
+        },
+        "marginRMSE": {
+          "estimate": 1.9146689157330643,
+          "low": 1.705579889487754,
+          "high": 2.107852587761419
+        },
+        "marginBias": {
+          "estimate": -0.13518668798890213,
+          "low": -0.3984997403778896,
+          "high": 0.09392784975609841
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6972972972972973,
+          "low": 0.627010692010692,
+          "high": 0.7613835995085995
+        },
+        "brierScore": {
+          "estimate": 0.22669661487317344,
+          "low": 0.21275830992089148,
+          "high": 0.24173135534076465
+        },
+        "naiveBrier": {
+          "estimate": 0.2377209642074507,
+          "low": 0.21703211774634826,
+          "high": 0.24797738025251254
+        },
+        "naiveZeroMAE": {
+          "estimate": 1.521551724137931,
+          "low": 1.344719827586207,
+          "high": 1.6939655172413792
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 1.5318965517241374,
+          "low": 1.36540948275862,
+          "high": 1.686228448275862
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": -0.04790553644897222,
+          "low": -0.1314295056550763,
+          "high": 0.03959205207883414
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.05825036403517858,
+          "low": -0.12481443033934841,
+          "high": 0.015325545100070222
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.011024349334277261,
+          "low": -0.023702615575582116,
+          "high": 0.0060573352616102106
+        }
       },
       "splitDate": "2025-08-31T00:30Z"
     },
@@ -295,16 +1002,63 @@
         "nDraws": 177,
         "nWinnerEligible": 477,
         "homeWinRate": 0.5513626834381551,
-        "sigmaActualMargin": 1.7551951535940669,
-        "sigmaPredictedMargin": 0.917784754948752,
-        "marginMAE": 1.3608363431622217,
-        "marginRMSE": 1.682876830676061,
-        "marginBias": 0.15865129393509442,
-        "winnerAccuracy": 0.660377358490566,
-        "brierScore": 0.21397688950583552,
-        "naiveBrier": 0.2473618747500345,
-        "naiveZeroMAE": 1.3347639484978542,
-        "naiveHomeAdvMAE": 1.4051502145922719
+        "sigmaActualMargin": 1.7564520067115135,
+        "sigmaPredictedMargin": 0.9184419585810889,
+        "marginMAE": {
+          "estimate": 1.3608363431622217,
+          "low": 1.28283810260391,
+          "high": 1.4349044546954948
+        },
+        "marginRMSE": {
+          "estimate": 1.682876830676061,
+          "low": 1.590643354019653,
+          "high": 1.7734000062455937
+        },
+        "marginBias": {
+          "estimate": 0.15865129393509442,
+          "low": 0.03362509845004296,
+          "high": 0.28829901719752987
+        },
+        "winnerAccuracy": {
+          "estimate": 0.660377358490566,
+          "low": 0.6190476190476191,
+          "high": 0.7065005706515141
+        },
+        "brierScore": {
+          "estimate": 0.21397688950583552,
+          "low": 0.2031965458171404,
+          "high": 0.22404458701269875
+        },
+        "naiveBrier": {
+          "estimate": 0.24736187475003188,
+          "low": 0.2406665078130375,
+          "high": 0.24988780730723242
+        },
+        "naiveZeroMAE": {
+          "estimate": 1.3347639484978542,
+          "low": 1.2431688125894136,
+          "high": 1.4220314735336195
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 1.4051502145922719,
+          "low": 1.3210228898426293,
+          "high": 1.4852789699570796
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": 0.026072394664367504,
+          "low": -0.039283179324704515,
+          "high": 0.09294115804751346
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.04431387143005017,
+          "low": -0.09936920738885481,
+          "high": 0.009248851525147274
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.033384985244196363,
+          "low": -0.04242057314571524,
+          "high": -0.02368643073709989
+        }
       },
       "trainEarlier80": {
         "n": 559,
@@ -312,16 +1066,63 @@
         "nDraws": 132,
         "nWinnerEligible": 382,
         "homeWinRate": 0.5654450261780105,
-        "sigmaActualMargin": 1.8142851295031586,
-        "sigmaPredictedMargin": 0.9570198770567406,
-        "marginMAE": 1.3958139081927259,
-        "marginRMSE": 1.7309449041442146,
-        "marginBias": 0.14234317631672605,
-        "winnerAccuracy": 0.6884816753926701,
-        "brierScore": 0.20846876889520377,
-        "naiveBrier": 0.24571694854855788,
-        "naiveZeroMAE": 1.3935599284436493,
-        "naiveHomeAdvMAE": 1.4486583184257587
+        "sigmaActualMargin": 1.81591010531435,
+        "sigmaPredictedMargin": 0.9578770378887166,
+        "marginMAE": {
+          "estimate": 1.3958139081927259,
+          "low": 1.3188720577144433,
+          "high": 1.4762641242177834
+        },
+        "marginRMSE": {
+          "estimate": 1.7309449041442146,
+          "low": 1.6357954706675666,
+          "high": 1.830434423385231
+        },
+        "marginBias": {
+          "estimate": 0.14234317631672605,
+          "low": -0.006459271968589135,
+          "high": 0.2908517404773497
+        },
+        "winnerAccuracy": {
+          "estimate": 0.6884816753926701,
+          "low": 0.6397801702963811,
+          "high": 0.7347536272847183
+        },
+        "brierScore": {
+          "estimate": 0.20846876889520377,
+          "low": 0.19758884985757064,
+          "high": 0.22012934365596631
+        },
+        "naiveBrier": {
+          "estimate": 0.24571694854855952,
+          "low": 0.23695534540956995,
+          "high": 0.2496964057574066
+        },
+        "naiveZeroMAE": {
+          "estimate": 1.3935599284436493,
+          "low": 1.2950805008944544,
+          "high": 1.49020572450805
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 1.4486583184257587,
+          "low": 1.358837209302324,
+          "high": 1.5445527728085853
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": 0.0022539797490765956,
+          "low": -0.06623421418582338,
+          "high": 0.07335812441457198
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.05284441023303277,
+          "low": -0.11333005046633411,
+          "high": 0.0068774221429272605
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.03724817965335575,
+          "low": -0.04757517454904803,
+          "high": -0.024878390400767704
+        }
       },
       "testLatest20": {
         "n": 140,
@@ -329,16 +1130,63 @@
         "nDraws": 45,
         "nWinnerEligible": 95,
         "homeWinRate": 0.49473684210526314,
-        "sigmaActualMargin": 1.4942747882692606,
-        "sigmaPredictedMargin": 0.7406855585885487,
-        "marginMAE": 1.2211759227904213,
-        "marginRMSE": 1.47541967063609,
-        "marginBias": 0.2237672778541515,
-        "winnerAccuracy": 0.5473684210526316,
-        "brierScore": 0.23612533238227057,
-        "naiveBrier": 0.24997229916897484,
-        "naiveZeroMAE": 1.1,
-        "naiveHomeAdvMAE": 1.2314285714285724
+        "sigmaActualMargin": 1.4996402446284751,
+        "sigmaPredictedMargin": 0.7433451203182292,
+        "marginMAE": {
+          "estimate": 1.2211759227904213,
+          "low": 1.077746701360887,
+          "high": 1.3587566780556357
+        },
+        "marginRMSE": {
+          "estimate": 1.47541967063609,
+          "low": 1.328392028785661,
+          "high": 1.617670326527144
+        },
+        "marginBias": {
+          "estimate": 0.2237672778541515,
+          "low": -0.002635064452393268,
+          "high": 0.45534244013554354
+        },
+        "winnerAccuracy": {
+          "estimate": 0.5473684210526316,
+          "low": 0.4408387096774194,
+          "high": 0.652642320085929
+        },
+        "brierScore": {
+          "estimate": 0.23612533238227057,
+          "low": 0.21521465599332462,
+          "high": 0.25704921434682604
+        },
+        "naiveBrier": {
+          "estimate": 0.24997229916897507,
+          "low": 0.23703558474659348,
+          "high": 0.25
+        },
+        "naiveZeroMAE": {
+          "estimate": 1.1,
+          "low": 0.9428571428571428,
+          "high": 1.2642857142857142
+        },
+        "naiveHomeAdvMAE": {
+          "estimate": 1.2314285714285724,
+          "low": 1.0899642857142866,
+          "high": 1.380000000000001
+        },
+        "marginMAE_minus_naiveZero": {
+          "estimate": 0.12117592279042122,
+          "low": 0.00281074032215305,
+          "high": 0.2417723624922208
+        },
+        "marginMAE_minus_naiveHomeAdv": {
+          "estimate": -0.010252648638151118,
+          "low": -0.11429033219948442,
+          "high": 0.09639980153499805
+        },
+        "brierScore_minus_naiveBrier": {
+          "estimate": -0.013846966786704495,
+          "low": -0.030746754014030438,
+          "high": 0.015076055814917293
+        }
       },
       "splitDate": "2025-12-28T16:30Z"
     }

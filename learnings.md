@@ -244,40 +244,61 @@ Council on PR #26 surfaced THREE real issues I missed:
 - **IMPROVE**: Name matching is fragile — added fuzzy last-name fallback + console.warn on misses
 - **CRITICAL**: Council feedback "do not ship without recency filter" — without it, the model double-counts every chronic absence
 
-### per-sport-baseline-debt13 (2026-04-14)
+### per-sport-baseline-debt13 (2026-04-14, updated after council Stats FAIL)
 
-Computed per-sport margin MAE / RMSE / bias / Brier / winner accuracy on 16,777 post-2023 held-out games across all 6 sports, with naive baselines (predict-zero, predict-home_advantage, constant-home-rate). Closes council debt #13. Artifact: `data/baselines/baseline-2026-04-14.{json,txt}`.
+Computed per-sport margin MAE / RMSE / bias / Brier / winner accuracy on 16,777 post-2023 held-out games across all 6 sports, with naive baselines (predict-zero, predict-home_advantage, constant-home-rate) **and bootstrap 95% CIs on every metric plus paired model-minus-baseline diffs**. Closes council debt #13. Artifact: `data/baselines/baseline-2026-04-14.{json,txt}`.
 
-**In-sample caveat up-front**: sigmoid_scale, home_advantage, and win-gap bucket constants were calibrated against this same data. The 80/20 date split is a fingerprint, not a clean out-of-sample test. Numbers below are the parameters' best-case performance.
+**In-sample caveat up-front**: sigmoid_scale, home_advantage, and win-gap bucket constants were calibrated against this same data. The 80/20 date split is a fingerprint, not a clean out-of-sample test. CIs capture resample noise only, not calibration leakage.
 
-**Headline per-sport table** (all slices):
+**Initial (failed) commit**: first commit shipped point estimates without CIs and made headline claims ("EPL is WORSE than predict-zero", "MLS ties predict-zero") that did not survive a council review. Re-ran with 1000 bootstrap resamples per sport/slice; verdicts are now CI-gated. Same class of error as v4-spread shipping without a baseline — point estimates without uncertainty are overconfident by construction.
 
-| sport | N | MAE | nv0MAE | lift vs zero | Winner acc | Brier | nvBr | lift vs naive |
-|------|------|------|--------|--------------|------------|-------|------|---------------|
-| NBA  | 5196 | 11.67 | 12.96 | **9.9%** | 63.1% | 0.2258 | 0.2477 | 8.8% |
-| NFL  |  621 | 10.70 | 11.28 | 5.1% | 63.1% | 0.2320 | 0.2487 | 6.7% |
-| MLB  | 6270 |  3.48 |  3.52 | **1.1%** | 56.0% | 0.2449 | 0.2485 | **1.4%** |
-| NHL  | 2832 |  2.16 |  2.23 | **3.1%** | 55.6% | 0.2444 | 0.2482 | **1.5%** |
-| MLS  | 1159 |  1.35 |  1.35 | **0.0%** | 63.1% | 0.2281 | 0.2417 | 5.6% |
-| EPL  |  699 |  1.36 |  1.33 | **-2.3%** | 66.0% | 0.2140 | 0.2474 | 13.5% |
+**Headline table — paired MAE-diff vs predict-zero (95% CI)**:
 
-- **KEEP**: `data/baselines/baseline-<date>.json` as the reference point — every future tweak measured against this file
-- **KEEP**: Naive baselines (predict-zero, predict-home_adv, constant-home-rate) in the report — a bare MAE/Brier number is meaningless without them
-- **KEEP**: 80/20 date split per sport — fingerprint slice for future tweak A/B
-- **KEEP**: Honest disclosure banner in `baseline.ts` header — in-sample numbers must be flagged as such or they will be overinterpreted
-- **KEEP**: Bias column near zero across all sports (max |bias|=0.60 NBA) — MAE is variance-dominated, not shift-correctable. Don't waste a sprint tuning home_advantage; the gains would be <1 MAE point.
+| sport | N | MAE | nv0 MAE | MAE − nv0 (95% CI) | verdict |
+|------|------|------|---------|--------------------|---------|
+| NBA  | 5196 | 11.67 | 12.96 | −1.28 [−1.45, −1.12] | ✓ beats |
+| NFL  |  621 | 10.70 | 11.28 | −0.58 [−1.01, −0.15] | ✓ beats |
+| MLB  | 6270 |  3.48 |  3.52 | −0.04 [−0.07, −0.01] | ✓ beats (trivial effect) |
+| NHL  | 2832 |  2.16 |  2.23 | −0.07 [−0.10, −0.05] | ✓ beats (small effect) |
+| MLS  | 1159 |  1.35 |  1.35 | 0.00 [−0.05, +0.04] | ~ **tie** — cannot distinguish |
+| EPL  |  699 |  1.36 |  1.33 | +0.03 [−0.04, +0.09] | ~ **tie** — cannot distinguish |
 
-**Findings that drive the next per-sport tweaks:**
-- **CRITICAL**: EPL margin model is **worse than predict-zero** (MAE 1.36 vs 1.33 nv0MAE). MLS ties predict-zero (1.35 = 1.35). Confirms the council's math-expert verdict: binary sigmoid applied to a ternary outcome is the wrong structural model for soccer. **Poisson/Skellam is not optional** — the current model is actively losing to a constant.
-- **CRITICAL**: MLB and NHL are the worst-performing sports on the winner side — accuracy 56.0% and 55.6%, barely above naive base rates. Brier lift vs naive: 1.4% MLB, 1.5% NHL. These sports beat the "always pick home at base rate" reference by a whisker. Top targets for per-sport knob tweaks.
-- **CONFIRMED**: EPL's 13.5% winner Brier lift is the largest in the dataset — the v5 sigmoid *is* picking up real team-strength signal in soccer, even while the margin model is structurally broken. Two separate problems.
-- **INSIGHT**: NBA wins-vs-naive gap (8.8% Brier, 9.9% MAE) is the upper bound of what a well-tuned generic sigmoid gets on a high-variance sport. Further gains in NBA/NFL likely require structural features (rest, travel, back-to-backs), not parameter sweeps.
+**EPL test slice only (N=140, latest 20%)**: MAE − nv0 = +0.12 [+0.00, +0.24] → ✗ LOSES predict-zero. Small-N result; flag but do not overclaim.
 
-**Sequencing implication for next sprint:**
-1. **MLS + EPL Poisson/Skellam model** (expected MAE drop: the naive-zero gap closes, draws become a real output). Math expert CLEAR, domain CLEAR. This is the clear next step.
-2. Once soccer is restructured, MLB and NHL tweaks (INJURY_COMPENSATION principled sweep + possibly scale refinement). Expected lift: small, needs holdout discipline.
-3. **DO NOT** touch NBA/NFL parameters — they're already at a sensible local optimum for the current feature set; further tweaks risk overfitting to the same backfill.
+**Paired Brier-diff vs naive (constant-home-rate, 95% CI)**:
 
-- **INSIGHT**: MAE naive-zero baseline is a devastating sanity check. Every margin model should be required to beat it, and EPL's failure would not have surfaced without it. Filed as a ratchet criterion for future margin models: if the new model doesn't beat predict-zero on >4/6 sports, don't ship.
-- **INSIGHT**: "Compute every backtest the existing data permits BEFORE shipping" (previous session's lesson) paid off immediately — the EPL-worse-than-zero finding was undetectable from aggregate Brier or winner-accuracy numbers alone. Per-sport naive baselines are where failures live.
+| sport | Brier | nvBr | Brier − nvBr (95% CI) | verdict |
+|------|-------|------|----------------------|---------|
+| NBA | 0.2258 | 0.2477 | −0.022 [−0.026, −0.018] | ✓ beats |
+| NFL | 0.2320 | 0.2487 | −0.017 [−0.026, −0.006] | ✓ beats |
+| MLB | 0.2449 | 0.2485 | −0.004 [−0.006, −0.002] | ✓ beats (small) |
+| NHL | 0.2444 | 0.2482 | −0.004 [−0.006, −0.001] | ✓ beats (small) |
+| MLS | 0.2281 | 0.2417 | −0.014 [−0.020, −0.006] | ✓ beats |
+| EPL | 0.2140 | 0.2474 | −0.033 [−0.042, −0.024] | ✓ beats (largest) |
+
+- **KEEP**: 1000-sample bootstrap CI with deterministic seed per sport:slice. Reproducible across runs. Paired diffs computed within-resample so CIs reflect covariance.
+- **KEEP**: Paired-diff verdict trichotomy (✓ beats / ✗ LOSES / ~ tie) anchored at CI vs zero. No more "lift %" headlines without CI backing.
+- **KEEP**: `data/baselines/baseline-<date>.json` as the reference point — every future tweak measured against this file.
+- **KEEP**: Naive baselines (predict-zero, predict-home_adv, constant-home-rate) in the report — a bare MAE/Brier number is meaningless without them.
+- **KEEP**: 80/20 date split per sport — fingerprint slice for future tweak A/B, labelled as fingerprint-not-holdout given in-sample calibration.
+- **KEEP**: Bias CI across all sports — max |bias| = +0.60 NBA but CI includes zero for NFL/NHL/MLS. MAE is variance-dominated, not shift-correctable. Tuning home_advantage as an additive shift would not help.
+- **KEEP**: naive-Brier closed-form (p*(1-p)) instead of summing (p-y)² — identical when p is in-slice rate, faster, less numerical drift.
+
+**Findings corrected by CIs vs the initial commit:**
+- **CORRECTED**: "EPL margin is WORSE than predict-zero" was **not** statistically supported on the full slice. CI straddles zero: +0.03 [−0.04, +0.09]. Original claim overinterpreted a 0.03-unit difference on N=699 with σ=1.76 (SE ≈ 0.07). The test-slice does show a loss but on N=140. **Revised claim: EPL margin cannot beat predict-zero at 95% CI** — which is still a strong signal that the structural model is wrong for soccer, just phrased honestly.
+- **CORRECTED**: "MLS ties predict-zero" was directionally right but with much wider CI than implied. The tie is genuine (CI straddles zero), not a point match.
+- **CORRECTED**: MLB "barely beats naive" — actually the CI doesn't include zero. MLB does significantly beat predict-zero. Effect size is trivially small (−0.042 runs, d ≈ 0.01) but the verdict is ✓, not "barely."
+- **CONFIRMED**: NBA, NFL, NHL all beat predict-zero with CIs comfortably off zero.
+- **CONFIRMED**: Every sport's winner/Brier model beats naive Brier with CI off zero on the full slice (including MLS/EPL). The winner model is doing real work in soccer even while the margin model flat-lines.
+
+**Revised sequencing:**
+1. **MLS + EPL Poisson/Skellam margin model** remains the clear next step. Justification is now: margin model cannot be distinguished from predict-zero on either soccer league at 95% CI, while the winner (Brier) model works fine. Binary sigmoid on ternary outcome is still the best theoretical explanation. Expected Poisson gain: move from "tie with zero" to "significantly better than zero."
+2. **MLB + NHL** beat predict-zero at 95% CI but the effect is tiny (MLB 1.2% of σ_actual, NHL 2.7% of σ_actual). Parameter tweaks are unlikely to find large gains. Better return is probably structural: MLB bullpen + rest, NHL starting goalie. Defer both until after soccer Poisson ships.
+3. **NBA / NFL**: current parameters at a sensible local optimum for the current feature set. Future gains require new features (rest, travel, back-to-backs, positional injury), not parameter sweeps. **This phrasing replaces "do not touch" — the parameters are frozen but the feature set is not.**
+
+- **INSIGHT**: Every "lift %" claim before this rewrite was a point estimate dressed up as a finding. A 1.1% lift on MAE 3.48 with SE 0.057 is statistically real (CI excludes zero) but practically trivial (under 1% of σ_actual). CIs separate those two questions and the report now shows them separately — verdict (significant?) and effect size (how big?).
+- **INSIGHT**: Bootstrap CIs on paired diffs — not independent CIs on model and baseline — are the right abstraction. Independent CIs often overlap when the paired diff CI is comfortably off zero (because model and baseline covary on the same slice). Code resamples the index set once per iteration and recomputes both statistics on the same resample.
+- **INSIGHT**: Council review on my own analysis caught a Stats FAIL I had shipped. Pattern matches the v4-spread-without-baseline bug at a different layer: confidence-without-uncertainty is as unsafe as prediction-without-backtest. Rule: any table of lifts / diffs / deltas ships with CIs or it doesn't ship.
+- **INSIGHT**: MAE naive-zero baseline is still a devastating sanity check. Two sports now fail to beat it at 95% CI (MLS, EPL) — a failure mode invisible from aggregate Brier or winner-accuracy numbers. Filed as ratchet criterion for future margin models: if new model's MAE − nv0 CI crosses zero on any sport, flag it.
+- **INSIGHT**: "Compute every backtest the existing data permits BEFORE shipping" paid off, but the initial shipping was premature. Revised rule: "compute the backtest AND its uncertainty before shipping." Point estimates are half the deliverable.
 

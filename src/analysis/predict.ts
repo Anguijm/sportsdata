@@ -314,8 +314,15 @@ const SPORT_EDGE_THRESHOLDS: Record<string, { strong: number; lean: number }> = 
  *
  *  Formula: base margin from differential gap + home advantage + streak adjustments.
  *  Same inputs as v3 but continuous output instead of probability buckets.
- *  For MLB, pitcher ERA differential adjusts the margin when available. */
-export function predictMargin(game: GameForPrediction, ctx: PredictionContext, pitchers?: PitcherMatchup): number {
+ *  For MLB, pitcher ERA differential adjusts the margin when available.
+ *  When injury data is available, missing-player impact shifts the margin
+ *  using the same INJURY_COMPENSATION factor as the v5 winner model. */
+export function predictMargin(
+  game: GameForPrediction,
+  ctx: PredictionContext,
+  pitchers?: PitcherMatchup,
+  injuries?: InjuryImpact,
+): number {
   const sport = game.sport;
   const homeAdv = SPORT_HOME_ADVANTAGE[sport] ?? 3.0;
   const clamp = SPORT_MARGIN_CLAMP[sport] ?? 30;
@@ -347,6 +354,18 @@ export function predictMargin(game: GameForPrediction, ctx: PredictionContext, p
   if (sport === 'mlb' && pitchers && pitchers.homeEra > 0 && pitchers.awayEra > 0) {
     const eraGap = pitchers.awayEra - pitchers.homeEra; // positive = home pitcher better
     margin += eraGap * 0.3;
+  }
+
+  // Injury adjustment: same formula as v5. Missing-player impact (in
+  // points/runs/goals) shifts the expected margin by the same magnitude,
+  // scaled by INJURY_COMPENSATION (~40% of nominal PPG is truly lost when
+  // a star sits — teammates redistribute the rest). Without this, v5's
+  // win probability reflects the injury but v4-spread predicts a margin
+  // as if the player is playing → stale edge → wrong ATS pick when it
+  // matters most (key player out).
+  if (injuries) {
+    const injuryAdj = (injuries.awayOutImpact - injuries.homeOutImpact) * INJURY_COMPENSATION;
+    margin += injuryAdj;
   }
 
   return Math.max(-clamp, Math.min(clamp, margin));

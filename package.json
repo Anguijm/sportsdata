@@ -19,6 +19,7 @@
     "predict": "npx tsx src/cli/predict.ts",
     "backfill:predict": "npx tsx src/cli/backfill-predictions.ts",
     "backfill:historical": "npx tsx src/cli/backfill-historical.ts",
+    "baseline": "npx tsx src/cli/baseline.ts",
     "findings": "npx tsx src/cli/findings.ts",
     "api": "npx tsx src/viz/data-api.ts",
     "viz": "npx tsx src/viz/data-api.ts & npx vite",

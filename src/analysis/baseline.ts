@@ -127,23 +127,33 @@ export interface BaselineMetrics {
   marginMAE_minus_naiveHomeAdv: CI;
   brierScore_minus_naiveBrier: CI;
   /** Whether this slice has Poisson predictions populated (MLS/EPL only).
-   *  When false, the poisson* fields below are present but meaningless. */
+   *  When false, the poisson* fields below are null — they were previously
+   *  zero-filled which serialized as mathematically bogus values in the
+   *  JSON artifact (e.g., NBA poissonMAE_minus_naiveZero = -12.96,
+   *  implying Poisson crushed NBA predict-zero, which is nonsense).
+   *  Codex review on PR #29 caught this; null forces downstream consumers
+   *  to branch on hasPoisson explicitly. */
   hasPoisson: boolean;
-  /** Poisson (Skellam-mean) margin MAE with bootstrap CI. MLS/EPL only. */
-  poissonMAE: CI;
+  /** Poisson (Skellam-mean) margin MAE with bootstrap CI. MLS/EPL only;
+   *  null for other sports. */
+  poissonMAE: CI | null;
   /** Draw-probability Brier: mean((P(Skellam=0) - isDraw)^2) over all
-   *  games in the slice. Secondary metric, not ship-gated. */
-  drawBrier: CI;
-  /** Closed-form naive-draw Brier: drawRate*(1-drawRate). */
-  naiveDrawBrier: CI;
+   *  games in the slice. Secondary metric, not ship-gated. Null for
+   *  non-soccer. */
+  drawBrier: CI | null;
+  /** Closed-form naive-draw Brier: drawRate*(1-drawRate). Null for non-soccer. */
+  naiveDrawBrier: CI | null;
   /** Paired diff CI (poisson MAE − predict-zero MAE). Primary ship gate:
-   *  must be entirely below zero for Poisson to beat the constant. */
-  poissonMAE_minus_naiveZero: CI;
+   *  must be entirely below zero for Poisson to beat the constant. Null
+   *  for non-soccer. */
+  poissonMAE_minus_naiveZero: CI | null;
   /** Paired diff CI (poisson MAE − v4-spread MAE). Secondary: informs
-   *  fallback ship rule (Poisson can ship in a tie with v4-spread). */
-  poissonMAE_minus_v4spread: CI;
-  /** Paired diff CI (poisson draw-Brier − naive-draw Brier). */
-  drawBrier_minus_naiveDraw: CI;
+   *  fallback ship rule (Poisson can ship in a tie with v4-spread). Null
+   *  for non-soccer. */
+  poissonMAE_minus_v4spread: CI | null;
+  /** Paired diff CI (poisson draw-Brier − naive-draw Brier). Null for
+   *  non-soccer. */
+  drawBrier_minus_naiveDraw: CI | null;
 }
 
 export interface SportBaseline {
@@ -679,15 +689,21 @@ function computeMetrics(
     brierScore_minus_naiveBrier:
       ci('brierScore_minus_naiveBrier', point.brierScore_minus_naiveBrier),
     hasPoisson,
-    poissonMAE: ci('poissonMAE', point.poissonMAE),
-    drawBrier: ci('drawBrier', point.drawBrier),
-    naiveDrawBrier: ci('naiveDrawBrier', point.naiveDrawBrier),
-    poissonMAE_minus_naiveZero:
-      ci('poissonMAE_minus_naiveZero', point.poissonMAE_minus_naiveZero),
-    poissonMAE_minus_v4spread:
-      ci('poissonMAE_minus_v4spread', point.poissonMAE_minus_v4spread),
-    drawBrier_minus_naiveDraw:
-      ci('drawBrier_minus_naiveDraw', point.drawBrier_minus_naiveDraw),
+    // Poisson fields: null for non-soccer so consumers must branch on
+    // hasPoisson. Previously zero-filled, which produced deceptive large
+    // negative diffs for NBA/NFL/MLB/NHL — see Codex PR #29 comment.
+    poissonMAE: hasPoisson ? ci('poissonMAE', point.poissonMAE) : null,
+    drawBrier: hasPoisson ? ci('drawBrier', point.drawBrier) : null,
+    naiveDrawBrier: hasPoisson ? ci('naiveDrawBrier', point.naiveDrawBrier) : null,
+    poissonMAE_minus_naiveZero: hasPoisson
+      ? ci('poissonMAE_minus_naiveZero', point.poissonMAE_minus_naiveZero)
+      : null,
+    poissonMAE_minus_v4spread: hasPoisson
+      ? ci('poissonMAE_minus_v4spread', point.poissonMAE_minus_v4spread)
+      : null,
+    drawBrier_minus_naiveDraw: hasPoisson
+      ? ci('drawBrier_minus_naiveDraw', point.drawBrier_minus_naiveDraw)
+      : null,
   };
 }
 
@@ -798,7 +814,10 @@ function renderSportBlock(s: SportBaseline): string {
       lines.push(`    Brier        ${ciStr(m.brierScore, 4)}   nvBr ${ciStr(m.naiveBrier, 4)}`);
       lines.push(`    Brier − nvBr ${ciStr(m.brierScore_minus_naiveBrier, 4, true)}  → ${verdict(sigBrier)} naive Brier`);
     }
-    if (m.hasPoisson) {
+    if (m.hasPoisson
+      && m.poissonMAE && m.poissonMAE_minus_naiveZero
+      && m.poissonMAE_minus_v4spread && m.drawBrier
+      && m.naiveDrawBrier && m.drawBrier_minus_naiveDraw) {
       const sigPoisZero = significance(m.poissonMAE_minus_naiveZero);
       const sigPoisV4 = significance(m.poissonMAE_minus_v4spread);
       const sigDrawBrier = significance(m.drawBrier_minus_naiveDraw);

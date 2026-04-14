@@ -1,4 +1,4 @@
-Baseline Analysis — generated 2026-04-14T19:34:30.347Z
+Baseline Analysis — generated 2026-04-14T19:52:48.120Z
 Models: winner=v5, margin=v4-spread, soccer-margin=v6-poisson-soccer
 Train cutoff: season 2023 (analyzing post-cutoff held-out games)
 Holdout split: earliest 80% / latest 20% by date

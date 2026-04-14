@@ -302,3 +302,44 @@ Computed per-sport margin MAE / RMSE / bias / Brier / winner accuracy on 16,777 
 - **INSIGHT**: MAE naive-zero baseline is still a devastating sanity check. Two sports now fail to beat it at 95% CI (MLS, EPL) — a failure mode invisible from aggregate Brier or winner-accuracy numbers. Filed as ratchet criterion for future margin models: if new model's MAE − nv0 CI crosses zero on any sport, flag it.
 - **INSIGHT**: "Compute every backtest the existing data permits BEFORE shipping" paid off, but the initial shipping was premature. Revised rule: "compute the backtest AND its uncertainty before shipping." Point estimates are half the deliverable.
 
+
+### soccer-poisson-v1-null-result (2026-04-14)
+
+Built independent-Poisson/Skellam margin model (v6-poisson-soccer) per Plans/soccer-poisson.md (council-CLEAR after 6 corrections). Ran A/B against pre-declared ship gate. **Result: primary ship gate fails on both leagues. Per pre-declared rule 3: do not ship as replacement.**
+
+**Findings** (95% bootstrap CI, paired within-resample):
+
+| Slice | Poisson MAE − predict-zero | Poisson MAE − v4-spread | Draw Brier − naive |
+|---|---|---|---|
+| MLS all | −0.007 [−0.049, +0.032] ~ tie | −0.003 [−0.011, +0.005] ~ tie | −0.0023 [−0.0051, +0.0006] ~ tie |
+| EPL all | +0.007 [−0.053, +0.067] ~ tie | **−0.019 [−0.036, −0.002] ✓ beats** | +0.0003 [−0.0033, +0.0044] ~ tie |
+
+**Interpretation:**
+- Poisson demonstrably improves on v4-spread for EPL (CI off zero) but not enough to cross the predict-zero bar.
+- MLS Poisson ties v4-spread — both indistinguishable from a constant. MLS margin signal is not captured by per-team scoring/conceding rates alone (conference bias hypothesis per plan).
+- MLS draw-Brier is directionally better than naive-draw, nearly clears tie.
+- EPL draw-Brier matches naive — independent Poisson under-predicts draws (known Dixon-Coles 1997 issue).
+
+**What this did NOT prove:**
+- That Poisson is wrong for soccer — EPL-beats-v4-spread says the family helps, just not enough.
+- That v4-spread is right — it also fails the predict-zero bar.
+- That Dixon-Coles / MLE / different feature set won't work — this was independent-Poisson v1, explicitly the simplest defensible member of the family.
+
+**What this DID prove:**
+- Pre-declared ship rules work. The "primary fails on both → don't ship" rule prevented shipping an insignificant improvement as a structural fix. Without the pre-declaration, the EPL-beats-v4-spread CI-off-zero result would have tempted scope drift.
+- The A/B infrastructure (baseline.ts Poisson fields + paired CI diffs) is reusable for any future soccer margin attempt — next iteration doesn't rebuild this.
+- Independent Poisson with per-team running-average α/β is underpowered on soccer's small-N slices (EPL 699) to clear predict-zero. MLE over all past matches + Dixon-Coles τ + recent-form weighting is the next avenue to try.
+
+- **KEEP**: Pre-declaring ship rules as part of a council-validated plan. This is what made the null result usable rather than demoralizing. Future per-sport model attempts must follow this pattern.
+- **KEEP**: A/B infrastructure in `baseline.ts` (Poisson MAE, draw Brier, paired diffs against both v4-spread and predict-zero) — reusable.
+- **KEEP**: `src/analysis/poisson.ts` as the reference implementation of Skellam margin for soccer. Any Dixon-Coles extension builds on this.
+- **KEEP**: Plans/soccer-poisson.md as the audit record of the council-validated approach + the explicit non-scope list.
+- **DON'T**: Wire Poisson into the live prediction runner. Pre-declared ship rule 3 says don't, and that's the rule.
+- **INSIGHT**: Independent Poisson with simple running averages on ~1000-game slices is underpowered to detect soccer-margin improvements against the noisy predict-zero baseline. The soccer margin noise floor is genuinely near predict-zero — any model that beats it needs to do so by >0.13 MAE units on EPL (2×SE) or >0.09 on MLS. That's a 7-10% reduction, at the upper end of what literature reports.
+- **INSIGHT**: The pattern "beat v4-spread but tie predict-zero" reveals that v4-spread's failure was structural (predicting something meaningful but in the wrong distribution family), while Poisson's failure is underpowered (right family, not enough signal extraction). Different bugs, different fixes.
+- **INSIGHT**: Draw-probability Brier as a secondary metric was useful: it surfaced that MLS draw modeling is directionally better but EPL is not — aligns with the Dixon-Coles literature that independent Poisson under-predicts draws in higher-draw-rate leagues.
+- **FOLLOW-UP DEBTS filed** (for the next soccer attempt):
+  - Dixon-Coles low-score τ correction — boosts P(0-0, 1-1) and should improve draw Brier, especially EPL
+  - MLE fitting of α, β, μ_home over all pre-cutoff matches (once pre-cutoff soccer data is scraped) — gets away from the in-sample concern
+  - Recent-form weighting (exponential decay on last N matches) per Dixon-Coles
+  - Scraping pre-2024 soccer data to get a real out-of-sample holdout

@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Bash commands. Blocks `git commit` and `git push` on a
-# branch whose contents are already merged into origin/main (the exact failure
-# mode documented in learnings.md "session-handoff-discipline": pushing to a
-# branch that had already been squash-merged).
+# PreToolUse hook for Bash commands. Blocks `git push` on a branch whose
+# contents are already merged into origin/main — the exact failure mode from
+# learnings.md "session-handoff-discipline" (pushing to a branch that had
+# already been squash-merged).
+#
+# Scope: `git push` only, NOT `git commit`. Commits are local and recoverable
+# (cherry-pick to a fresh branch); pushes are the risky op. Checking at commit
+# time also misfires on the first commit of a new branch created from main,
+# when HEAD..origin/main is empty until after the commit lands (Codex P1).
 #
 # Detection heuristic: if the current branch is not main/master AND the
-# directory diff between origin/main and HEAD is empty, the branch's contents
-# are already in main — it was squash-merged or rebase-merged, and any new
-# commits on this branch are orphaned work.
+# directory diff between origin/main and HEAD is empty, the branch's content
+# is already in main — it was squash-merged or rebase-merged.
 #
 # Input: JSON from stdin (Claude Code hook contract), with .tool_input.command.
 # Output: on block, stdout JSON with hookSpecificOutput.permissionDecision=deny.
 #         on allow, exit 0 with no output.
 #
-# Never blocks unrelated bash commands, never blocks commits on main/master,
+# Never blocks unrelated bash commands, never blocks pushes on main/master,
 # and never blocks if origin/main is unreachable (fail-open on infra errors).
 
 set -u
@@ -21,9 +25,9 @@ set -u
 input=$(cat)
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""')
 
-# Only intercept `git commit` or `git push`. Match with a word boundary so
-# commands like `git pushd` or `git commitish` don't false-positive.
-if ! echo "$cmd" | grep -qE '(^|[[:space:]])git[[:space:]]+(commit|push)([[:space:]]|$)'; then
+# Only intercept `git push`. Match with word boundary so `git pushd` doesn't
+# false-positive. `git commit` is explicitly NOT matched — see header comment.
+if ! echo "$cmd" | grep -qE '(^|[[:space:]])git[[:space:]]+push([[:space:]]|$)'; then
   exit 0
 fi
 

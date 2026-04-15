@@ -1,19 +1,19 @@
 === Reliability Diagrams (per sport, from baseline replay) ===
-generated: 2026-04-15T00:52:56.673Z
+generated: 2026-04-15T03:27:36.425Z
 total games: 16777  lowCnf: 268  draws: 631
 
 In-sample caveat: Engine constants (sigmoid_scale, home_advantage, win-gap buckets) were calibrated against this same corpus. Reliability numbers are IN-SAMPLE w.r.t. those knobs. See src/analysis/baseline.ts header for the full disclosure.
 
 ── NBA  (N=5196, lowCnf=17, draws=10) ──
-  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=3513):
-    bin 0.50-0.55  n=  607  pred=0.526  actual=0.530 [0.491, 0.570]  resid +0.005
-    bin 0.55-0.60  n=  652  pred=0.577  actual=0.597 [0.559, 0.634]  resid +0.020
-    bin 0.60-0.65  n=  593  pred=0.624  actual=0.560 [0.520, 0.599]  resid -0.065
-    bin 0.65-0.70  n=  577  pred=0.674  actual=0.636 [0.596, 0.674]  resid -0.038
-    bin 0.70-0.75  n=  453  pred=0.723  actual=0.711 [0.667, 0.751]  resid -0.013
-    bin 0.75-0.80  n=  352  pred=0.775  actual=0.773 [0.726, 0.813]  resid -0.002
-    bin 0.80-0.85  n=  279  pred=0.828  actual=0.796 [0.745, 0.839]  resid -0.033
-    ECE=0.0260   signedResid=-0.0170   populated=7/10   verdict: HONEST
+  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=5186):
+    bin 0.50-0.55  n= 1108  pred=0.525  actual=0.532 [0.503, 0.562]  resid +0.007
+    bin 0.55-0.60  n= 1043  pred=0.576  actual=0.593 [0.563, 0.623]  resid +0.018
+    bin 0.60-0.65  n=  919  pred=0.624  actual=0.585 [0.553, 0.617]  resid -0.039
+    bin 0.65-0.70  n=  821  pred=0.674  actual=0.660 [0.627, 0.692]  resid -0.014
+    bin 0.70-0.75  n=  568  pred=0.723  actual=0.722 [0.684, 0.757]  resid -0.001
+    bin 0.75-0.80  n=  423  pred=0.774  actual=0.778 [0.736, 0.815]  resid +0.004
+    bin 0.80-0.85  n=  304  pred=0.829  actual=0.813 [0.765, 0.852]  resid -0.016
+    ECE=0.0156   signedResid=-0.0048   populated=7/10   verdict: HONEST
   Margin reliability (2-unit bins, -20..20, model v4-spread, N=5196):
     bin  -20.0.. -18.0  n=   13  pred=-19.23  actual=-20.00 [-27.74, -12.26]  resid -0.77  terminal
     bin  -18.0.. -16.0  n=   11  pred=-17.01  actual=-19.18 [-24.81, -13.56]  resid -2.18
@@ -38,15 +38,15 @@ In-sample caveat: Engine constants (sigmoid_scale, home_advantage, win-gap bucke
     weightedMAE=0.957 units   signedResid=-0.605   populated=20/20   verdict: BIASED_HIGH
 
 ── NFL  (N=621, lowCnf=2, draws=4) ──
-  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=401):
-    bin 0.50-0.55  n=   74  pred=0.523  actual=0.514 [0.402, 0.624]  resid -0.010  ciWide
-    bin 0.55-0.60  n=   76  pred=0.572  actual=0.579 [0.467, 0.684]  resid +0.007  ciWide
-    bin 0.60-0.65  n=   80  pred=0.623  actual=0.713 [0.605, 0.800]  resid +0.090  ciWide
-    bin 0.65-0.70  n=   71  pred=0.673  actual=0.620 [0.503, 0.724]  resid -0.053  ciWide
-    bin 0.70-0.75  n=   49  pred=0.723  actual=0.633 [0.493, 0.753]  resid -0.091  ciWide
-    bin 0.75-0.80  n=   30  pred=0.772  actual=0.700 [0.521, 0.833]  resid -0.072  ciWide
+  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=617):
+    bin 0.50-0.55  n=  146  pred=0.524  actual=0.527 [0.447, 0.607]  resid +0.004  ciWide
+    bin 0.55-0.60  n=  129  pred=0.573  actual=0.636 [0.550, 0.714]  resid +0.062  ciWide
+    bin 0.60-0.65  n=  130  pred=0.624  actual=0.700 [0.616, 0.772]  resid +0.076  ciWide
+    bin 0.65-0.70  n=   95  pred=0.672  actual=0.621 [0.521, 0.712]  resid -0.051  ciWide
+    bin 0.70-0.75  n=   60  pred=0.723  actual=0.633 [0.507, 0.744]  resid -0.090  ciWide
+    bin 0.75-0.80  n=   36  pred=0.772  actual=0.694 [0.531, 0.820]  resid -0.078  ciWide
     bin 0.80-0.85  n=   21  pred=0.825  actual=0.810 [0.600, 0.923]  resid -0.015  ciWide
-    ECE=0.0476   signedResid=-0.0093   populated=7/10   verdict: HONEST
+    ECE=0.0515   signedResid=+0.0082   populated=7/10   verdict: HONEST
   Margin reliability (2-unit bins, -20..20, model v4-spread, N=621):
     bin  -16.0.. -14.0  n=    1  pred=-14.38  actual=+7.00 [+7.00, +7.00]  resid +21.38
     bin  -14.0.. -12.0  n=    5  pred=-12.71  actual=-11.80 [-23.73, +0.13]  resid +0.91  ciWide
@@ -68,15 +68,15 @@ In-sample caveat: Engine constants (sigmoid_scale, home_advantage, win-gap bucke
     weightedMAE=2.242 units   signedResid=-0.094   populated=17/20   verdict: HONEST
 
 ── MLB  (N=6270, lowCnf=90, draws=157) ──
-  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=4238):
-    bin 0.50-0.55  n= 1605  pred=0.527  actual=0.546 [0.521, 0.570]  resid +0.019
-    bin 0.55-0.60  n= 1419  pred=0.573  actual=0.560 [0.534, 0.585]  resid -0.013
-    bin 0.60-0.65  n=  720  pred=0.624  actual=0.588 [0.551, 0.623]  resid -0.036
-    bin 0.65-0.70  n=  390  pred=0.671  actual=0.649 [0.600, 0.694]  resid -0.023
-    bin 0.70-0.75  n=   77  pred=0.718  actual=0.701 [0.592, 0.792]  resid -0.017  ciWide
-    bin 0.75-0.80  n=   16  pred=0.764  actual=0.688 [0.444, 0.858]  resid -0.076  ciWide
-    bin 0.80-0.85  n=   11  pred=0.830  actual=0.636 [0.354, 0.848]  resid -0.194  ciWide
-    ECE=0.0207   signedResid=-0.0067   populated=7/10   verdict: HONEST
+  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=6113):
+    bin 0.50-0.55  n= 2575  pred=0.525  actual=0.529 [0.510, 0.548]  resid +0.004
+    bin 0.55-0.60  n= 1972  pred=0.572  actual=0.553 [0.531, 0.575]  resid -0.019
+    bin 0.60-0.65  n=  985  pred=0.622  actual=0.598 [0.567, 0.628]  resid -0.025
+    bin 0.65-0.70  n=  458  pred=0.671  actual=0.644 [0.599, 0.687]  resid -0.027
+    bin 0.70-0.75  n=   90  pred=0.719  actual=0.689 [0.587, 0.775]  resid -0.030  ciWide
+    bin 0.75-0.80  n=   21  pred=0.766  actual=0.667 [0.454, 0.828]  resid -0.099  ciWide
+    bin 0.80-0.85  n=   12  pred=0.832  actual=0.583 [0.320, 0.807]  resid -0.248  ciWide
+    ECE=0.0152   signedResid=-0.0117   populated=7/10   verdict: HONEST
   Margin reliability (1-unit bins, -10..10, model v4-spread, N=6270):
     bin   -7.0..  -6.0  n=    1  pred=-6.65  actual=+5.00 [+5.00, +5.00]  resid +11.65
     bin   -5.0..  -4.0  n=    4  pred=-4.37  actual=-1.25 [-4.06, +1.56]  resid +3.12
@@ -94,14 +94,14 @@ In-sample caveat: Engine constants (sigmoid_scale, home_advantage, win-gap bucke
     weightedMAE=0.453 units   signedResid=-0.351   populated=13/20   verdict: HONEST
 
 ── NHL  (N=2832, lowCnf=13, draws=4) ──
-  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=1946):
-    bin 0.50-0.55  n=  827  pred=0.526  actual=0.526 [0.492, 0.560]  resid -0.000
-    bin 0.55-0.60  n=  618  pred=0.573  actual=0.566 [0.527, 0.605]  resid -0.007
-    bin 0.60-0.65  n=  348  pred=0.619  actual=0.644 [0.592, 0.692]  resid +0.025
-    bin 0.65-0.70  n=  102  pred=0.671  actual=0.618 [0.521, 0.706]  resid -0.054  ciWide
+  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=2828):
+    bin 0.50-0.55  n= 1374  pred=0.525  actual=0.521 [0.495, 0.547]  resid -0.004
+    bin 0.55-0.60  n=  822  pred=0.572  actual=0.543 [0.508, 0.576]  resid -0.029
+    bin 0.60-0.65  n=  438  pred=0.620  actual=0.637 [0.591, 0.681]  resid +0.017
+    bin 0.65-0.70  n=  142  pred=0.672  actual=0.634 [0.552, 0.709]  resid -0.038  ciWide
     bin 0.70-0.75  n=   45  pred=0.719  actual=0.667 [0.521, 0.786]  resid -0.053  ciWide
-    bin 0.75-0.80  n=    6  pred=0.759  actual=1.000 [0.610, 1.000]  resid +0.241  ciWide
-    ECE=0.0114   signedResid=-0.0011   populated=6/10   verdict: HONEST
+    bin 0.75-0.80  n=    7  pred=0.759  actual=0.857 [0.487, 0.974]  resid +0.098  ciWide
+    ECE=0.0162   signedResid=-0.0103   populated=6/10   verdict: HONEST
   Margin reliability (1-unit bins, -6..6, model v4-spread, N=2832):
     bin   -3.0..  -2.0  n=    2  pred=-2.37  actual=+2.00 [+0.04, +3.96]  resid +4.37
     bin   -2.0..  -1.0  n=  111  pred=-1.36  actual=-0.96 [-1.41, -0.52]  resid +0.40
@@ -112,15 +112,15 @@ In-sample caveat: Engine constants (sigmoid_scale, home_advantage, win-gap bucke
     weightedMAE=0.234 units   signedResid=-0.044   populated=6/12   verdict: HONEST
 
 ── MLS  (N=1159, lowCnf=82, draws=279) ──
-  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=597):
-    bin 0.50-0.55  n=  136  pred=0.525  actual=0.551 [0.468, 0.633]  resid +0.027  ciWide
-    bin 0.55-0.60  n=  147  pred=0.575  actual=0.592 [0.511, 0.668]  resid +0.017  ciWide
-    bin 0.60-0.65  n=  132  pred=0.625  actual=0.750 [0.670, 0.816]  resid +0.125
-    bin 0.65-0.70  n=  132  pred=0.674  actual=0.705 [0.622, 0.776]  resid +0.031  ciWide
-    bin 0.70-0.75  n=   40  pred=0.723  actual=0.675 [0.520, 0.799]  resid -0.048  ciWide
+  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=880):
+    bin 0.50-0.55  n=  300  pred=0.521  actual=0.500 [0.444, 0.556]  resid -0.021
+    bin 0.55-0.60  n=  224  pred=0.574  actual=0.598 [0.533, 0.660]  resid +0.025
+    bin 0.60-0.65  n=  163  pred=0.625  actual=0.730 [0.657, 0.792]  resid +0.105
+    bin 0.65-0.70  n=  141  pred=0.674  actual=0.709 [0.630, 0.778]  resid +0.035
+    bin 0.70-0.75  n=   42  pred=0.722  actual=0.690 [0.540, 0.809]  resid -0.032  ciWide
     bin 0.75-0.80  n=    8  pred=0.767  actual=1.000 [0.676, 1.000]  resid +0.233  ciWide
     bin 0.80-0.85  n=    2  pred=0.810  actual=0.500 [0.095, 0.905]  resid -0.310  ciWide
-    ECE=0.0521   signedResid=+0.0436   populated=7/10   verdict: SHY
+    ECE=0.0429   signedResid=+0.0241   populated=7/10   verdict: SHY
   Margin reliability (1-unit bins, -5..5, model v4-spread, N=1159):
     bin   -2.0..  -1.0  n=   31  pred=-1.27  actual=-0.19 [-0.69, +0.31]  resid +1.07
     bin   -1.0..  +0.0  n=  312  pred=-0.39  actual=-0.07 [-0.27, +0.12]  resid +0.31
@@ -138,15 +138,15 @@ In-sample caveat: Engine constants (sigmoid_scale, home_advantage, win-gap bucke
     weightedMAE=0.159 units   signedResid=-0.004   populated=6/10   verdict: HONEST
 
 ── EPL  (N=699, lowCnf=64, draws=177) ──
-  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=321):
-    bin 0.50-0.55  n=   64  pred=0.527  actual=0.531 [0.411, 0.648]  resid +0.004  ciWide
-    bin 0.55-0.60  n=   82  pred=0.572  actual=0.561 [0.453, 0.663]  resid -0.011  ciWide
-    bin 0.60-0.65  n=   59  pred=0.621  actual=0.593 [0.466, 0.709]  resid -0.028  ciWide
-    bin 0.65-0.70  n=   64  pred=0.675  actual=0.813 [0.700, 0.889]  resid +0.137  ciWide
-    bin 0.70-0.75  n=   24  pred=0.726  actual=0.833 [0.641, 0.933]  resid +0.107  ciWide
-    bin 0.75-0.80  n=   16  pred=0.773  actual=0.813 [0.570, 0.934]  resid +0.039  ciWide
-    bin 0.80-0.85  n=   12  pred=0.828  actual=0.917 [0.646, 0.985]  resid +0.089  ciWide
-    ECE=0.0493   signedResid=+0.0337   populated=7/10   verdict: SHY
+  Winner-prob reliability (10 bins, 0.5-1.0, model v5, N=522):
+    bin 0.50-0.55  n=  162  pred=0.530  actual=0.506 [0.430, 0.582]  resid -0.024  ciWide
+    bin 0.55-0.60  n=  131  pred=0.573  actual=0.603 [0.517, 0.683]  resid +0.030  ciWide
+    bin 0.60-0.65  n=   87  pred=0.621  actual=0.655 [0.551, 0.747]  resid +0.035  ciWide
+    bin 0.65-0.70  n=   75  pred=0.675  actual=0.800 [0.696, 0.875]  resid +0.125  ciWide
+    bin 0.70-0.75  n=   32  pred=0.726  actual=0.813 [0.647, 0.911]  resid +0.087  ciWide
+    bin 0.75-0.80  n=   20  pred=0.773  actual=0.850 [0.640, 0.948]  resid +0.077  ciWide
+    bin 0.80-0.85  n=   15  pred=0.828  actual=0.933 [0.702, 0.988]  resid +0.106  ciWide
+    ECE=0.0502   signedResid=+0.0351   populated=7/10   verdict: SHY
   Margin reliability (1-unit bins, -5..5, model v4-spread, N=699):
     bin   -4.0..  -3.0  n=    1  pred=-3.40  actual=-1.00 [-1.00, -1.00]  resid +2.40
     bin   -3.0..  -2.0  n=    6  pred=-2.38  actual=-0.83 [-1.16, -0.51]  resid +1.54

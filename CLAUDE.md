@@ -6,12 +6,14 @@ re-explanation.
 
 ## Git hygiene (enforced by .claude/settings.json hooks)
 
-1. **Never push or commit to a branch that has already been merged.**
-   Before running any `git commit` or `git push`, the harness auto-runs
+1. **Never push to a branch that has already been merged.**
+   Before running any `git push`, the harness auto-runs
    `.claude/hooks/check-branch-not-merged.sh`, which fetches `origin/main` and
    refuses the command if the current branch has no content-difference from
-   `origin/main` (the signature of a squash-merged branch). Don't work around
-   the hook. If it fires: create a fresh branch from `origin/main`:
+   `origin/main` (the signature of a squash-merged branch). `git commit` is
+   intentionally NOT intercepted — local commits are recoverable, and pushes
+   are the failure mode the hook exists to prevent. Don't work around the
+   hook. If it fires: create a fresh branch from `origin/main`:
 
    ```
    git fetch origin main

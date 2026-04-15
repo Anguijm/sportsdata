@@ -3,8 +3,11 @@
  * Debt #11 (Sprint 7 Researcher, elevated + generalized Sprint 10.8).
  *
  * Two views per sport:
- *   A) Winner-prob reliability (v5): 10 equal bins over [0.5, 1.0], Wilson CI
- *      on actual home-win rate, ECE over populated bins, signed residual.
+ *   A) Winner-prob reliability (v5): 10 equal bins over [0.5, 1.0]. The
+ *      model emits a home-win probability in [0.15, 0.85]; we transform
+ *      each row to (confidence_in_pick, correct?) via pickedHome = p >= 0.5
+ *      so away-favored games contribute to calibration too. Wilson CI on
+ *      actual-correct rate, ECE over populated bins, signed residual.
  *   B) Margin reliability (v4-spread, plus Poisson for MLS/EPL as a second
  *      track): sport-aware bin widths (NBA/NFL 2pt, MLB 1run, NHL/soccer
  *      1goal); normal-theory CI on actual-margin mean per bin (sample SD,
@@ -179,13 +182,23 @@ export function computeWinnerProbReliability(
   let eligible = 0;
   for (const r of rows) {
     if (r.isDraw) continue;                 // winner-prob reliability = binary; skip draws
+    // `predictedProb` is P(home_wins) in [0, 1] (v5 clamps to [0.15, 0.85]).
+    // Convert to confidence-in-pick in [0.5, 1.0] and correctness against the
+    // picked side so away-favored games also contribute to calibration.
+    // (Codex P1: previously filtered p < 0.5, which silently dropped ~30% of
+    // non-draw NBA games and biased ECE toward home-favored predictions only.)
     const p = r.predictedProb;
-    if (p < 0.5 || p > 1.0) continue;       // defensive: shouldn't happen by convention
-    let idx = Math.floor((p - 0.5) / binWidth);
-    if (idx >= binCount) idx = binCount - 1; // terminal bin closed both ends
+    if (!Number.isFinite(p) || p < 0 || p > 1) continue; // defensive
+    const pickedHome = p >= 0.5;
+    const confidence = pickedHome ? p : 1 - p;
+    const correct: 0 | 1 = pickedHome ? r.homeWin : (r.homeWin === 1 ? 0 : 1);
+    if (confidence < 0.5 || confidence > 1.0) continue;  // defensive post-transform
+
+    let idx = Math.floor((confidence - 0.5) / binWidth);
+    if (idx >= binCount) idx = binCount - 1;              // terminal bin closed both ends
     if (idx < 0) idx = 0;
-    buckets[idx].sumPred += p;
-    buckets[idx].correct += r.homeWin;
+    buckets[idx].sumPred += confidence;
+    buckets[idx].correct += correct;
     buckets[idx].n += 1;
     eligible += 1;
   }
@@ -492,6 +505,23 @@ export function __selfCheck(): { pass: boolean; reason?: string } {
   const a = computeWinnerProbReliability(rowsA);
   if (a.ece === null || Math.abs(a.ece - 0.125) > 1e-9) {
     return { pass: false, reason: `ECE expected 0.125, got ${a.ece}` };
+  }
+  // Transform check (Codex P1): away-favored game with predictedProb=0.38
+  // should become confidence=0.62 with correct=1 (because homeWin=0 => away
+  // won => pick was right). The 4-game set below is byte-equivalent to rowsA
+  // after transform and must produce ECE=0.125 identically.
+  const rowsATransform = [
+    { predictedProb: 0.62, homeWin: 1 as 0 | 1, isDraw: false }, // home pick, home won
+    { predictedProb: 0.37, homeWin: 0 as 0 | 1, isDraw: false }, // away pick -> conf 0.63, away won -> correct
+    { predictedProb: 0.37, homeWin: 0 as 0 | 1, isDraw: false }, // same
+    { predictedProb: 0.38, homeWin: 1 as 0 | 1, isDraw: false }, // away pick -> conf 0.62, home won -> wrong
+  ];
+  const aT = computeWinnerProbReliability(rowsATransform);
+  if (aT.ece === null || Math.abs(aT.ece - 0.125) > 1e-9) {
+    return { pass: false, reason: `ECE (transform) expected 0.125, got ${aT.ece}` };
+  }
+  if (aT.n !== 4) {
+    return { pass: false, reason: `transform check: expected 4 binned, got ${aT.n}` };
   }
   // View B: 4 games, all predicted 5.0, actuals [4, 5, 6, 5]. predAvg=5, actualAvg=5, residual=0.
   const rowsB = [

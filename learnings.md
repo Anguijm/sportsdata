@@ -367,3 +367,38 @@ When asked "Dixon-Coles next" after PR #29 merged, the math expert verified a re
 - **INSIGHT**: The PR #29 null result wasn't "Poisson doesn't work for soccer" — it was "N is too small to detect the expected-size effect." Different diagnosis, different fix. Fixing the diagnosis (scrape more data, debt #26) unlocks the model tier (ξ+MLE, debt #25) that can actually move the metric.
 - **INSIGHT**: Zero-risk infra ratchet steps (reliability diagrams, shadow-logging) are the right choice when the frontier of model work is blocked on data. They sharpen measurement capability, which makes every subsequent model change more surgical.
 - **INSIGHT**: The ship-gate discipline from PR #29 (pre-declared rules, "don't ship if primary CI straddles zero") cascades forward: because we didn't ship Poisson-with-τ as an "obvious improvement", we avoided shipping a change that by math cannot move the metric we'd be shipping to improve. Writing down the math first is a cheap insurance policy.
+
+
+### reliability-diagrams-all-sports (2026-04-15, closes debt #11)
+
+Built `src/analysis/reliability.ts` + `src/cli/reliability.ts` + `data/reliability/reliability-*.{json,txt}` per `Plans/reliability-diagrams.md` (council-CLEAR round 2 after 4 WARN fixes in round 1). Ran on the 16,777-game baseline corpus. Verdicts per sport:
+
+| sport | winner-prob (ECE, sgR) | verdict | margin (wMAE, sgR) | verdict |
+|---|---|---|---|---|
+| NBA | 0.0260, −0.017 | HONEST | 0.957, **−0.605** | **BIASED_HIGH** |
+| NFL | 0.0476, −0.009 | HONEST | 2.242, −0.094 | HONEST |
+| MLB | 0.0207, −0.007 | HONEST | 0.453, −0.351 | HONEST |
+| NHL | 0.0114, −0.001 | HONEST | 0.234, −0.044 | HONEST |
+| MLS | 0.0521, **+0.044** | **SHY** | 0.224, +0.003 | HONEST (v4-spread) / 0.159, −0.004 HONEST (Poisson) |
+| EPL | 0.0493, **+0.034** | **SHY** | 0.229, −0.159 | HONEST (v4-spread) / 0.218, +0.004 HONEST (Poisson) |
+
+**Three actionable findings surfaced** (exactly what debt #11 was filed to find):
+
+1. **NBA v4-spread margin is BIASED_HIGH by ~0.6 points on average.** The model systematically predicts home margins higher than reality. weightedMAE=0.957 points — the bias ISN'T concentrated in a tail, it's spread across populated bins (20/20 populated). Almost certainly fixable by a single-number shift to `SPORT_HOME_ADVANTAGE.nba` or the v4-spread home-diff formula. Filed as follow-up debt.
+2. **MLS/EPL v5 winner-prob is SHY.** The sigmoid under-claims on soccer wins — the 65-70% confidence bins actually hit 70-80%+ accuracy on both leagues. This is the opposite bug from NBA v2's DISCRETE finding. Suggests the sigmoid scale for soccer (0.60, per v5 config) is *too conservative* — calibrating against recent soccer data would sharpen it. Filed as follow-up debt.
+3. **Poisson margin reliability on MLS/EPL is HONEST** with wMAE lower than v4-spread on MLS (0.159 vs 0.224 pts). This contextualizes the PR #29 null result: Poisson is better-calibrated bin-by-bin even though the aggregate MAE doesn't clear predict-zero at 95% CI. Two different things.
+
+**Council process:**
+- Plan: round 1 got 1× CLEAR + 4× WARN → all 4 WARNs fixed in-plan (sample-SD denominator, ciWide flag, terminal-bin note, sport-aware bin widths) → round 2 5× CLEAR.
+- Impl: 5× CLEAR. Self-check (`__selfCheck`) verifies ECE=0.125 and sample SD=√(2/3) to 1e-9 before writing artifact. Bin-count invariant hand-verified. Baseline artifact unchanged except timestamp.
+
+- **KEEP**: Inline `__selfCheck()` with hand-computed synthetic cases. Cheaper than a test framework; catches math drift before artifact writes.
+- **KEEP**: Sport-aware bin widths (Domain WARN fix). Essential — 2-point bins crush NHL/soccer into DISCRETE when they're actually HONEST. Different sports, different scales.
+- **KEEP**: Reliability output is pure instrumentation. No model changed, no ship gate, no A/B. But it SURFACED two real actionable miscalibration findings and contextualized a null result. That's the infra-first payoff.
+- **INSIGHT**: Reliability as "where is the model miscalibrated?" instrumentation does what aggregate MAE/ECE/Brier can never do — identify the SHAPE of the miscalibration (uniform bias vs tail concentration vs discrete output). Two sports with identical ECE can need totally different fixes.
+- **INSIGHT**: The NBA BIASED_HIGH finding with uniform −0.6pt residual across ALL 20 populated bins is the visible signature of a calibration-constant drift, not a structural model bug. Analogous class of issue to v2's discrete-output finding: cheap to fix once surfaced.
+- **INSIGHT**: Soccer v5 SHY finding is counter-intuitive at first (soccer has more noise, so you'd expect OVERCONFIDENT), but makes sense on reflection: the sigmoid scale was set conservatively for a low-confidence baseline cohort, but actual resolved soccer outcomes in the baseline show the model's "probably home wins" calls are more reliable than it thinks.
+- **FOLLOW-UP DEBTS to file** (in SESSION_LOG):
+  - #27 (P1): NBA v4-spread home-advantage re-calibration from baseline (one-number fix targeted by the BIASED_HIGH finding)
+  - #28 (P2): MLS/EPL v5 sigmoid scale re-calibration from baseline (sharpen the SHY sigmoid)
+  - #29 (P3, deferred): ternary reliability for soccer Poisson (separate design; Murphy decomposition)

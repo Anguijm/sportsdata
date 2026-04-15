@@ -34,7 +34,7 @@ import { v5, predictMargin } from './predict.js';
 import type { TeamState } from './predict.js';
 import { isSoccer, predictPoisson } from './poisson.js';
 
-const SPORTS: Sport[] = ['nba', 'nfl', 'mlb', 'nhl', 'mls', 'epl'];
+export const SPORTS: Sport[] = ['nba', 'nfl', 'mlb', 'nhl', 'mls', 'epl'];
 
 /** Train cutoff used by the backfill — 2023 season. Games at or before
  *  this season were "seen" when the engine's parameters were chosen, so
@@ -57,7 +57,10 @@ interface ScoredRow {
   is_draw: number;
 }
 
-interface ReplayedGame {
+/** Exported so `reliability.ts` (debt #11) can consume the same replay
+ *  pipeline without duplicating 700 lines. Shape is stable; if fields are
+ *  added, downstream consumers must add them too. */
+export interface ReplayedGame {
   date: string;
   sport: Sport;
   predictedProb: number;
@@ -288,6 +291,13 @@ function buildStateSnapshots(
   }
 
   return snapshots;
+}
+
+/** Exported for consumption by `reliability.ts` (debt #11). Returns the
+ *  per-sport replay used by the baseline pipeline, so reliability can
+ *  bin the exact same games against the exact same predictions. */
+export function replaySportForExport(sport: Sport): { games: ReplayedGame[]; skipped: number } {
+  return replaySport(sport);
 }
 
 function replaySport(sport: Sport): { games: ReplayedGame[]; skipped: number } {

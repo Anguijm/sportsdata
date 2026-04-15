@@ -4,3 +4,4 @@ data/sqlite/
 data/duckdb/
 .env
 web/dist/
+.claude/settings.local.json

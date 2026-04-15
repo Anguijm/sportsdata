@@ -1,7 +1,7 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
+Last updated: 2026-04-14 (end of Sprint 10.8 — baseline-with-CIs + soccer Poisson null + DC-invariance finding)
 
 ---
 
@@ -9,11 +9,13 @@ Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log before acting on it. Git history is the authoritative timeline.
 
-**Status as of 2026-04-14:** Sprint 10.7 shipped. All work merged to main (PRs #23, #24, #25). No open PRs. No active branches needing attention. Next session starts clean.
+**Status as of 2026-04-14 (late-day, post-#29 merge):** Sprint 10.8 shipped. All work merged to main (PRs #26, #27, #28, #29). No open PRs. Next session starts clean.
+
+**Key finding from Sprint 10.8:** the soccer-Poisson v1 A/B (PR #29) hit its pre-declared null result — Poisson cannot be distinguished from predict-zero at 95% CI on either MLS or EPL, so per pre-declared ship rule 3, the model did NOT ship as a replacement for v4-spread. Also, a post-#29 math review established that Dixon-Coles τ correction (the obvious "next step") **cannot move margin MAE** (E[H−A]_DC = E[H−A]_independent, exactly — see Sprint 10.8 notes below), so the naively-next debt was split and deprioritized.
 
 ### What shipped since Sprint 10
 
-25 PRs (see Sprint-by-Sprint Log for detail):
+29 PRs (see Sprint-by-Sprint Log for detail):
 
 | PRs | Theme |
 |-----|-------|
@@ -30,6 +32,10 @@ Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 | #23 | Session log: documented PRs #1-21 since Sprint 10.5 |
 | #24 | Injury 502 fix + Codex fixes on #22 |
 | #25 | v4-spread injury integration + ESPN scraper hardening + backtesting honesty |
+| #26 | Session handoff: post-merge doc refresh + handoff-discipline lesson |
+| #27 | Per-sport baseline analysis scaffold (debt #13 scaffold) |
+| #28 | Per-sport baseline with bootstrap 95% CIs — closes debt #13 |
+| #29 | Soccer Poisson v1 — A/B infra + null result on pre-declared ship gate |
 
 ### Live model state (post-#25 merge)
 
@@ -50,26 +56,30 @@ Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 
 ### Priority queue for next session
 
-**P0 — first task next session, shippable with existing data:**
-1. **v4-spread margin MAE baseline** — run `predictMargin()` (no injuries, no historical odds needed) on all 12,813 backfilled games, compare predicted margin to actual final margin. Establishes the MAE baseline that was never measured when v4-spread shipped. See council debt #13.
+**P0 — first task next session, surfaced by reliability diagrams (debt #11 closed late Sprint 10.8):**
+1. **NBA v4-spread home-advantage re-calibration (debt #27).** Reliability artifact `data/reliability/reliability-2026-04-15.txt` shows NBA margin is BIASED_HIGH with signedResid=−0.605 points uniform across ALL 20 populated bins (weightedMAE=0.957). This is the signature of a single-number calibration drift, not a structural model bug. One-line fix + baseline re-run to confirm the shift cleared the bias. Smallest shippable code change for a real accuracy improvement.
 
-**HIGH after baseline exists:**
-2. **Shadow-prediction logging** — store naive (no-injury) prediction alongside adjusted on every live v4-spread pick. After N≥30 resolved, compute injury-adjusted vs naive MAE delta. Only way to A/B-test the injury signal — can't do historically (no injury data before 2026-04-13). See council debt #14.
+**HIGH — follow-ons from the reliability findings:**
+2. **MLS/EPL v5 sigmoid scale sharpening (debt #28).** Reliability shows v5 is SHY on both soccer leagues (signedResid +0.04). Tune the sigmoid scale downward from baseline data.
+3. **Shadow-prediction logging for MLS/EPL (extend debt #14).** Store naive / any-new-model predictions alongside the live v4-spread pick on every cron. Essential before any v2 soccer attempt.
+4. **Pre-2024 soccer match scrape (debt #26).** FBref or Understat (Understat includes xG). Unblocks ξ-weighted MLE fitting of α/β and a clean train/test split. Medium infra lift; the gating dependency for any serious soccer v2.
 
-**Then:**
-3. Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) — biggest quality win on existing signal. Council debt #16.
-4. Run ratchet per sport via Actions workflow to regenerate artifacts with v5 + honest baselines.
-5. NHL goalie matchups — ESPN scoreboard doesn't include goalie data; need boxscore or external source.
-6. MLS/EPL draw model — spread model doesn't account for draws (~25% of soccer outcomes).
+**Then, when soccer data lands (v2 soccer campaign):**
+4. Dixon-Coles ξ time-decay + MLE (debt #25) — the *actually* margin-moving half of the DC 1997 paper. Depends on #26.
+5. Dixon-Coles τ low-score correction (debt #24) — strictly a draw-Brier / scoreline-probability improvement. Math-proven zero impact on E[margin] and therefore on our primary ship gate; low priority until we care about 1X2-market calibration.
 
 **Backlog (lower priority):**
+- Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) — biggest quality win on existing signal. Council debt #16.
+- Run ratchet per sport via Actions workflow to regenerate artifacts with v5 + honest baselines.
+- NHL goalie matchups — ESPN scoreboard doesn't include goalie data; need boxscore or external source.
+- MLS/EPL draw-probability model (depends on the soccer v2 campaign above).
 - Player stats scraper in cron (currently stale Sprint 5 ingest)
 - Held-out v5 scale validation (fitted in-sample on backfill)
 - Historical odds ingest (Kaggle / paid) to unlock real v4-spread ATS backtest
 - Full lineup integration from official league APIs
 - Second injury data provider (trigger: ≥3 ESPN failures/week for 2 weeks)
 
-**Verification (run at end of this session, 2026-04-14 17:33 UTC):**
+**Verification (captured at Sprint 10.7 end — 2026-04-14 17:33 UTC; Sprint 10.8 was modeling-only and did not change runtime state):**
 
 | Check | Result | Status |
 |-------|--------|--------|
@@ -79,6 +89,8 @@ Last updated: 2026-04-14 (end of Sprint 10.7 — v4-spread injury integration)
 | v4-spread prediction has `home_out_impact` field | NO — current predictions pre-date the merge | PENDING — confirm after next cron |
 | Cloudflare Pages deploy ran on merge | NOT VERIFIED (no `gh` access from this session) | TODO next session |
 | Fly API deploy ran on merge | NOT VERIFIED — but `/api/health` returns 200 | LIKELY OK, verify |
+
+**Sprint 10.8 note:** PRs #26 (docs), #27-28 (baseline), #29 (soccer Poisson A/B) were all analysis / docs / pure-logic additions. None of them changed live-runtime code paths (predict-runner, spread-runner, scrapers, scheduler). The verification-table status above therefore carries forward unchanged; re-verify opportunistically next session but no new Sprint 10.8-introduced gaps.
 
 **What this means for next session:**
 1. Wait for or trigger the next predict cron, then re-check both upcoming prediction endpoints for `home_out_impact` in `reasoning_json.features`
@@ -532,7 +544,69 @@ Verdict after second round: 4× CLEAR. **SHIP.**
 
 ---
 
-## Backlog (Post-Sprint 10.7)
+### Sprint 10.8 — Baseline with CIs + Soccer Poisson v1 Null + DC-Invariance Finding (2026-04-14)
+
+Four PRs in one arc (#26 docs handoff, #27-28 closing debt #13, #29 soccer Poisson v1). All merged same day.
+
+**Built across the four PRs:**
+- **PR #26 (docs handoff, post-merge):** refreshed SESSION_LOG / session_state / DEPLOY / learnings to reflect post-#25 state; filed handoff-discipline lesson (validate main before writing handoff; council reviews docs-only PRs).
+- **PR #27 (scaffold):** pure-logic `src/analysis/baseline.ts`, CLI at `src/cli/baseline.ts`, `npm run baseline` script, first artifact without CIs.
+- **PR #28 (with CIs, ships as debt #13 closure):** added 1000-sample bootstrap CIs with paired model-minus-baseline diffs; rewrote headline claims after self-review caught Stats FAIL on point-estimates-without-uncertainty. Council CLEAR 5/5 after the fix. Artifact at `data/baselines/baseline-2026-04-14.{json,txt}`.
+- **PR #29 (soccer Poisson v1):** `src/analysis/poisson.ts` + extended `baseline.ts` with Poisson A/B and draw-Brier. Council CLEAR on plan after 6 math/stats/domain corrections pre-implementation. Ran pre-declared A/B: per ship rule 3, **did NOT ship** as v4-spread replacement.
+
+**Headline findings:**
+
+*From baseline (PR #28):*
+
+| sport | N | MAE − predict-zero (95% CI) | verdict |
+|---|---|---|---|
+| NBA | 5196 | −1.28 [−1.45, −1.12] | ✓ beats |
+| NFL | 621 | −0.58 [−1.01, −0.15] | ✓ beats |
+| MLB | 6270 | −0.04 [−0.07, −0.01] | ✓ beats (trivial effect) |
+| NHL | 2832 | −0.07 [−0.10, −0.05] | ✓ beats (small effect) |
+| MLS | 1159 | 0.00 [−0.05, +0.04] | ~ tie |
+| EPL | 699 | +0.03 [−0.04, +0.09] | ~ tie |
+
+*From soccer Poisson v1 (PR #29), 95% bootstrap paired-diff CIs:*
+
+| League | Poisson MAE − predict-zero | Poisson MAE − v4-spread | Draw Brier − naive |
+|---|---|---|---|
+| MLS (N=1159) | −0.007 [−0.049, +0.032] ~ tie | −0.003 [−0.011, +0.005] ~ tie | −0.0023 [−0.0051, +0.0006] ~ tie |
+| EPL (N=699) | +0.007 [−0.053, +0.067] ~ tie | **−0.019 [−0.036, −0.002] ✓ beats** | +0.0003 [−0.0033, +0.0044] ~ tie |
+
+Primary ship gate (Poisson vs predict-zero) fails on both → per pre-declared rule 3, don't ship. Poisson improves on v4-spread for EPL but not enough to clear the predict-zero bar.
+
+**Math-expert finding post-#29 (Sprint 10.8 council):**
+
+When asked "Dixon-Coles next?" the math expert verified a result that invalidates the obvious interpretation of that next step. The DC τ correction modifies only 4 scoreline cells: (0,0), (0,1), (1,0), (1,1). For expected margin `E[H−A]`:
+
+- (0,0) and (1,1) contribute `(i−j) = 0` regardless of τ → no effect on margin
+- (0,1) contribution change: `−1 × λh·ρ × λa·e^(−λh−λa)`
+- (1,0) contribution change: `+1 × λa·ρ × λh·e^(−λh−λa)`
+- These cancel exactly: `−λh·λa·ρ·e^(−λh−λa) + λh·λa·ρ·e^(−λh−λa) = 0`
+
+The DC normalizer `Z = ΣΣ τ(i,j)·P(i,j)` also works out to exactly 1 (the same symmetric cancellation). Therefore:
+
+**E[margin]_DC = E[margin]_independent exactly; no renormalization needed; margin MAE under DC is guaranteed identical to margin MAE under independent Poisson.**
+
+Implication: the naively-obvious "add Dixon-Coles τ and re-run PR #29" next step would, by math, produce bit-identical margin-MAE numbers — zero movement on our primary ship gate. DC τ's real value is scoreline-probability / draw-Brier calibration, not margin.
+
+**What this reframed:**
+- Debt #18 (flat "Dixon-Coles correction") was ambiguous between two 1997-paper ideas. Split into #24 (τ — low priority, draw-only) and #25 (ξ time-decay MLE — actually margin-moving).
+- Correct next step for soccer-v2 campaign is NOT τ correction. It's pre-2024 data scrape (new debt #26) plus MLE fit with ξ time-decay (debt #25), then *optionally* τ on top for scoreline calibration.
+- Parallel zero-risk infra: reliability diagrams (generalize debt #11). This is what the Sprint 10.8 council elevated to P0.
+
+**Council deliberation post-#29 (Math, Stats, Prediction Accuracy, Data Quality, Domain) — 5/5 converged on:**
+- DC τ as next PR: ship gate won't move (math-proven) → reject.
+- Reliability diagrams next (generalizing debt #11 across 16,777-game baseline): zero regression risk, sharpens measurement for every future model → P0.
+- Data lever > model lever for soccer: N=1159/699 is the bottleneck. Pre-2024 scrape unlocks 10+ seasons of EPL (3800+ games) and MLS, halving the minimum detectable effect.
+- When soccer v2 is attempted: MLE + ξ time-decay (Dixon-Coles 1997 *other* contribution), on expanded corpus, with reliability instrumentation already in place. Optionally τ on top.
+
+**Verdict: SHIP the four PRs, update debt list with the split, proceed to reliability-diagram infra next session.**
+
+---
+
+## Backlog (Post-Sprint 10.8)
 
 See the **Next Session Pickup** block above for the prioritized next-task queue. This section is the canonical list of council debts.
 
@@ -550,9 +624,9 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 8 | Disable stale Cloudflare direct-git deploy source | Sprint 10.5 ops | Dashboard only |
 | 9 | Seed-stability test for v2 winning margin | Sprint 6 Skeptic | Low |
 | 10 | Train/test shaded regions on ratchet chart | Sprint 6 Designer | Low |
-| 11 | Reliability bins on calibration (once n>100 live) | Sprint 7 Researcher | After live cohort grows |
+| 11 | ~~Reliability diagrams across ALL sports from baseline corpus~~ | — | **CLOSED** by Sprint 10.8 implementation — `src/analysis/reliability.ts` + `npm run reliability` + `data/reliability/reliability-2026-04-15.{json,txt}`. Surfaced three actionable findings → spawned debts #27, #28, #29. |
 | 12 | v5 sigmoid scale cross-validation on held-out data | Sprint 10.6i Math Expert | HIGH |
-| 13 | **v4-spread margin MAE baseline on 12,813 backfill games.** Spec (refined by Sprint 10.7 council, Prediction Accuracy + Domain Expert): (a) compute per-sport MAE AND RMSE separately — single-number across all sports is meaningless because NBA dominates the corpus, (b) include 1000-resample bootstrap 95% CI per metric, (c) compare against TWO baselines: `v0-margin = SPORT_HOME_ADVANTAGE` (always predict home advantage) and `v3-margin = predictMargin without injuries` (the model that shipped). Pass criterion: v3-margin MAE < v0-margin MAE on ≥4 of 6 sports. No injuries or historical odds needed — uses existing `game_results.home_score - away_score`. | Sprint 10.7 Statistical Validity + Prediction Accuracy + Domain Expert | **P0 — shippable today, FIRST TASK NEXT SESSION** |
+| 13 | ~~v4-spread margin MAE baseline on 12,813 backfill games~~ | — | **CLOSED** by PR #28 (bootstrap CIs, 16,777 games) |
 | 14 | **Shadow-prediction logging**: for every live v4-spread pick, store the naive (no-injury) prediction alongside the adjusted one. Enables forward A/B after N≥30 resolved picks. | Sprint 10.7 Statistical Validity | **HIGH — before live track record stabilizes** |
 | 15 | v5↔v4-spread injury consistency check (same sign on all games, post-merge) | Sprint 10.7 Mathematics | Medium |
 | 16 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Sprint 10.7 Domain Expert | Medium (biggest quality win) |
@@ -563,8 +637,14 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 21 | ERA coefficient recalibration at N>200 (gated on live MLB sample) | Sprint 10.6c Domain Expert | Medium — gated |
 | 22 | **v4-spread streak adjustments** (homeColdStreak −50% homeAdv, awayHotStreak −30% homeAdv) not empirically calibrated. (Originally filed against v3; v3 is rejected dead code, but the same streak logic moved into `predictMargin()` and is live in v4-spread.) | Sprint 10.6c Statistical Validity (relabeled Sprint 10.7) | Medium |
 | 23 | Clamp [0.15, 0.85] Brier bias for NHL/soccer (Math expert noted in Sprint 10.6i) | Sprint 10.6i Math Expert | Low |
+| 24 | **Dixon-Coles τ low-score correction** (split from old debt #18 — "Dixon-Coles"). Only affects draw-probability and specific scoreline probabilities. **Math-proven zero impact on E[margin] and therefore on margin MAE** — by symmetric cancellation across the 4 corrected cells (0,0)/(0,1)/(1,0)/(1,1). Value is scoreline / 1X2 market calibration only. Cannot improve PR #29's primary ship gate. | Sprint 10.8 Math + Prediction Accuracy | **LOW** — defer until 1X2 calibration is a ship-gate metric |
+| 25 | **Dixon-Coles ξ time-decay + MLE fit** (split from old debt #18). The *actually* margin-moving half of Dixon-Coles 1997: weight recent matches more, fit α/β/μ_home by MLE over all history. Reduces estimator variance AND captures recent-form drift. Blocked on debt #26 (needs pre-2024 corpus). | Sprint 10.8 Math + Domain + Stats | **HIGH** (blocked on #26) |
+| 26 | **Pre-2024 soccer match scrape** (new infra). FBref or Understat (Understat bundles xG, a sharper team-strength signal than actual goals). Unblocks proper train/test split AND larger N for MLE fitting. EPL ~3800 pre-2024 games (vs 699 currently), MLS ~1000+. Medium infra lift. | Sprint 10.8 Data Quality | **HIGH** — gating dependency for any serious soccer v2 |
+| 27 | **NBA v4-spread home-advantage re-calibration.** Reliability artifact 2026-04-15 shows NBA margin is BIASED_HIGH with signedResid=−0.605 points uniform across all 20 populated bins (wMAE=0.957). Fix is a single-number shift to `SPORT_HOME_ADVANTAGE.nba` or the v4-spread home-diff formula. Smallest code change for a real model-accuracy improvement. | Sprint 10.8 Prediction Accuracy (surfaced by reliability diagrams) | **P1** — one-number fix, clear signal |
+| 28 | **MLS/EPL v5 sigmoid scale re-calibration.** Reliability artifact 2026-04-15 shows v5 winner-prob is SHY on both soccer leagues (ECE ~0.05, signedResid +0.04). The sigmoid under-claims; 65-70% bins actually hit 70-80%+ accuracy. Tune `SIGMOID_SCALE.mls/epl` downward (sharper sigmoid) against baseline data. | Sprint 10.8 Prediction Accuracy (surfaced by reliability diagrams) | **P2** — affects soccer track record quality |
+| 29 | **Ternary reliability for soccer Poisson** (P(home) / P(draw) / P(away) — deferred, separate design). Pointwise binning doesn't apply; needs Murphy decomposition or per-class reliability curves. Only worth building if 1X2 calibration becomes a priority. | Sprint 10.8 Math (deferred) | Low — gated on 1X2 market work |
 
-**Audit performed Sprint 10.7 (council Statistical Validity mandate):** All 23 debts above were re-checked against current `main` after PR #25 merged. None silently resolved by merged code. Debt #22 was relabeled (v3 → v4-spread) because v3 is dead but the same streak code lives in `predictMargin()`. Gating noted on debts #11 (live N≥100), #19 (ESPN failure rate metric), #21 (live MLB N≥200).
+**Audit performed Sprint 10.8 (council mandate):** All debts re-checked against current `main` after PR #29 merged. Debt #13 closed (PR #28). Debt #11 promoted to P0 and generalized (NBA-live → all-sport reliability diagrams from baseline). Old debt #18 "Dixon-Coles" (filed as single item in the PR #29 description) split into #24 (τ, math-proven zero margin impact) and #25 (ξ time-decay MLE, blocked on #26). Debts from earlier sprints have their original numbering preserved (#14-#23); new Sprint 10.8 debts are #24-#26.
 
 ### Council Debts Closed (in the last session)
 
@@ -580,6 +660,8 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | ESPN per-call retry jitter | PR #25 (ESPN injury scraper hardening) |
 | Predictions for non-NBA sports | PRs #4, #7, #14 (all 6 leagues) |
 | v2 discrete output bug (only 60/75% probabilities) | PR #21 (v5 sigmoid) |
+| Debt #13 — per-sport margin MAE baseline with bootstrap CIs | PR #28 |
+| Debt #11 — reliability diagrams across ALL sports from baseline corpus | Sprint 10.8 (reliability.ts + CLI; artifact 2026-04-15) |
 
 ### Deferred (no timeline)
 

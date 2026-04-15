@@ -1,7 +1,7 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-14 (end of Sprint 10.8 — baseline-with-CIs + soccer Poisson null + DC-invariance finding)
+Last updated: 2026-04-15 (post-#31 merge — cron retry hardening validated by manual cron run at 07:47 UTC)
 
 ---
 
@@ -9,13 +9,19 @@ Last updated: 2026-04-14 (end of Sprint 10.8 — baseline-with-CIs + soccer Pois
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log before acting on it. Git history is the authoritative timeline.
 
-**Status as of 2026-04-14 (late-day, post-#29 merge):** Sprint 10.8 shipped. All work merged to main (PRs #26, #27, #28, #29). No open PRs. Next session starts clean.
+**Status as of 2026-04-15 (mid-morning UTC, post-#31 merge):** Sprint 10.9 shipped. All work merged to main (PRs #30 sport-specific predictions, #31 cron retry hardening). No open PRs. Next session starts clean.
 
-**Key finding from Sprint 10.8:** the soccer-Poisson v1 A/B (PR #29) hit its pre-declared null result — Poisson cannot be distinguished from predict-zero at 95% CI on either MLS or EPL, so per pre-declared ship rule 3, the model did NOT ship as a replacement for v4-spread. Also, a post-#29 math review established that Dixon-Coles τ correction (the obvious "next step") **cannot move margin MAE** (E[H−A]_DC = E[H−A]_independent, exactly — see Sprint 10.8 notes below), so the naively-next debt was split and deprioritized.
+**What's new since the last handoff (2026-04-14):**
+- PR #30 merged. Triggered a real cron-fail incident: at 2026-04-15 06:20:36 UTC the scrape cron hit the Fly proxy during the <5s deploy-restart window and got 502 → PagerDuty-style alert. Classic deploy-blip — `last_scrape_at` on `/api/health` was fresh 5s later, confirming the app recovered immediately.
+- PR #31 added `curl --retry 3 --retry-delay 15` on both the scrape and predict cron triggers, then added `--retry-connrefused` in a follow-up commit to close a Codex P2 (curl does NOT retry ECONNREFUSED by default; during a Fly cold-restart there's a window where TCP is refused outright before the proxy starts returning 502). Additive flags only — preserves Sprint 10.6 fail-closed invariant (a persistent 502 after 3 retries still fails the workflow and alerts).
+- Manual `workflow_dispatch` run at 2026-04-15 07:47 UTC returned `predict_http=200` with no retry warnings — success path unchanged by the additive flags. The retry branch itself still awaits a real blip to exercise.
+- Two new debts filed during PR #31: **#30** (hook false-positive on chained `git commit && git push`), **#31** (same home-favored bias from PR #30's reliability.ts review also lives in `resolve-predictions.ts:getCalibration()`).
+
+**Key finding from Sprint 10.8 (still the P0 driver for next session):** the soccer-Poisson v1 A/B (PR #29) hit its pre-declared null result — Poisson cannot be distinguished from predict-zero at 95% CI on either MLS or EPL, so per pre-declared ship rule 3, the model did NOT ship as a replacement for v4-spread. Also, a post-#29 math review established that Dixon-Coles τ correction (the obvious "next step") **cannot move margin MAE** (E[H−A]_DC = E[H−A]_independent, exactly — see Sprint 10.8 notes below), so the naively-next debt was split and deprioritized.
 
 ### What shipped since Sprint 10
 
-29 PRs (see Sprint-by-Sprint Log for detail):
+31 PRs (see Sprint-by-Sprint Log for detail):
 
 | PRs | Theme |
 |-----|-------|
@@ -36,6 +42,8 @@ Last updated: 2026-04-14 (end of Sprint 10.8 — baseline-with-CIs + soccer Pois
 | #27 | Per-sport baseline analysis scaffold (debt #13 scaffold) |
 | #28 | Per-sport baseline with bootstrap 95% CIs — closes debt #13 |
 | #29 | Soccer Poisson v1 — A/B infra + null result on pre-declared ship gate |
+| #30 | Sport-specific predictions (+ reliability.ts home-favored bias fix, Codex P1) |
+| #31 | Cron retry hardening — `--retry 3 --retry-delay 15 --retry-connrefused` on scrape + predict curls; survives Fly deploy-restart blips (502 window + ECONNREFUSED window) |
 
 ### Live model state (post-#25 merge)
 
@@ -92,10 +100,15 @@ Last updated: 2026-04-14 (end of Sprint 10.8 — baseline-with-CIs + soccer Pois
 
 **Sprint 10.8 note:** PRs #26 (docs), #27-28 (baseline), #29 (soccer Poisson A/B) were all analysis / docs / pure-logic additions. None of them changed live-runtime code paths (predict-runner, spread-runner, scrapers, scheduler). The verification-table status above therefore carries forward unchanged; re-verify opportunistically next session but no new Sprint 10.8-introduced gaps.
 
+**Sprint 10.9 addendum (2026-04-15):**
+- PR #30 (sport-specific predictions) + PR #31 (cron retry hardening) merged. PR #31 is workflow-level only (`.github/workflows/predict-cron.yml`); no Fly-app code changed, so no new Fly deploy required for #31 to take effect.
+- Manual `workflow_dispatch` cron run at 2026-04-15 07:47 UTC returned `predict_http=200` across all 6 sports. Body showed `generated: 0` everywhere (expected: the earlier 05:00 UTC scheduled cron already generated today's slate, so the 07:47 rerun correctly saw games as already-predicted and skipped). Retry branch itself wasn't exercised (no `Warning: Transient problem` lines in log) — that waits for the next real deploy blip.
+
 **What this means for next session:**
-1. Wait for or trigger the next predict cron, then re-check both upcoming prediction endpoints for `home_out_impact` in `reasoning_json.features`
-2. If field still absent → check `gh run list --workflow=deploy-fly.yml` to confirm the merge deployed
-3. If field present but always 0 → confirm the injury scrape is populating `player_injuries` (`SELECT COUNT(*) FROM player_injuries GROUP BY sport`)
+1. Glance at the next scheduled cron run (22:00 UTC daily) in the Actions tab to confirm `scrape_http=200` / `predict_http=200` under the new retry flags.
+2. Still-carried-forward from Sprint 10.8: re-check both upcoming prediction endpoints for `home_out_impact` in `reasoning_json.features`; if absent → check Fly deploy on PR #25 merge.
+3. If field present but always 0 → confirm the injury scrape is populating `player_injuries` (`SELECT COUNT(*) FROM player_injuries GROUP BY sport`).
+4. P0 task itself is unchanged: NBA v4-spread home-advantage re-calibration (debt #27).
 
 ### Key architecture (unchanged from Sprint 10.6)
 
@@ -606,7 +619,26 @@ Implication: the naively-obvious "add Dixon-Coles τ and re-run PR #29" next ste
 
 ---
 
-## Backlog (Post-Sprint 10.8)
+### Sprint 10.9 — Cron Retry Hardening + MCP-Disconnect Recovery (2026-04-15)
+
+Short, targeted sprint triggered by a real cron-fail incident at 2026-04-15 06:20:36 UTC.
+
+**Incident:** PR #30 (sport-specific predictions) merged at ~06:15 UTC. `deploy-fly.yml` killed the Fly machine to roll forward. At 06:20:36 the scrape cron hit the Fly proxy during the <5s restart window and got 502. Alert fired. `/api/health` showed `last_scrape_at` fresh 5s later — the app had recovered immediately, but the cron was already red.
+
+**Built:**
+- **PR #31 commit 1 (`d41f543`):** added `curl --retry 3 --retry-delay 15` to both the scrape and predict curls in `.github/workflows/predict-cron.yml`, plus `--write-out "scrape_http=%{response_code}"` / `predict_http=...` for audit visibility. Curl's default `--retry` list covers 408/429/500/502/503/504 and some connection errors but **excludes 4xx** — so transient Fly-proxy 5xx blips recover silently within ~45s, while real app-level 4xx still fails the workflow on the first try. Sprint 10.6 fail-closed invariant preserved: a persistent 502 after 3 retries still fails and alerts.
+- **PR #31 commit 2 (`35c7cd9`):** filed two surfaced debts (#30 hook false-positive on chained commit+push, #31 home-favored bias in `resolve-predictions.ts:getCalibration()`).
+- **PR #31 commit 3 (`89ee152`):** added `--retry-connrefused` to both curls (Codex P2). `curl --retry` does NOT retry ECONNREFUSED by default; during a Fly cold-restart there's a narrow window where TCP is refused outright before the proxy starts emitting 502. Additive flag only — no behavior change in the success or persistent-failure path.
+
+**Council process:** plan review 1 nit → folded; implementation review 5× CLEAR (Math expert sat out — no calculations).
+
+**Validation:** `workflow_dispatch` manual run at 2026-04-15 07:47 UTC returned `predict_http=200` across all 6 sports. Body showed `generated: 0` / `skipped: N` everywhere — expected because the scheduled 05:00 UTC cron already generated today's slate. No `Warning: Transient problem` stderr lines in the log → retry branch itself not yet exercised; that waits for the next real blip.
+
+**MCP-disconnect recovery (sub-incident):** the session that did PR #31 lost its GitHub MCP connection mid-work. The next session started on branch `claude/restore-gh-mcp-i3HiA`, saw the branch had zero diff from `origin/main`, and could have drawn the wrong conclusion (nothing was done). Recovery path: listing open PRs via the restored MCP surfaced PR #31 already pushed with full work committed. Lesson: **work pushed as an open PR is already safe; reconnecting MCP + `list_pull_requests` is the recovery signal, not the local working tree.** See `learnings.md` entry `mcp-disconnect-recovery-2026-04-15`.
+
+---
+
+## Backlog (Post-Sprint 10.9)
 
 See the **Next Session Pickup** block above for the prioritized next-task queue. This section is the canonical list of council debts.
 

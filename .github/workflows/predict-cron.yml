@@ -21,8 +21,31 @@ jobs:
         # league but had been hitting a dead /api/trigger-cycle route.
         # The endpoint returns 502 if any ESPN fetch fail-closes, so -f
         # will turn a silent upstream outage into a red workflow run.
+        #
+        # Sprint 10.8 (post-2026-04-15 06:20 UTC incident): add retry to
+        # survive Fly-proxy 502s emitted during deploy-machine restarts.
+        # On that date, PR #30 merged at ~06:15, deploy-fly.yml killed the
+        # app machine, the scrape cron hit the proxy at 06:20:36 during
+        # the <5s restart window, got 502, alerted. `last_scrape_at` on
+        # the health endpoint was fresh 5s later. `curl --retry 3
+        # --retry-delay 15` retries on 408/429/500/502/503/504 and
+        # connection errors, NOT on 4xx auth/validation errors — which
+        # preserves the fail-fast semantics for real bugs while absorbing
+        # transient deploy blips. After 3 retries (~45s) a persistent 502
+        # still fails the workflow and alerts correctly. Curl prints
+        # "Warning: Transient problem: ..." to stderr on each retry, so
+        # the action log will reveal how often the fix triggers.
+        #
+        # `--retry-connrefused` covers the narrower window during a Fly
+        # machine cold-restart where TCP is refused outright before the
+        # proxy starts returning 502 (Codex P2 on PR #31). Without this
+        # flag, curl treats ECONNREFUSED as a non-transient failure and
+        # does not retry, defeating the purpose of --retry on exactly the
+        # deploy-blip case this step is trying to suppress.
         run: |
-          curl -sSf -X POST "https://sportsdata-api.fly.dev/api/trigger/scrape?sport=all" \
+          curl -sSf --retry 3 --retry-delay 15 --retry-connrefused \
+            --write-out "\nscrape_http=%{response_code}\n" \
+            -X POST "https://sportsdata-api.fly.dev/api/trigger/scrape?sport=all" \
             -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
             --max-time 600
 
@@ -31,16 +54,26 @@ jobs:
         # league, not just NBA. The endpoint returns 502 if any sport fails
         # (partial failure). We print the response body to see which sport
         # errored, then fail the step so the alert fires.
+        #
+        # Retry semantics: same as scrape step above, including
+        # --retry-connrefused for the Fly cold-restart ECONNREFUSED window
+        # (Codex P2 on PR #31). Transient Fly-proxy 502s during deploy
+        # restarts get 3 retries at 15s apart; real app-level 502 (partial
+        # failure with body) or any 4xx still fails the workflow on the
+        # first try (--retry excludes 4xx by default).
+        # Note: curl --retry requires a 2xx before printing the body, so a
+        # successful retry returns a normal body to parse below.
         run: |
-          RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
-            "https://sportsdata-api.fly.dev/api/trigger/predict?sport=all" \
+          RESPONSE=$(curl -sS --retry 3 --retry-delay 15 --retry-connrefused -w "\n%{response_code}" \
+            -X POST "https://sportsdata-api.fly.dev/api/trigger/predict?sport=all" \
             -H "Authorization: Bearer ${{ secrets.PREDICT_TRIGGER_TOKEN }}" \
             --max-time 600)
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "predict_http=$HTTP_CODE"
           echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
           if [ "$HTTP_CODE" -ge 400 ]; then
-            echo "::error::Predict returned HTTP $HTTP_CODE"
+            echo "::error::Predict returned HTTP $HTTP_CODE (after up to 3 retries)"
             exit 1
           fi
 

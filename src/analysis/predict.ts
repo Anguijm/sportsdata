@@ -156,10 +156,18 @@ export const v3: Iteration = {
 
 /** Home court / home field / home ice advantage in margin units per sport.
  *  Derived from historical home-win rates:
- *  - NBA ~54.7% ≈ +3.0 pts, NFL ~57% ≈ +2.5 pts, MLB ~54% ≈ +0.5 runs,
- *    NHL ~55% ≈ +0.3 goals, MLS ~49% ≈ +0.4 goals, EPL ~46% ≈ +0.4 goals */
+ *  - NBA ~54.7%, NFL ~57% ≈ +2.5 pts, MLB ~54% ≈ +0.5 runs,
+ *    NHL ~55% ≈ +0.3 goals, MLS ~49% ≈ +0.4 goals, EPL ~46% ≈ +0.4 goals
+ *
+ *  NBA recalibrated 2026-04-15 (debt #27): 3.0 → 2.4. Reliability artifact
+ *  2026-04-15 showed NBA v4-spread signedResid=-0.605 uniform across 20/20
+ *  bins (BIASED_HIGH verdict). Baseline artifact 2026-04-14 corroborates
+ *  with bias +0.60 [+0.18, +1.01] (CI entirely above zero). Two independent
+ *  estimators agree on magnitude 0.6; MSE-optimal shift for a uniform-bias
+ *  residual is exactly the negative bias. See Plans/nba-home-adv-recalibration.md.
+ */
 const SPORT_HOME_ADVANTAGE: Record<string, number> = {
-  nba: 3.0,
+  nba: 2.4,
   nfl: 2.5,
   mlb: 0.5,
   nhl: 0.3,

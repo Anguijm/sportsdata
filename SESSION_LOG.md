@@ -120,7 +120,7 @@ Last updated: 2026-04-20 (post-#34 merge — NBA home-adv recalibration 3.0 → 
 
 **What this means for next session:**
 1. Verify Fly deploy of PR #34: `curl /api/health` should show the commit hash or recent `last_scrape_at`.
-2. Confirm NBA live predictions now carry the recalibrated home-advantage (check `reasoning_json` for `homeAdv: 2.25` on any upcoming NBA game).
+2. Confirm NBA live predictions reflect the recalibrated home-advantage: check that `spread.predicted_margin` on an NBA home game is lower than it would have been at the old 3.0 constant (e.g., a neutral matchup should predict ~2.25pt home margin, not ~3.0). The `reasoning_json` schema does NOT contain a `homeAdv` field — verify via the observable margin output, not a config echo.
 3. Still-carried-forward from Sprint 10.8: re-check both upcoming prediction endpoints for `home_out_impact` in `reasoning_json.features`; if absent → check Fly deploy on PR #25 merge.
 4. Pick up debt #28 (MLS/EPL sigmoid scale sharpening) as the next one-number recalibration, or debt #14 (shadow-logging) if the user prefers infrastructure work.
 

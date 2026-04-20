@@ -417,6 +417,15 @@ Added `curl --retry 3 --retry-delay 15 --retry-connrefused` to both cron curls i
 - **INSIGHT**: Infrastructure retries and app-level fail-closed semantics are compatible — they operate at different layers. The retry absorbs *transport-layer* blips; the `-f` (or explicit HTTP_CODE check) still turns real app errors red. Don't conflate them into "retry means hide failures."
 
 
+### nba-home-adv-recalibration (2026-04-20)
+
+- **KEEP**: Pre-declared ship rules in `Plans/nba-home-adv-recalibration.md` with 5 pass/fail gates — same pattern as soccer-poisson (PR #29). Makes the commit/no-commit decision mechanical once validation runs.
+- **KEEP**: Pure-Python validation script (`scripts/validate-debt27.py`) with zero native dependencies. Runs in Termux/Android sandbox where `better-sqlite3` can't compile. Pattern: dump DB as SQL, load into Python `sqlite3`, reimplement the TypeScript analysis logic in ~200 lines.
+- **KEEP**: Empirical validate→measure→correct loop for calibration constants. Try an intermediate value (Δ=0.6), measure the effective coefficient (0.809), then compute the optimal Δ from the measured coefficient. One extra step, much more accurate than naive formula.
+- **IMPROVE**: Initial recalibration (PR #32, 3.0→2.4) was undersized because the naive streak-independence formula overestimated the effective coefficient (0.926 vs actual 0.809). The naive formula `1 − 0.5·P(cold) − 0.3·P(hot)` assumes streak events are independent of team quality, but bad teams have losing streaks much more often. Always validate the effective coefficient empirically.
+- **INSIGHT**: Streak-attenuation coefficient is 0.809, not 0.926. The gap (14% relative) comes from team-quality auto-correlation: sub-.400 teams fire the cold-streak indicator 20-40% of the time vs the 9% naive estimate. This makes every `predictMargin()` call effectively use ~81% of the nominal homeAdv, not ~93%. Future recalibrations for ANY sport must account for this.
+- **INSIGHT**: Council math review caught and verified three non-obvious claims: (1) the effective coefficient is constant w.r.t. Δ (because streak indicators depend on game results, not on homeAdv); (2) the v5 perturbation bound of 0.015 was slightly loose vs the theoretical max of 0.019; (3) the optimality of 2.25 follows from measured coefficient × applied Δ ≈ observed bias. Math expert sitting in on calibration reviews is load-bearing, not ceremonial.
+
 ### mcp-disconnect-recovery (2026-04-15)
 
 The previous session (`session_01MfKAHh1VZgCe8ikHQHY2AM`) lost its GitHub MCP connection after pushing PR #31 but before addressing review comments or merging. The current session started on the designated branch `claude/restore-gh-mcp-i3HiA`, which had zero content diff from `origin/main` — a local-state-only read would have concluded "nothing to do."

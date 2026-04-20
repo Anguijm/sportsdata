@@ -159,15 +159,17 @@ export const v3: Iteration = {
  *  - NBA ~54.7%, NFL ~57% ≈ +2.5 pts, MLB ~54% ≈ +0.5 runs,
  *    NHL ~55% ≈ +0.3 goals, MLS ~49% ≈ +0.4 goals, EPL ~46% ≈ +0.4 goals
  *
- *  NBA recalibrated 2026-04-15 (debt #27): 3.0 → 2.4. Reliability artifact
+ *  NBA recalibrated 2026-04-20 (debt #27): 3.0 → 2.25. Reliability artifact
  *  2026-04-15 showed NBA v4-spread signedResid=-0.605 uniform across 20/20
- *  bins (BIASED_HIGH verdict). Baseline artifact 2026-04-14 corroborates
- *  with bias +0.60 [+0.18, +1.01] (CI entirely above zero). Two independent
- *  estimators agree on magnitude 0.6; MSE-optimal shift for a uniform-bias
- *  residual is exactly the negative bias. See Plans/nba-home-adv-recalibration.md.
+ *  bins (BIASED_HIGH verdict). First attempt (2.4) missed rule 2 by 0.02
+ *  because streak attenuations (cold-home/hot-away) have an effective
+ *  coefficient of 0.81 on homeAdv, not the 0.93 originally estimated.
+ *  Corrected: Δ = 0.605 / 0.809 = 0.748 → 3.0 − 0.75 = 2.25.
+ *  Post-shift signedResid = +0.001 (essentially zero).
+ *  See Plans/nba-home-adv-recalibration.md.
  */
 const SPORT_HOME_ADVANTAGE: Record<string, number> = {
-  nba: 2.4,
+  nba: 2.25,
   nfl: 2.5,
   mlb: 0.5,
   nhl: 0.3,

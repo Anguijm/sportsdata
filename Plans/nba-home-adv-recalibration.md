@@ -103,3 +103,42 @@ Pre-change, for post-ship comparison:
 | NBA baseline `MAE − nv0` | −1.283 [−1.452, −1.116] | more negative (bias term removed from error) |
 | NBA v5 winner ECE | 0.0156 | 0.016 ± 0.015 |
 | NBA v5 winner verdict | HONEST | HONEST |
+
+## Post-validation addendum (2026-04-20)
+
+### Iteration 1: homeAdv = 2.4 — Rule 2 FAIL
+
+First attempt used Δ=0.6 (3.0 → 2.4), based on the assumption that the
+effective home-advantage coefficient per game was ~0.93 (streak attenuations
+fire ~9% of games each). Validation against the 21,381-game corpus showed
+the actual effective coefficient is **0.809** — cold/hot streaks fire more
+often than the naive `(1−homeWinRate)^3` estimate because losing teams cluster
+losing streaks (correlation, not independence).
+
+Result: signedResid = −0.1198, just over the |0.10| gate (rule 2 FAIL).
+Rules 1, 3, 4, 5 all passed.
+
+### Iteration 2: homeAdv = 2.25 — ALL 5 RULES PASS
+
+Corrected shift: Δ = 0.605 / 0.809 = 0.748, rounded to 0.75 → homeAdv = 2.25.
+
+| Rule | Metric | Before | After (2.25) | Gate | Status |
+|---|---|---|---|---|---|
+| 1 | NBA margin weightedMAE | 0.9565 | 0.9492 | decrease | **PASS** |
+| 2 | NBA margin \|signedResid\| | 0.6050 | 0.0012 | ≤ 0.10 | **PASS** |
+| 3 | NBA margin verdict | BIASED_HIGH | HONEST | = HONEST | **PASS** |
+| 4 | NBA v5 winner ECE regression | — | +0.0025 | ≤ 0.015 | **PASS** |
+| 5 | Other sports verdicts | all HONEST | all HONEST | unchanged | **PASS** |
+
+Validated on 21,381-game restored backup (backup-2026-04-15) using
+`scripts/validate-debt27.py` (pure Python, no native deps).
+
+### Lesson: streak-attenuation coefficient
+
+The `predictMargin()` formula applies `homeAdv × 0.5` (cold) and
+`homeAdv × 0.3` (hot away) conditional on streak state. The effective
+per-game coefficient is `1 − 0.5 × P(coldHome) − 0.3 × P(hotAway)`.
+The naive independence assumption under-estimates streak rates for NBA
+because team quality auto-correlates losing streaks. Empirical coefficient
+from the validation: **0.809** (not 0.926). Future recalibrations of any
+sport's homeAdv should use the empirical coefficient, not the naive one.

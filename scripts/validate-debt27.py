@@ -19,7 +19,7 @@ import json
 # ── Constants (must match src/analysis/predict.ts exactly) ──
 
 SPORT_HOME_ADVANTAGE = {
-    "nba": 2.4,   # ← THE CHANGE (was 3.0)
+    "nba": 2.25,  # ← THE CHANGE (was 3.0, first try 2.4 missed by 0.02)
     "nfl": 2.5,
     "mlb": 0.5,
     "nhl": 0.3,

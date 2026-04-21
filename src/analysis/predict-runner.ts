@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../storage/sqlite.js';
 import type { Sport } from '../schema/provenance.js';
-import { v5, predictWithInjuries } from './predict.js';
+import { predictWithInjuries } from './predict.js';
 import type { TeamState, InjuryImpact } from './predict.js';
 import { getTeamInjuries } from '../scrapers/injuries.js';
 import { getSeasonStart, getSeasonYear } from './season.js';
@@ -54,6 +54,8 @@ interface ReasoningJson {
   };
   pick: 'home' | 'away';
   prob_home_wins: number;
+  /** Debt #14: true on shadow rows (model_version='v5-naive'), absent on adjusted rows. */
+  shadow?: boolean;
 }
 
 /** @deprecated Use getSeasonYear from './season.js' instead. Kept for backwards compat. */
@@ -264,7 +266,7 @@ export function predictGame(
   game: ScheduledGame,
   states: Map<string, TeamState>,
   asOfDate: string,
-): PredictionRecord {
+): PredictionRecord[] {
   const homeState = states.get(game.home_team_id) ?? {
     games: 0, wins: 0, losses: 0,
     pointsFor: 0, pointsAgainst: 0, lastNResults: [],
@@ -296,10 +298,13 @@ export function predictGame(
     home_win: 0,
   };
 
-  // Use injury-adjusted prediction when injury data is available
+  // Use injury-adjusted prediction when injury data is available.
+  // `predictWithInjuries(..., undefined)` is mathematically identical to
+  // `v5.predict` (injuryAdj=0 branch); using the former is the single source
+  // of truth for the sigmoid math.
   const probHome = hasInjuryData
     ? predictWithInjuries(gameForPred, ctx, injuryImpact)
-    : v5.predict(gameForPred, ctx);
+    : predictWithInjuries(gameForPred, ctx, undefined);
 
   const lowConfidence = homeState.games < 5 || awayState.games < 5;
   const pick = probHome >= 0.5 ? 'home' : 'away';
@@ -308,19 +313,21 @@ export function predictGame(
   const homeDiff = homeState.games > 0 ? (homeState.pointsFor - homeState.pointsAgainst) / homeState.games : 0;
   const awayDiff = awayState.games > 0 ? (awayState.pointsFor - awayState.pointsAgainst) / awayState.games : 0;
 
+  const baseFeatures = {
+    home_wins: homeState.wins,
+    home_losses: homeState.losses,
+    home_diff_per_game: homeDiff,
+    away_wins: awayState.wins,
+    away_losses: awayState.losses,
+    away_diff_per_game: awayDiff,
+    win_gap: awayState.wins - homeState.wins,
+    diff_gap: awayDiff - homeDiff,
+    low_confidence: lowConfidence,
+  };
+
   const reasoning: ReasoningJson = {
     model: 'v5',
-    features: {
-      home_wins: homeState.wins,
-      home_losses: homeState.losses,
-      home_diff_per_game: homeDiff,
-      away_wins: awayState.wins,
-      away_losses: awayState.losses,
-      away_diff_per_game: awayDiff,
-      win_gap: awayState.wins - homeState.wins,
-      diff_gap: awayDiff - homeDiff,
-      low_confidence: lowConfidence,
-    },
+    features: baseFeatures,
     pick,
     prob_home_wins: probHome,
   };
@@ -328,8 +335,9 @@ export function predictGame(
   const homeAbbr = game.home_team_id.split(':')[1] ?? game.home_team_id;
   const awayAbbr = game.away_team_id.split(':')[1] ?? game.away_team_id;
   const reasoningText = generateReasoningText(reasoning, homeAbbr, awayAbbr);
+  const madeAt = new Date().toISOString();
 
-  return {
+  const records: PredictionRecord[] = [{
     id: randomUUID(),
     game_id: game.id,
     sport: game.sport,
@@ -338,10 +346,44 @@ export function predictGame(
     predicted_prob: pick === 'home' ? probHome : 1 - probHome,
     reasoning_json: JSON.stringify(reasoning),
     reasoning_text: reasoningText,
-    made_at: new Date().toISOString(),
+    made_at: madeAt,
     team_state_as_of: asOfDate,
     low_confidence: lowConfidence ? 1 : 0,
-  };
+  }];
+
+  // Debt #14: shadow row — naive prediction (injury signal disabled) for A/B.
+  // Only emitted when injuries would actually shift the prediction; otherwise
+  // naive ≡ adjusted and the shadow row would be a wasteful duplicate.
+  // Codex #38 P2: low-confidence games (either team <5 games) return baseRate
+  // from predictWithInjuries regardless of injuries, so adjusted ≡ naive in
+  // that case too. Gate on both conditions to avoid zero-delta pairs.
+  if (hasInjuryData && !lowConfidence) {
+    const naiveProbHome = predictWithInjuries(gameForPred, ctx, undefined);
+    const naivePick = naiveProbHome >= 0.5 ? 'home' : 'away';
+    const naiveWinnerId = naivePick === 'home' ? game.home_team_id : game.away_team_id;
+    const naiveReasoning: ReasoningJson = {
+      model: 'v5-naive',
+      features: baseFeatures,
+      pick: naivePick,
+      prob_home_wins: naiveProbHome,
+      shadow: true,
+    };
+    records.push({
+      id: randomUUID(),
+      game_id: game.id,
+      sport: game.sport,
+      model_version: 'v5-naive',
+      predicted_winner: naiveWinnerId,
+      predicted_prob: naivePick === 'home' ? naiveProbHome : 1 - naiveProbHome,
+      reasoning_json: JSON.stringify(naiveReasoning),
+      reasoning_text: generateReasoningText(naiveReasoning, homeAbbr, awayAbbr),
+      made_at: madeAt,
+      team_state_as_of: asOfDate,
+      low_confidence: lowConfidence ? 1 : 0,
+    });
+  }
+
+  return records;
 }
 
 /** Run predictions for all upcoming scheduled games of a sport */
@@ -369,17 +411,25 @@ export function predictUpcoming(sport: Sport): { predictions: PredictionRecord[]
   const predictions: PredictionRecord[] = [];
   let skipped = 0;
 
-  // Idempotent: skip games we've already predicted with v2
+  // Idempotent: skip games only if we have BOTH v5 AND v5-naive already (or no
+  // shadow is expected). Codex #38 P1: skipping on v5 alone would leave any
+  // game already predicted before this PR deployed without a shadow row, since
+  // predictGame would never run to produce the v5-naive counterpart. Running
+  // predictGame when only v5 exists is safe — the UPSERT on v5 is a no-op and
+  // the new v5-naive row inserts cleanly when injury data + high confidence
+  // both apply.
   const existingStmt = db.prepare(
     'SELECT 1 FROM predictions WHERE game_id = ? AND model_version = ?'
   );
 
   for (const game of scheduledGames) {
-    if (existingStmt.get(game.id, 'v5')) {
+    const hasV5 = !!existingStmt.get(game.id, 'v5');
+    const hasV5Naive = !!existingStmt.get(game.id, 'v5-naive');
+    if (hasV5 && hasV5Naive) {
       skipped++;
       continue;
     }
-    predictions.push(predictGame(game, states, asOfDate));
+    predictions.push(...predictGame(game, states, asOfDate));
   }
 
   // Persist via UPSERT (council: idempotent on conflict)

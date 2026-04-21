@@ -30,7 +30,7 @@ interface ScheduledGameWithOdds {
 }
 
 interface SpreadReasoningJson {
-  model: 'v4-spread';
+  model: 'v4-spread' | 'v4-spread-naive';
   features: {
     home_wins: number;
     home_losses: number;
@@ -56,6 +56,8 @@ interface SpreadReasoningJson {
     spread_source: string;
     spread_as_of: string;
   };
+  /** Debt #14: true on shadow rows (model_version='v4-spread-naive'), absent on adjusted rows. */
+  shadow?: boolean;
 }
 
 /** Map confidence tier to a pseudo-probability for Brier scoring compatibility.
@@ -124,7 +126,12 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
   );
 
   for (const game of scheduledGames) {
-    if (existingStmt.get(game.id, 'v4-spread')) {
+    // Codex #38 P1: skip only if BOTH adjusted and naive shadow exist (or no
+    // shadow is expected). Otherwise pre-deploy games never get their shadow
+    // counterparts.
+    const hasSpread = !!existingStmt.get(game.id, 'v4-spread');
+    const hasSpreadNaive = !!existingStmt.get(game.id, 'v4-spread-naive');
+    if (hasSpread && hasSpreadNaive) {
       skipped++;
       continue;
     }
@@ -255,6 +262,68 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
       team_state_as_of: asOfDate,
       low_confidence: lowConfidence ? 1 : 0,
     });
+
+    // Debt #14: shadow row — naive margin (injury signal disabled) for A/B.
+    // Only emitted when injuries would actually shift the margin; otherwise
+    // naive ≡ adjusted and the shadow row would be a wasteful duplicate.
+    // Codex #38 P2: predictMargin returns homeAdv directly for low-confidence
+    // games (either team <5 games), bypassing the injury term. Gate on both
+    // conditions to avoid zero-delta shadow pairs.
+    if (hasInjuryData && !lowConfidence) {
+      const naiveMargin = predictMargin(
+        {
+          game_id: game.id,
+          date: game.date,
+          sport: game.sport,
+          home_team_id: game.home_team_id,
+          away_team_id: game.away_team_id,
+          home_win: 0,
+        },
+        ctx,
+        pitchers,
+        undefined, // naive: injury-signal disabled
+      );
+      const naiveComparison = compareToSpread(
+        naiveMargin,
+        odds.spread.favorite,
+        odds.spread.line,
+        game.home_team_id,
+        game.sport,
+      );
+      const naiveReasoning: SpreadReasoningJson = {
+        model: 'v4-spread-naive',
+        features: {
+          ...reasoning.features,
+          home_out_impact: 0,
+          away_out_impact: 0,
+        },
+        spread: {
+          predicted_margin: naiveComparison.predictedMargin,
+          spread_line: naiveComparison.spreadLine,
+          edge: naiveComparison.edge,
+          abs_edge: naiveComparison.absEdge,
+          confidence_tier: naiveComparison.confidenceTier,
+          pick_side: naiveComparison.pickSide,
+          spread_source: odds.source ?? 'unknown',
+          spread_as_of: odds.asOf ?? asOfDate,
+        },
+        shadow: true,
+      };
+      const naivePickTeamId = naiveComparison.pickSide === 'home' ? game.home_team_id : game.away_team_id;
+      predictions.push({
+        id: randomUUID(),
+        game_id: game.id,
+        sport: game.sport,
+        model_version: 'v4-spread-naive',
+        predicted_winner: naivePickTeamId,
+        predicted_prob: TIER_PROB[naiveComparison.confidenceTier],
+        reasoning_json: JSON.stringify(naiveReasoning),
+        reasoning_text: generateSpreadReasoningText(naiveComparison, homeAbbr, awayAbbr, lowConfidence),
+        made_at: asOfDate,
+        team_state_as_of: asOfDate,
+        low_confidence: lowConfidence ? 1 : 0,
+      });
+    }
   }
 
   // Persist

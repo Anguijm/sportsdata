@@ -10,6 +10,15 @@ import type { Sport } from '../schema/provenance.js';
 
 const RESOLUTION_DELAY_HOURS = 2;
 
+/** Debt #14: shadow rows use model_version suffixed with '-naive'. Routing
+ *  logic in the resolver must treat both the adjusted and naive variants of
+ *  the spread model as spread predictions (margin/cover semantics), and both
+ *  variants of v5 as winner predictions. Anything else hard-comparing
+ *  `model_version === 'v4-spread'` or `=== 'v5'` would mis-route shadow rows. */
+function isSpreadModel(modelVersion: string): boolean {
+  return modelVersion === 'v4-spread' || modelVersion === 'v4-spread-naive';
+}
+
 interface UnresolvedPrediction {
   id: string;
   game_id: string;
@@ -133,14 +142,14 @@ export function resolvePredictions(sport?: Sport): ResolveResult {
       // winner-prediction accuracy. The model doesn't predict draws,
       // so treating them as "wrong" unfairly penalizes soccer predictions.
       // Set was_correct=NULL and brier_score=NULL — excluded from metrics.
-      if (c.is_draw === 1 && c.model_version !== 'v4-spread') {
+      if (c.is_draw === 1 && !isSpreadModel(c.model_version)) {
         updateStmt.run(resolveTime, c.actual_winner, null, null, c.id);
         continue;
       }
 
       let wasCorrect: number;
 
-      if (c.model_version === 'v4-spread') {
+      if (isSpreadModel(c.model_version)) {
         if (!c.spread_result || c.spread_result === 'push') {
           wasCorrect = 0;
         } else {

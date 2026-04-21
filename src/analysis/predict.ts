@@ -217,8 +217,8 @@ const SIGMOID_SCALE: Record<string, number> = {
   nfl: 0.10,
   mlb: 0.30,   // revised: was 0.25, theoretical ≈ 0.30 from σ_eff ≈ 6 runs
   nhl: 0.45,   // revised: was 0.50, theoretical ≈ 0.45 from σ_eff ≈ 4 goals
-  mls: 0.60,   // revised: was 0.50, theoretical ≈ 0.60 from σ_eff ≈ 3 goals
-  epl: 0.60,   // revised: was 0.50, theoretical ≈ 0.60 from σ_eff ≈ 3 goals
+  mls: 0.80,   // debt #28: was 0.60, empirically calibrated (SHY→HONEST at signedResid ≈ 0)
+  epl: 0.90,   // debt #28: was 0.60, empirically calibrated (SHY→HONEST at signedResid ≈ 0)
 };
 
 function sigmoid(x: number): number {

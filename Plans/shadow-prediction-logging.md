@@ -221,3 +221,35 @@ Ran targeted test against backup-2026-04-21 with an injected NBA injury (Jayson 
 
 The hard-coded `model_version === 'v4-spread'` equality checks at two sites in `resolve-predictions.ts` would silently mis-route naive spread rows to the winner-resolution branch without the helper. No type error, no runtime error — just wrong `was_correct` assignments. Pre-declared in the plan's Option-B cons; verified by the resolver test above.
 
+## Second addendum (2026-04-22) — Codex review + temporal-skew caveat
+
+Codex review on PR #38 raised two valid issues, both addressed:
+
+- **P1:** idempotency gate skipped games as soon as `v5` existed, so games predicted before this PR deployed would never receive a `v5-naive` counterpart. Fixed: gate now checks both `hasV5 && hasV5Naive`. If only v5 exists, predictGame re-runs; the UPSERT on v5 no-ops and the new naive row inserts cleanly. Same fix on spread-runner.
+- **P2:** shadow rows were emitted on `hasInjuryData`, but `predictWithInjuries` / `predictMargin` return `baseRate` / `homeAdv` unchanged by injuries when either team has <5 games (low confidence). Adjusted ≡ naive in that case — pair contributes zero signal and dilutes the A/B. Fixed: gate on `hasInjuryData && !lowConfidence` for both runners.
+
+### Statistical validity caveat (council WARN on the P1 fix)
+
+The P1 fix backfills shadows for pre-PR games, but with a subtle cost. A pair consisting of:
+- v5 row written at time **X** (before PR deployed, using ctx at X),
+- v5-naive row written at time **Y > X** (after PR deployed, using ctx at Y),
+
+is **temporally skewed**. Team state `ctx` can change between X and Y (finalized games update wins/losses/pointDifferentials), so the "adjusted" side was computed against a different state than the "naive" side. The pair's delta conflates two things: the injury-signal effect (what we want to measure) AND the team-state drift between cron cycles (second-order noise).
+
+**Size of the skew.** Cron cadence is 8h (05:00 + 22:00 UTC). Between crons, 0-10 games finalize across all sports per sport (typically 0-4 for NBA, 5-10 for MLB mid-season). A single finalized game shifts a team's per-game differential by ≤ `|game_margin| / games_played` — usually < 0.3 points for NBA, < 0.1 for MLB. This is first-order small vs. the injury impact magnitudes (multiple points in NBA, ~0.3 runs in MLB).
+
+**Mitigation: document, don't patch.** Three alternatives considered:
+- (a) Only backfill shadows for v5 rows made within the last N hours — adds state tracking; complex for small payoff.
+- (b) Don't backfill pre-PR games at all — re-opens the Codex P1 coverage hole.
+- (c) **Accept the skew, document it as a known rollout artifact** — chosen.
+
+**Implication for the shadow-analysis report (follow-up debt):** the first analysis pass should either:
+- Filter to pairs where `v5.made_at` and `v5-naive.made_at` are within a short window (say, `< 60s apart`), OR
+- Report the skewed-pair count separately from clean-pair counts and verify the two subpopulations give directionally consistent results.
+
+Both rows expose `made_at`, so the filter is trivial at analysis time. Pre-declared here so the follow-up implementer doesn't have to rediscover the concern.
+
+### Cycle 3 idempotency (non-issue, noted)
+
+For MLS/EPL (no injury signal) and for NBA/NFL/MLB/NHL games with no injured-player impact, cycle 2+ runs predictGame redundantly on each cron (gate `hasV5 && hasV5Naive` is false when hasV5Naive is structurally never true). The UPSERT on v5 is a no-op so no row is rewritten — only ~10ms CPU is wasted per cycle. A sport-level short-circuit (`if sport ∈ {mls, epl} && hasV5 { skip }`) would eliminate this, but the cost is negligible and the current gate is simpler to reason about. Not fixing.
+

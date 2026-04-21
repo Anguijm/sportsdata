@@ -354,7 +354,10 @@ export function predictGame(
   // Debt #14: shadow row — naive prediction (injury signal disabled) for A/B.
   // Only emitted when injuries would actually shift the prediction; otherwise
   // naive ≡ adjusted and the shadow row would be a wasteful duplicate.
-  if (hasInjuryData) {
+  // Codex #38 P2: low-confidence games (either team <5 games) return baseRate
+  // from predictWithInjuries regardless of injuries, so adjusted ≡ naive in
+  // that case too. Gate on both conditions to avoid zero-delta pairs.
+  if (hasInjuryData && !lowConfidence) {
     const naiveProbHome = predictWithInjuries(gameForPred, ctx, undefined);
     const naivePick = naiveProbHome >= 0.5 ? 'home' : 'away';
     const naiveWinnerId = naivePick === 'home' ? game.home_team_id : game.away_team_id;
@@ -408,13 +411,21 @@ export function predictUpcoming(sport: Sport): { predictions: PredictionRecord[]
   const predictions: PredictionRecord[] = [];
   let skipped = 0;
 
-  // Idempotent: skip games we've already predicted with v2
+  // Idempotent: skip games only if we have BOTH v5 AND v5-naive already (or no
+  // shadow is expected). Codex #38 P1: skipping on v5 alone would leave any
+  // game already predicted before this PR deployed without a shadow row, since
+  // predictGame would never run to produce the v5-naive counterpart. Running
+  // predictGame when only v5 exists is safe — the UPSERT on v5 is a no-op and
+  // the new v5-naive row inserts cleanly when injury data + high confidence
+  // both apply.
   const existingStmt = db.prepare(
     'SELECT 1 FROM predictions WHERE game_id = ? AND model_version = ?'
   );
 
   for (const game of scheduledGames) {
-    if (existingStmt.get(game.id, 'v5')) {
+    const hasV5 = !!existingStmt.get(game.id, 'v5');
+    const hasV5Naive = !!existingStmt.get(game.id, 'v5-naive');
+    if (hasV5 && hasV5Naive) {
       skipped++;
       continue;
     }

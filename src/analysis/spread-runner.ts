@@ -126,7 +126,12 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
   );
 
   for (const game of scheduledGames) {
-    if (existingStmt.get(game.id, 'v4-spread')) {
+    // Codex #38 P1: skip only if BOTH adjusted and naive shadow exist (or no
+    // shadow is expected). Otherwise pre-deploy games never get their shadow
+    // counterparts.
+    const hasSpread = !!existingStmt.get(game.id, 'v4-spread');
+    const hasSpreadNaive = !!existingStmt.get(game.id, 'v4-spread-naive');
+    if (hasSpread && hasSpreadNaive) {
       skipped++;
       continue;
     }
@@ -261,7 +266,10 @@ export function predictUpcomingSpreads(sport: Sport): { predictions: PredictionR
     // Debt #14: shadow row — naive margin (injury signal disabled) for A/B.
     // Only emitted when injuries would actually shift the margin; otherwise
     // naive ≡ adjusted and the shadow row would be a wasteful duplicate.
-    if (hasInjuryData) {
+    // Codex #38 P2: predictMargin returns homeAdv directly for low-confidence
+    // games (either team <5 games), bypassing the injury term. Gate on both
+    // conditions to avoid zero-delta shadow pairs.
+    if (hasInjuryData && !lowConfidence) {
       const naiveMargin = predictMargin(
         {
           game_id: game.id,

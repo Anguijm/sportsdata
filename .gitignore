@@ -5,3 +5,6 @@ data/duckdb/
 .env
 web/dist/
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
+.playwright-cli/
+mobile-audit/

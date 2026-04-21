@@ -1,7 +1,7 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-20 (post-#34 merge — NBA home-adv recalibration 3.0 → 2.25, debt #27 closed)
+Last updated: 2026-04-22 (post-#36/#37/#38 merges — debts #27, #28, #14 all closed; shadow-prediction logging live)
 
 ---
 
@@ -9,26 +9,41 @@ Last updated: 2026-04-20 (post-#34 merge — NBA home-adv recalibration 3.0 → 
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log before acting on it. Git history is the authoritative timeline.
 
-**Status as of 2026-04-20 (post-PR #34 squash-merge):** Sprint 10.9.5 shipped. All work merged to main (PR #32 initial recalibration attempt 3.0→2.4, PR #33 session handoff doc, PR #34 final recalibration 3.0→2.25 + council 5/5 CLEAR). No open PRs. Branch `claude/project-status-review-2TtQg` is now merged; next session should create a fresh branch from `origin/main`.
+**Status as of 2026-04-22 (post-#36, #37, #38 merges):** Sprint 10.10 shipped. All three PRs merged to main. **Zero open PRs. All non-`main` branches purged from the remote** (4 zombies + 2 squash-merged-residue cleaned up during end-of-session housekeeping). Next session starts from a fully-clean tree.
 
-**What shipped this session (2026-04-20):**
-- **Debt #27 CLOSED.** NBA v4-spread home-advantage recalibrated from 3.0 → 2.25. Validated against 21,381-game corpus via `scripts/validate-debt27.py` (pure Python, no native deps). All 5 pre-declared ship rules passed:
-  1. NBA margin weightedMAE decreased (0.9565 → 0.9492) ✓
-  2. NBA margin |signedResid| ≤ 0.10 (0.6050 → 0.0012) ✓
-  3. NBA margin verdict flipped BIASED_HIGH → HONEST ✓
-  4. NBA v5 winner ECE did not regress (delta +0.0025, gate ≤0.015) ✓
-  5. All other sports' verdicts unchanged ✓
-- **Key math finding:** Streak-attenuation empirical coefficient = 0.809 (not naive 0.926). Team-quality auto-correlates losing streaks, so the effective homeAdv per game is lower than `1 − 0.5·P(cold) − 0.3·P(hot)` computed under independence. Future recalibrations for any sport should use the empirical validate→measure→correct loop, not the naive formula.
-- **Council review on PR #34:** 5/5 CLEAR. Math expert verified coefficient derivation, optimality of 2.25, and v5 perturbation bound. All three derivations checked out.
+**What shipped this session (2026-04-22):**
 
-**What's NOT changed since Sprint 10.9 (2026-04-15):**
-- Live system: cron retry flags (`--retry 3 --retry-delay 15 --retry-connrefused`) still in place from PR #31
-- v5 + v4-spread prediction pipeline unchanged except for the one `SPORT_HOME_ADVANTAGE.nba` constant
-- No new Fly-app code besides the constant change; no schema changes
+- **Debt #28 CLOSED (PR #36 — `9345fe1`).** MLS/EPL v5 sigmoid scales sharpened:
+  - `SIGMOID_SCALE.mls: 0.60 → 0.80`; `SIGMOID_SCALE.epl: 0.60 → 0.90`
+  - Grid search over 11 candidate scales per league on the 21,381-game backup-2026-04-15 corpus
+  - Selection rule: min `|signedResid|` subject to verdict=HONEST AND ECE decrease
+  - MLS: ECE 0.0429→0.0380, signedResid +0.0241→−0.0029, verdict SHY→HONEST
+  - EPL: ECE 0.0502→0.0404, signedResid +0.0351→−0.0055, verdict SHY→HONEST
+  - Brier also improves on both (informational): MLS 0.2297→0.2283; EPL 0.2176→0.2144
+  - All 6 pre-declared ship rules PASS
+  - Live verified with math check: EPL `SUN vs NFO` game at 11:10 UTC produced `predicted_prob 0.6216` matching `sigmoid(0.90 × raw)` to 4 decimals (old 0.60 scale would have produced 0.5820)
+
+- **Housekeeping (PR #37 — `0d785a7`).** Moved `Plans/goofy-wibbling-fern-agent-*.md` → `docs/jon-bois-viz-style.md` (kept for future viz work; out of `Plans/` which is now council-disciplined sprint-plan territory). Gitignored `.playwright-cli/`, `mobile-audit/`, `.claude/scheduled_tasks.lock`.
+
+- **Debt #14 CLOSED (PR #38 — `83a9824` + `f2254cf` + `af4ff99`).** Shadow-prediction logging for forward A/B on the injury signal:
+  - On every live cron cycle, for injury-sport games (NBA/NFL/MLB/NHL) with non-zero injury impact AND high confidence, write BOTH `v5` / `v5-naive` AND `v4-spread` / `v4-spread-naive` rows for the same game, same ctx
+  - Zero schema migration — encodes variant in `model_version` suffix, reuses existing 3-column UNIQUE
+  - `isSpreadModel()` helper added to `resolve-predictions.ts` — prevents silent mis-routing of naive spread rows to the winner-resolution branch (no type error, no runtime error, just wrong `was_correct` without it)
+  - Codex caught P1 (idempotency gate closed the shadow path for any game predicted before the PR deployed) + P2 (low-confidence games return `baseRate`/`homeAdv` unchanged by injuries, so adjusted ≡ naive — shadow pair is zero-delta); both fixed before merge in `f2254cf`
+  - Council WARN documented in `af4ff99`: backfilled pairs have temporal skew (adjusted row's `ctx` snapshot differs from naive row's by ~8 hours when the adjusted predates the PR). Pre-declared analysis-time filter — only use pairs where `|v5.made_at - v5-naive.made_at| < 60s` — for the follow-up shadow-analysis report
+  - **Live status:** Fly deploy completed 18:27:37 UTC; manually triggered predict cron at 18:31 UTC succeeded; **zero shadow rows written that cycle** because `home_out_impact == 0` on every spread-pick across all sports. Not a code bug — upstream ESPN injury signal was flat across NBA/NFL/MLB/NHL. Re-verify on next natural cron (22:00 UTC).
+
+- **Branch cleanup (end-of-session).** Deleted 6 stale remote branches: 4 zombies (pure squash-merged residue) + 2 that had cherry-pick-unique commits but whose substantive content was already on main via prior PRs (#25 for `claude/injury-v4-and-alt-sources`, #34 for `claude/project-status-review-2TtQg`). Remote is now `main`-only.
+
+**What's NOT changed since Sprint 10.9.5:**
+- No new scrapers; no schema migrations beyond the `shadow?: boolean` optional field on `ReasoningJson` / `SpreadReasoningJson` TypeScript interfaces
+- Cron timing unchanged (05:00 + 22:00 UTC)
+- Injury scraper hardening unchanged from PR #25 (3-attempt retry + 10s timeout)
+- `SPORT_HOME_ADVANTAGE.nba` stays at 2.25 (from PR #34)
 
 ### What shipped since Sprint 10
 
-34 PRs (see Sprint-by-Sprint Log for detail):
+37 PRs total. This session's entries (see Sprint-by-Sprint Log 10.10 for detail):
 
 | PRs | Theme |
 |-----|-------|
@@ -50,79 +65,79 @@ Last updated: 2026-04-20 (post-#34 merge — NBA home-adv recalibration 3.0 → 
 | #28 | Per-sport baseline with bootstrap 95% CIs — closes debt #13 |
 | #29 | Soccer Poisson v1 — A/B infra + null result on pre-declared ship gate |
 | #30 | Sport-specific predictions (+ reliability.ts home-favored bias fix, Codex P1) |
-| #31 | Cron retry hardening — `--retry 3 --retry-delay 15 --retry-connrefused` on scrape + predict curls; survives Fly deploy-restart blips (502 window + ECONNREFUSED window) |
+| #31 | Cron retry hardening (`--retry 3 --retry-delay 15 --retry-connrefused`) |
 | #32 | NBA home-adv initial recalibration attempt (3.0 → 2.4) |
 | #33 | Session handoff doc refresh (Sprint 10.9) |
 | #34 | NBA home-adv final recalibration (3.0 → 2.25) — debt #27 closed, council 5/5 CLEAR |
+| #35 | Sprint 10.9.5 session handoff doc |
+| **#36** | **debt #28 — MLS/EPL sigmoid scale sharpening (0.60 → MLS 0.80, EPL 0.90)** |
+| **#37** | **Housekeeping — viz research to `docs/`, gitignore tool artifacts** |
+| **#38** | **debt #14 — shadow-prediction logging (forward A/B infra for injury signal)** |
 
-### Live model state (post-#25 merge)
+### Live model state (post-#38 merge)
 
-- **v5** (winner prediction): continuous sigmoid + injury adjustment for NBA/NFL/MLB/NHL
-- **v4-spread** (margin/ATS): continuous margin model + injury adjustment for NBA/NFL/MLB/NHL, **PLUS MLB pitcher ERA factor (`±0.3 runs per 1.0 ERA gap`)** — this MLB-specific term is intentional, not a special case to "clean up"
-- **MLS/EPL**: both models run but injury signal disabled (no public lineup feed); UI shows "Injury-adjusted: no" disclaimer
-- **ESPN injury scraper**: 3-attempt retry with exponential backoff (500ms→1s→2s ± 25% jitter), 10s timeout per attempt
-- **Critical fail-closed semantic**: injury endpoint failures do NOT fail the cycle (filtered from critical failure sweep) — model degrades gracefully without injury data
+- **v5** (winner prediction): continuous sigmoid + injury adjustment for NBA/NFL/MLB/NHL. Sigmoid scales: NBA 0.10, NFL 0.10, MLB 0.30, NHL 0.45, **MLS 0.80 (updated Sprint 10.10)**, **EPL 0.90 (updated Sprint 10.10)**.
+- **v5-naive** (shadow): written when `hasInjuryData && !lowConfidence`. Naive = injury signal disabled via `predictWithInjuries(game, ctx, undefined)` — mathematically identical to `v5.predict`.
+- **v4-spread** (margin/ATS): continuous margin model + injury adjustment for NBA/NFL/MLB/NHL, **PLUS MLB pitcher ERA factor (`±0.3 runs per 1.0 ERA gap`)** — intentional, not cleanup-bait.
+- **v4-spread-naive** (shadow): parallel to v5-naive, margin computed via `predictMargin(game, ctx, pitchers, undefined)`.
+- **MLS/EPL**: both v5 and v4-spread run but injury signal disabled (no public lineup feed); UI shows "Injury-adjusted: no" disclaimer. No shadow rows fire for these sports.
+- **Resolver**: `isSpreadModel(mv)` helper correctly routes all 4 variants (winner semantics for `v5*`, spread-cover semantics for `v4-spread*`).
+- **Critical fail-closed semantic**: injury endpoint failures do NOT fail the cycle; model degrades gracefully.
 
 ### Current data state
 
-- **21,516 games** across 6 sports (2-3 seasons per sport)
+- **21,694 games** across 6 sports (via `/api/health` 2026-04-22, up from 21,516 at Sprint 10.9.5)
+- **21,533 resolved outcomes**
 - **12,813 backfill predictions** (v2) resolved with accuracy metrics
-- **v5 live predictions** generating with unique probabilities per game (injury-adjusted for NBA/NFL/MLB/NHL since PR #22 merged)
-- **v4-spread live predictions** running for games with odds (injury-adjusted since PR #25 merged; first cron with the new code at next 22:00 UTC run)
-- **Injury data** flowing since PR #22; ESPN scraper hardened (3-attempt retry + 10s timeout) since PR #25
-- **Automated backups** running nightly at 3am UTC
+- **v5 + v4-spread live predictions** with shadow-when-applicable since 2026-04-22 18:27 UTC (Fly deploy of PR #38)
+- **ESPN injuries returned flat** on the 2026-04-22 18:31 UTC predict cron — `home_out_impact == 0` across every spread-pick for NBA/NFL/MLB/NHL. This is pre-existing (not caused by PR #38); check next cron whether this is a one-day anomaly or a persistent upstream regression.
+- **Automated DB backups** running nightly at 3am UTC
 
 ### Priority queue for next session
 
-**P0 — debt #27 (NBA home-adv recalibration) is now CLOSED (PR #34, 2026-04-20).** Next priority items:
+**Debts #27 (NBA home-adv), #28 (MLS/EPL sigmoid), #14 (shadow logging) are all CLOSED.** The HIGH tier is now short:
 
-**HIGH — follow-ons from reliability findings + measurement gaps:**
-1. **MLS/EPL v5 sigmoid scale sharpening (debt #28).** Reliability shows v5 is SHY on both soccer leagues (signedResid +0.04). Tune the sigmoid scale downward from baseline data. Same pattern as debt #27: one-number recalibration with pre-declared ship rules + council review.
-2. **Shadow-prediction logging (debt #14).** Store naive (no-injury) prediction alongside the adjusted one on every cron cycle. Enables forward A/B after N≥30 resolved picks. Essential before any live track record claims about injury signal value.
-3. **Home-favored bias in live `getCalibration()` (debt #31).** Small targeted fix in `resolve-predictions.ts` — same class of bug that was fixed in `reliability.ts` during PR #30. Affects live calibration plot quality.
+1. **Debt #31 — home-favored bias in live `getCalibration()`.** Quick win (~30 min). Port the `pickedHome = p >= 0.5` transform that PR #30 applied to `reliability.ts` into `resolve-predictions.ts:getCalibration()`. Same class of bug; affects live calibration plot quality.
+2. **New follow-up debt — shadow-analysis CLI/endpoint.** Once shadow pairs accumulate (target N≥30 per sport per model), build a tool that computes Brier/MAE delta per sport per model. Two gates pre-declared in `Plans/shadow-prediction-logging.md`:
+   - Bonferroni-adjust (α = 0.05 / 8) or pre-declare a single primary ship metric
+   - Filter pairs where `|v5.made_at − v5-naive.made_at| < 60s` (excludes temporally-skewed backfill pairs)
+3. **Watch: ESPN injuries flat today.** If 2-3 consecutive crons produce zero `home_out_impact` across all sports, ESPN endpoint health is suspect. This matches the trigger criterion for **debt #19** (second injury data provider — ≥3 failures/week for 2 weeks).
 
-**MEDIUM — soccer v2 campaign prerequisites:**
-4. **Pre-2024 soccer match scrape (debt #26).** FBref or Understat (Understat includes xG). Unblocks ξ-weighted MLE fitting of α/β and a clean train/test split. Medium infra lift; the gating dependency for any serious soccer v2.
-5. Dixon-Coles ξ time-decay + MLE (debt #25) — the *actually* margin-moving half of the DC 1997 paper. Depends on #26.
-6. Dixon-Coles τ low-score correction (debt #24) — strictly a draw-Brier / scoreline-probability improvement. Math-proven zero impact on E[margin] and therefore on our primary ship gate; low priority until we care about 1X2-market calibration.
+**MEDIUM — soccer v2 campaign prerequisites (unchanged):**
+4. **Pre-2024 soccer match scrape (debt #26).** FBref or Understat. Gating dependency for serious soccer v2.
+5. Dixon-Coles ξ time-decay + MLE (debt #25) — depends on #26.
+6. Dixon-Coles τ low-score correction (debt #24) — draw-Brier / scoreline only.
 
-**Backlog (lower priority):**
-- Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) — biggest quality win on existing signal. Council debt #16.
-- Run ratchet per sport via Actions workflow to regenerate artifacts with v5 + honest baselines.
-- NHL goalie matchups — ESPN scoreboard doesn't include goalie data; need boxscore or external source.
-- MLS/EPL draw-probability model (depends on the soccer v2 campaign above).
-- Player stats scraper in cron (currently stale Sprint 5 ingest)
-- Held-out v5 scale validation (fitted in-sample on backfill)
-- Historical odds ingest (Kaggle / paid) to unlock real v4-spread ATS backtest
+**Backlog (lower priority, unchanged from Sprint 10.9.5):**
+- Position-weighted injury impact (debt #16)
+- Run ratchet per sport via Actions workflow to regenerate artifacts with v5 + honest baselines
+- NHL goalie matchups
+- MLS/EPL draw-probability model (gated on soccer v2)
+- Player stats scraper in cron (stale since Sprint 5)
+- Held-out v5 scale cross-validation (debt #12)
+- Historical odds ingest (debt #20) — unlocks real v4-spread ATS backtest
 - Full lineup integration from official league APIs
-- Second injury data provider (trigger: ≥3 ESPN failures/week for 2 weeks)
+- Second injury data provider (debt #19)
 
-**Verification (captured at Sprint 10.7 end — 2026-04-14 17:33 UTC; Sprint 10.8 was modeling-only and did not change runtime state):**
+### Verification (captured at Sprint 10.10 end — 2026-04-22)
 
 | Check | Result | Status |
 |-------|--------|--------|
-| `/api/health` reachable | ✓ status:ok, 21,516 games, 21,364 results | PASS |
-| `last_scrape_at` fresh | 2026-04-14T16:35:03 (~1h before check) | STALE — cron next at 22:00 UTC |
-| v5 prediction has `home_out_impact` field | NO — current predictions pre-date the merge | PENDING — confirm after next cron |
-| v4-spread prediction has `home_out_impact` field | NO — current predictions pre-date the merge | PENDING — confirm after next cron |
-| Cloudflare Pages deploy ran on merge | NOT VERIFIED (no `gh` access from this session) | TODO next session |
-| Fly API deploy ran on merge | NOT VERIFIED — but `/api/health` returns 200 | LIKELY OK, verify |
+| `/api/health` reachable | status:ok, 21,694 games, 21,533 results | PASS |
+| `last_scrape_at` fresh | 2026-04-22T18:31:28 | PASS |
+| PR #36 live — EPL new scale produces expected probs | `epl:SUN vs epl:NFO` `predicted_prob=0.6216` matches sigmoid(0.90 × raw) to 4 decimals | PASS |
+| PR #36 live — MLS new scale deployed | No new MLS game today to math-check directly; code ships identically to EPL and same sigmoid path | PASS by construction |
+| PR #38 Fly auto-deploy | Completed 18:27:37 UTC | PASS |
+| PR #38 live — shadow rows appear | Zero shadows this cycle (upstream injuries flat) | AWAITING next upstream-injury-present cron |
+| PR #36 Fly auto-deploy | Completed 2026-04-21T11:05:15 UTC | PASS |
 
-**Sprint 10.8 note:** PRs #26 (docs), #27-28 (baseline), #29 (soccer Poisson A/B) were all analysis / docs / pure-logic additions. None of them changed live-runtime code paths (predict-runner, spread-runner, scrapers, scheduler). The verification-table status above therefore carries forward unchanged; re-verify opportunistically next session but no new Sprint 10.8-introduced gaps.
+### What this means for next session
 
-**Sprint 10.9 addendum (2026-04-15):**
-- PR #30 (sport-specific predictions) + PR #31 (cron retry hardening) merged. PR #31 is workflow-level only (`.github/workflows/predict-cron.yml`); no Fly-app code changed, so no new Fly deploy required for #31 to take effect.
-- Manual `workflow_dispatch` cron run at 2026-04-15 07:47 UTC returned `predict_http=200` across all 6 sports. Body showed `generated: 0` everywhere (expected: the earlier 05:00 UTC scheduled cron already generated today's slate, so the 07:47 rerun correctly saw games as already-predicted and skipped). Retry branch itself wasn't exercised (no `Warning: Transient problem` lines in log) — that waits for the next real deploy blip.
-
-**Sprint 10.9.5 addendum (2026-04-20):**
-- PR #34 (NBA home-adv 3.0 → 2.25) merged to main. This is a Fly-app code change (constant in `src/analysis/spread-model.ts`), so Fly auto-deploy should have fired. Next session should verify `/api/health` + confirm NBA predictions carry the updated home-advantage.
-- Debt #27 is now CLOSED. P0 slot is empty; next priority is debt #28 (MLS/EPL sigmoid scale) or debt #14 (shadow-logging).
-
-**What this means for next session:**
-1. Verify Fly deploy of PR #34: `curl /api/health` should show the commit hash or recent `last_scrape_at`.
-2. Confirm NBA live predictions reflect the recalibrated home-advantage: check that `spread.predicted_margin` on an NBA home game is lower than it would have been at the old 3.0 constant (e.g., a neutral matchup should predict ~2.25pt home margin, not ~3.0). The `reasoning_json` schema does NOT contain a `homeAdv` field — verify via the observable margin output, not a config echo.
-3. Still-carried-forward from Sprint 10.8: re-check both upcoming prediction endpoints for `home_out_impact` in `reasoning_json.features`; if absent → check Fly deploy on PR #25 merge.
-4. Pick up debt #28 (MLS/EPL sigmoid scale sharpening) as the next one-number recalibration, or debt #14 (shadow-logging) if the user prefers infrastructure work.
+1. **Spot-check the next cron's output** (post-22:00 UTC 2026-04-22, or 05:00 UTC 2026-04-23). Look for ANY spread-pick with `home_out_impact > 0`. If one appears, verify the corresponding `v5-naive` and/or `v4-spread-naive` rows exist for that game_id.
+2. **Pick one HIGH item:**
+   - **Debt #31** if you want a 30-min win that improves live calibration plot quality.
+   - **Shadow-analysis report** if you want to start the measurement infra while shadows accumulate.
+3. **If ESPN injuries remain flat for 2-3 days**, escalate into an injury-scraper health investigation (distinct from debt #14 code validation). Likely reveals a regression in the ESPN endpoint or the `first_seen_at >= 7 days ago` recency gate in `computeInjuryImpact`.
 
 ### Key architecture (unchanged from Sprint 10.6)
 
@@ -675,7 +690,54 @@ Short, targeted sprint triggered by a real cron-fail incident at 2026-04-15 06:2
 
 ---
 
-## Backlog (Post-Sprint 10.9.5)
+### Sprint 10.10 — MLS/EPL Sigmoid + Shadow Logging + Housekeeping (2026-04-22)
+
+**Three substantive merges in one session:**
+
+**PR #36 — debt #28 closed (`9345fe1`):** MLS/EPL v5 sigmoid scales sharpened.
+
+| Rule | Gate | Result | Status |
+|------|------|--------|--------|
+| MLS ECE decreases | < 0.0429 | 0.0380 | ✓ PASS |
+| EPL ECE decreases | < 0.0502 | 0.0404 | ✓ PASS |
+| MLS verdict → HONEST | HONEST | HONEST | ✓ PASS |
+| EPL verdict → HONEST | HONEST | HONEST | ✓ PASS |
+| NBA/NFL/MLB/NHL winner verdicts unchanged | all HONEST | all HONEST | ✓ PASS |
+| All sports' margin verdicts unchanged | all HONEST | all HONEST | ✓ PASS |
+
+- Tuning method: grid search over 11 candidates per league on backup-2026-04-15 corpus (21,381 games), independent scales (MLS and EPL are disjoint slices). Selection rule: `min |signedResid|` subject to verdict=HONEST AND ECE decrease. Chose `mls=0.80` (signedResid −0.003), `epl=0.90` (signedResid −0.006) over the min-ECE alternatives (`mls=0.85 ECE=0.0337`, `epl=1.00 ECE=0.0323`) — documented reasoning: signedResid=0 is the cleanest calibration target (eliminates uniform shift), and the ECE delta vs min-ECE pick is small (≤0.008) relative to the baseline improvement.
+- Tooling: `scripts/validate-debt28.py` (pure Python; fork of `validate-debt27.py`). Also fixed a bug in the harness's season-year logic vs production (MLS is calendar-year, not fall-spring).
+- Live math verification: `epl:SUN vs epl:NFO` fresh post-deploy prediction produced `predicted_prob=0.6216043924805698`, exactly matching `sigmoid(0.90 × raw)` — confirming the new scale is on Fly.
+
+**PR #37 — housekeeping (`0d785a7`):** Moved `Plans/goofy-wibbling-fern-agent-a64396f5e25d39962.md` → `docs/jon-bois-viz-style.md`. Gitignored `.playwright-cli/`, `mobile-audit/`, `.claude/scheduled_tasks.lock`. No production code touched.
+
+**PR #38 — debt #14 closed (`83a9824` + `f2254cf` + `af4ff99`):** Shadow-prediction logging for forward A/B.
+
+- Design: encode variant in `model_version` suffix (`v5-naive`, `v4-spread-naive`). Zero schema migration; reuses existing `UNIQUE (game_id, model_version, prediction_source)`. Frontend queries filter by exact `model_version =` equality so shadows are invisible to the UI by default.
+- Shadow gate: `hasInjuryData && !lowConfidence`. MLS/EPL (no injury signal) never produce shadows. Low-confidence games correctly skip (both `predictWithInjuries` and `predictMargin` return `baseRate` / `homeAdv` directly when games<5, ignoring injuries — shadow would be zero-delta).
+- Resolver: `isSpreadModel(mv)` helper replaces two hardcoded `mv === 'v4-spread'` equality checks in `resolve-predictions.ts`. Without it, naive spread rows would silently mis-route to the winner-resolution branch (no type error, no runtime error — just wrong `was_correct` assignments).
+- Idempotency fix (Codex P1): gate changed from `hasV5` to `hasV5 && hasV5Naive`. Pre-deploy games now get their shadows backfilled on next cron; UPSERT DO NOTHING on the existing v5 keeps it unchanged while the new v5-naive row inserts.
+- Low-confidence fix (Codex P2): shadow gate now includes `!lowConfidence` to avoid zero-delta pairs.
+- Pre-declared caveat for the follow-up shadow-analysis report: backfilled pairs are temporally skewed (adjusted row's `ctx` snapshot may differ from naive row's by ~8 hours when adjusted predates the PR). Filter pairs where `|adjusted.made_at − naive.made_at| < 60s` at analysis time.
+
+**Live signal captured in test (before merge):** Injected Jayson Tatum as out for the BOS/PHI game on restored backup-2026-04-21. Adjusted v5 predicted PHI at 50.07%; naive v5 predicted BOS at 74.47%. **Pick flipped. Δprob_home = 0.244.** That's the kind of signal this infra is designed to measure over many games.
+
+**Post-merge live state:** Fly deploy ran in 60-62 seconds both times. First post-deploy predict cron (18:31 UTC) wrote no shadow rows because ESPN injury signal was flat across all sports (`home_out_impact == 0` on every fresh pick). Not a code bug; upstream data issue. Watch next cron.
+
+**Branch cleanup (end of session):** Deleted 6 stale remote branches. 4 were pure zombies (squash-merged residue; `ahead=0 behind=N`). 2 had cherry-pick-unique commits — `claude/injury-v4-and-alt-sources` had 6 commits ahead of main but 5 were PR #25's pre-squash history (patch-id matched) and the 1 unique commit (Sprint 10.7 session handoff) was superseded by 4 newer handoff refreshes; `claude/project-status-review-2TtQg` had 4 commits ahead but 3 files identical to main, predict.ts was stale (pre-#28 sigmoid scales), plus one `temp: DB dump for validation` commit with a 2.98MB binary (already removed in the branch tip).
+
+**Council process (Sprint 10.10):**
+- PR #36: plan review 2 rounds (Math WARN on min-|sR| vs min-ECE → documented → CLEAR; Stat Validity WARN on marginal-N for EPL → accepted with pre-declared ECE-primary-gate mitigation). Implementation + results 5/5 CLEAR.
+- PR #38: plan review round 1 CLEAR after 3 inline WARN resolutions (Stat Validity on zero-impact edge case, Prediction Accuracy on metric-per-model clarity, Math on `predictWithInjuries` equivalence proof). Implementation + test CLEAR. Post-Codex re-review: Stat Validity WARN on backfilled-pair temporal skew → documented with analysis-time filter → CLEAR.
+
+**Key lessons filed to `learnings.md`:**
+- `mls-epl-sigmoid-scale`: grid search beats closed-form for sigmoid calibration when the first-order approximation has ~20% error. ECE is NOT monotonic in sigmoid scale — picking by min-ECE can land past a local ECE peak at a point with worse signedResid than an earlier candidate.
+- `shadow-prediction-logging`: encoding variants in `model_version` suffix is the zero-schema-migration pattern that beats a new column when downstream queries are exact-string filters. Hardcoded `=== 'model-name'` checks are silent-mis-routing bugs in waiting — extract into a helper when adding any new variant.
+- `branch-cleanup`: `git log --cherry-pick --right-only` separates squash-merged residue from genuinely unique commits. A branch can be `ahead=6 behind=45` yet all its patches already be on main by patch-id.
+
+---
+
+## Backlog (Post-Sprint 10.10)
 
 See the **Next Session Pickup** block above for the prioritized next-task queue. This section is the canonical list of council debts.
 
@@ -696,7 +758,7 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 11 | ~~Reliability diagrams across ALL sports from baseline corpus~~ | — | **CLOSED** by Sprint 10.8 implementation — `src/analysis/reliability.ts` + `npm run reliability` + `data/reliability/reliability-2026-04-15.{json,txt}`. Surfaced three actionable findings → spawned debts #27, #28, #29. |
 | 12 | v5 sigmoid scale cross-validation on held-out data | Sprint 10.6i Math Expert | HIGH |
 | 13 | ~~v4-spread margin MAE baseline on 12,813 backfill games~~ | — | **CLOSED** by PR #28 (bootstrap CIs, 16,777 games) |
-| 14 | **Shadow-prediction logging**: for every live v4-spread pick, store the naive (no-injury) prediction alongside the adjusted one. Enables forward A/B after N≥30 resolved picks. | Sprint 10.7 Statistical Validity | **HIGH — before live track record stabilizes** |
+| 14 | ~~**Shadow-prediction logging**: for every live v4-spread pick, store the naive (no-injury) prediction alongside the adjusted one. Enables forward A/B after N≥30 resolved picks.~~ | — | **CLOSED** by PR #38 (Sprint 10.10, 2026-04-22). Writes `v5-naive` + `v4-spread-naive` rows when `hasInjuryData && !lowConfidence` on NBA/NFL/MLB/NHL. Live; awaiting non-empty ESPN injury flow to produce first shadow pair. Follow-up debt #32 filed for the shadow-analysis report. |
 | 15 | v5↔v4-spread injury consistency check (same sign on all games, post-merge) | Sprint 10.7 Mathematics | Medium |
 | 16 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Sprint 10.7 Domain Expert | Medium (biggest quality win) |
 | 17 | Minimum-impact threshold (skip adjustment below 2 units) | Sprint 10.7 Prediction Accuracy | Low (refinement) |
@@ -710,10 +772,11 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 25 | **Dixon-Coles ξ time-decay + MLE fit** (split from old debt #18). The *actually* margin-moving half of Dixon-Coles 1997: weight recent matches more, fit α/β/μ_home by MLE over all history. Reduces estimator variance AND captures recent-form drift. Blocked on debt #26 (needs pre-2024 corpus). | Sprint 10.8 Math + Domain + Stats | **HIGH** (blocked on #26) |
 | 26 | **Pre-2024 soccer match scrape** (new infra). FBref or Understat (Understat bundles xG, a sharper team-strength signal than actual goals). Unblocks proper train/test split AND larger N for MLE fitting. EPL ~3800 pre-2024 games (vs 699 currently), MLS ~1000+. Medium infra lift. | Sprint 10.8 Data Quality | **HIGH** — gating dependency for any serious soccer v2 |
 | 27 | ~~**NBA v4-spread home-advantage re-calibration.**~~ | — | **CLOSED** by PR #34 (Sprint 10.9.5, 2026-04-20). `SPORT_HOME_ADVANTAGE.nba: 3.0 → 2.25`. signedResid −0.605 → +0.001, verdict BIASED_HIGH → HONEST. Council 5/5 CLEAR. |
-| 28 | **MLS/EPL v5 sigmoid scale re-calibration.** Reliability artifact 2026-04-15 shows v5 winner-prob is SHY on both soccer leagues (ECE ~0.05, signedResid +0.04). The sigmoid under-claims; 65-70% bins actually hit 70-80%+ accuracy. Tune `SIGMOID_SCALE.mls/epl` downward (sharper sigmoid) against baseline data. | Sprint 10.8 Prediction Accuracy (surfaced by reliability diagrams) | **P2** — affects soccer track record quality |
+| 28 | ~~**MLS/EPL v5 sigmoid scale re-calibration.**~~ | — | **CLOSED** by PR #36 (Sprint 10.10, 2026-04-22). `SIGMOID_SCALE.mls: 0.60 → 0.80`, `SIGMOID_SCALE.epl: 0.60 → 0.90`. MLS verdict SHY→HONEST (signedResid +0.0241 → −0.0029); EPL same (+0.0351 → −0.0055). Brier also improves on both. Council 3/3 CLEAR. |
 | 29 | **Ternary reliability for soccer Poisson** (P(home) / P(draw) / P(away) — deferred, separate design). Pointwise binning doesn't apply; needs Murphy decomposition or per-class reliability curves. Only worth building if 1X2 calibration becomes a priority. | Sprint 10.8 Math (deferred) | Low — gated on 1X2 market work |
 | 30 | **`check-branch-not-merged.sh` false-positives on chained `git commit && git push` in a single Bash tool call.** Hook evaluates `git diff origin/main..HEAD --name-only` once before the chained commands execute, so the pre-commit (empty-diff) state triggers a deny even when the chained commit would create the diff. Current workaround: split chained commands into two Bash calls. Possible fix: skip-when-push-is-chained-with-prior-commit, OR switch detection to look at `@{upstream}..HEAD` instead of `origin/main..HEAD`. Surfaced while pushing the cron-retry branch (Sprint 10.8). | Sprint 10.8 (hook self-limitation surfaced by cron-retry work) | **Low** — workaround is trivial; real fix is nice-to-have |
 | 31 | **Same home-favored bias in the existing `getCalibration()` in `resolve-predictions.ts`.** Codex found this class of bug in reliability.ts during PR #30 review; the existing live-calibration code predates my changes and still filters `p < 0.5`. Apply the same `pickedHome = p >= 0.5` transform so the NBA-live calibration surfaces include away-favored picks. Small targeted PR when someone has the cycles. | Sprint 10.8 Codex review on PR #30 (out-of-scope at the time) | **P2** — affects live track record calibration quality |
+| 32 | **Shadow-analysis CLI/endpoint.** Follow-up to debt #14 (PR #38). Compute per-sport / per-model Brier (v5) or MAE (v4-spread) delta between adjusted and naive shadow pairs once N≥30 resolved pairs per (sport × model) accumulate. Two pre-declared constraints from `Plans/shadow-prediction-logging.md`: (1) Bonferroni-adjust (α=0.05/8) or pre-declare a single primary ship metric, since 4 sports × 2 models = 8 comparisons; (2) filter pairs to `\|adj.made_at − naive.made_at\| < 60s` to exclude temporally-skewed backfill pairs. | Sprint 10.10 — surfaced as out-of-scope in debt #14's plan | **HIGH** — gated on N≥30 per sport × model (~2-3 weeks for NBA/MLB/NHL, longer for NFL) |
 
 **Audit performed Sprint 10.8 (council mandate):** All debts re-checked against current `main` after PR #29 merged. Debt #13 closed (PR #28). Debt #11 promoted to P0 and generalized (NBA-live → all-sport reliability diagrams from baseline). Old debt #18 "Dixon-Coles" (filed as single item in the PR #29 description) split into #24 (τ, math-proven zero margin impact) and #25 (ξ time-decay MLE, blocked on #26). Debts from earlier sprints have their original numbering preserved (#14-#23); new Sprint 10.8 debts are #24-#26.
 
@@ -734,6 +797,8 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | Debt #13 — per-sport margin MAE baseline with bootstrap CIs | PR #28 |
 | Debt #11 — reliability diagrams across ALL sports from baseline corpus | Sprint 10.8 (reliability.ts + CLI; artifact 2026-04-15) |
 | Debt #27 — NBA v4-spread home-advantage re-calibration (3.0 → 2.25) | PR #34 (Sprint 10.9.5, 2026-04-20). signedResid −0.605 → +0.001. Council 5/5 CLEAR. |
+| Debt #28 — MLS/EPL v5 sigmoid scale re-calibration | PR #36 (Sprint 10.10, 2026-04-22). MLS 0.60→0.80, EPL 0.60→0.90. Both flipped SHY→HONEST. Brier improves on both. |
+| Debt #14 — Shadow-prediction logging for forward A/B | PR #38 (Sprint 10.10, 2026-04-22). `v5-naive` + `v4-spread-naive` rows written when `hasInjuryData && !lowConfidence` on NBA/NFL/MLB/NHL. Codex P1+P2 addressed. |
 
 ### Deferred (no timeline)
 
@@ -869,6 +934,10 @@ npm run viz           # Both API + Vite together
 For an up-to-date list, use `git log --oneline main`. Major milestones:
 
 ```
+PR #38 Shadow-prediction logging (debt #14 closed) — Sprint 10.10
+PR #37 Housekeeping — viz research to docs/, gitignore tool artifacts
+PR #36 MLS/EPL sigmoid scale sharpening (debt #28 closed) — Sprint 10.10
+PR #35 Sprint 10.9.5 session handoff doc
 PR #34 NBA home-adv recalibration 3.0 → 2.25 (debt #27 closed, council 5/5 CLEAR)
 PR #33 Session handoff doc refresh (Sprint 10.9)
 PR #32 NBA home-adv initial attempt (3.0 → 2.4)

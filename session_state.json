@@ -80,7 +80,7 @@
     "shadow_prediction_forward_ab": "INFRA SHIPPED PR #38 (Sprint 10.10). Awaiting N≥30 pairs per sport × model — ~2-3 weeks for NBA/MLB/NHL. Analysis tool filed as debt #32."
   },
   "council_debts_open": 21,
-  "council_debts_closed_this_session": 3,
+  "council_debts_closed_this_session": 2,
   "council_debts_closed_ids_this_session": [14, 28],
   "council_debts_new_this_session": [32],
   "prs_merged_this_session": 3,

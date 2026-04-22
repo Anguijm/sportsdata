@@ -1,32 +1,28 @@
 {
-  "current_phase": "per_sport_baseline_complete_debt13_closed",
-  "last_completed_sprint": "sprint_10_8_per_sport_baseline_analysis",
-  "next_session_type": "ship_soccer_poisson_model",
-  "next_action": "Build Poisson/Skellam goal model for MLS+EPL as a separate margin model. Baseline analysis (2026-04-14, CI-gated) showed MLS and EPL margin models cannot be distinguished from predict-zero at 95% CI (MLS: MAE-nv0 CI [-0.046, +0.035]; EPL: [-0.039, +0.093]). Winner/Brier model works fine — problem is specific to the margin formulation applied to a ternary outcome. Math + Domain both CLEAR. Target: margin-MAE-minus-nv0 CI entirely below zero on both MLS and EPL test slice. Defer MLB/NHL tweaks — they already beat predict-zero but by trivially small effect sizes.",
-  "open_prs": [
-    {
-      "number": 26,
-      "title": "Session handoff (post-merge): refresh docs + capture handoff-discipline lesson",
-      "branch": "claude/post-merge-handoff",
-      "url": "https://github.com/Anguijm/sportsdata/pull/26",
-      "status": "this PR — merge to land the handoff doc itself"
-    }
-  ],
+  "current_phase": "sprint_10_10_complete_debts_27_28_14_closed",
+  "last_completed_sprint": "sprint_10_10_mls_epl_sigmoid_shadow_logging_housekeeping",
+  "last_updated": "2026-04-22",
+  "next_session_type": "pick_debt_31_or_shadow_analysis_report",
+  "next_action": "Two HIGH-tier candidates remaining: (1) debt #31 — port the `pickedHome = p >= 0.5` transform from reliability.ts (PR #30) into resolve-predictions.ts:getCalibration() (~30 min fix affecting live calibration plot quality). (2) Debt #32 (new, filed Sprint 10.10) — shadow-analysis CLI/endpoint to compute Brier/MAE delta once N≥30 shadow pairs accumulate per (sport × model). Bonferroni or primary-metric pre-declaration required (8 comparisons). Filter pairs to |adj.made_at - naive.made_at| < 60s to exclude temporal-skew backfills. Also watch: ESPN injury signal returned zero home_out_impact on all NBA/NFL/MLB/NHL picks on the 2026-04-22 18:31 UTC cron — re-verify on next cron; if persistent, escalate toward debt #19 (second injury provider).",
+  "open_prs": [],
   "pipeline": {
-    "phase": "live_predictions_all_sports_both_models_with_injury",
-    "last_log_update": "2026-04-14",
+    "phase": "live_predictions_all_sports_both_models_with_injury_plus_shadow_logging",
+    "last_log_update": "2026-04-22",
     "active_hypotheses": 0,
-    "models_live": ["v5-sigmoid+injury", "v4-spread+injury"],
+    "models_live": ["v5-sigmoid+injury", "v5-naive (shadow)", "v4-spread+injury", "v4-spread-naive (shadow)"],
     "predictions_backfilled": 12813,
     "predictions_live_accumulating": true,
     "sports_with_predictions": ["nba", "nfl", "mlb", "nhl", "mls", "epl"],
     "injury_signal_active_v5": true,
     "injury_signal_active_v4_spread": true,
-    "injury_disabled_for": ["mls", "epl"]
+    "injury_disabled_for": ["mls", "epl"],
+    "shadow_logging_active_for": ["nba", "nfl", "mlb", "nhl"],
+    "shadow_rows_written_to_date": 0,
+    "shadow_rows_note": "Live deploy 2026-04-22 18:27 UTC; first post-deploy cron returned zero shadows because ESPN injury signal was flat across all sports. Watch next cron."
   },
   "sources_status": {
     "espn": "active_hardened",
-    "espn_injuries": "active_with_retry_3x_backoff_10s_timeout",
+    "espn_injuries": "active_with_retry_3x_backoff_10s_timeout__but_flat_response_on_2026_04_22",
     "odds_api": "active_accumulating",
     "balldontlie": "active",
     "sportsdata_io": "untested",
@@ -37,11 +33,14 @@
     "v1": "v0 + flip when visitor has 10+ more wins",
     "v2": "v1 + point differential (4 discrete buckets, superseded by v5)",
     "v3": "v2 + cold streak (rejected by ratchet)",
-    "v4-spread": "continuous margin model + INJURY adjustment + MLB pitcher ERA",
-    "v5": "continuous sigmoid + INJURY adjustment — prob = sigmoid(scale * (homeDiff - awayDiff + homeAdv + injuryAdj))"
+    "v4-spread": "continuous margin model + INJURY adjustment + MLB pitcher ERA. NBA home-adv 2.25 (debt #27, PR #34)",
+    "v4-spread-naive": "shadow of v4-spread with injuries=undefined. Written when hasInjuryData && !lowConfidence.",
+    "v5": "continuous sigmoid + INJURY adjustment. Scales: NBA/NFL 0.10, MLB 0.30, NHL 0.45, MLS 0.80 (updated Sprint 10.10), EPL 0.90 (updated Sprint 10.10)",
+    "v5-naive": "shadow of v5 via predictWithInjuries(game, ctx, undefined). Written when hasInjuryData && !lowConfidence. Forward A/B infra for injury signal (debt #14, PR #38)."
   },
   "database": {
-    "games": 21516,
+    "games": 21694,
+    "results": 21533,
     "sports_active": ["nfl", "nba", "mlb", "nhl", "mls", "epl"],
     "historical_seasons": "2-3 per sport (2023-2026)",
     "backfilled_predictions": 12813,
@@ -75,23 +74,19 @@
     "cron_backup": "daily 3am UTC to GitHub Releases"
   },
   "backtesting_status": {
-    "v4_spread_margin_mae_baseline": "DONE 2026-04-14 — data/baselines/baseline-2026-04-14.json with bootstrap 95% CIs. 16,777 games across 6 sports, closes debt #13. Verdict (paired MAE vs predict-zero, 95% CI): NBA/NFL/MLB/NHL ✓ beat predict-zero. MLS/EPL ~ tie predict-zero on full slice — margin model cannot be distinguished from a constant for soccer. EPL test slice (N=140) shows ✗ LOSES but small N.",
+    "v4_spread_margin_mae_baseline": "DONE 2026-04-14 — data/baselines/baseline-2026-04-14.json with bootstrap 95% CIs. 16,777 games across 6 sports, closes debt #13.",
     "v4_spread_ats_backtest": "CANNOT DO — no historical odds data",
     "injury_adjusted_vs_naive_historical": "CANNOT DO — no injury data before 2026-04-13",
-    "shadow_prediction_forward_ab": "NOT SET UP — HIGH debt #14"
+    "shadow_prediction_forward_ab": "INFRA SHIPPED PR #38 (Sprint 10.10). Awaiting N≥30 pairs per sport × model — ~2-3 weeks for NBA/MLB/NHL. Analysis tool filed as debt #32."
   },
-  "per_sport_baseline_findings_2026_04_14": {
-    "methodology": "1000-sample bootstrap, paired diffs within resample, CI at 2.5/97.5 percentiles. In-sample w.r.t. parameter calibration. See learnings.md section 'per-sport-baseline-debt13' for full context.",
-    "nba": {"mae": 11.67, "mae_minus_nv0_ci": "[-1.45, -1.12]", "verdict_vs_zero": "✓ beats", "brier": 0.2258, "brier_minus_naive_ci": "[-0.026, -0.018]", "verdict_vs_naive_brier": "✓ beats", "strategy": "parameters at local optimum; gains require new features (rest/travel/back-to-backs)"},
-    "nfl": {"mae": 10.70, "mae_minus_nv0_ci": "[-1.01, -0.15]", "verdict_vs_zero": "✓ beats", "brier": 0.2320, "brier_minus_naive_ci": "[-0.026, -0.006]", "verdict_vs_naive_brier": "✓ beats", "strategy": "parameters at local optimum; gains require new features (positional injury, rest)"},
-    "mlb": {"mae": 3.48, "mae_minus_nv0_ci": "[-0.071, -0.014]", "verdict_vs_zero": "✓ beats (trivial effect)", "brier": 0.2449, "brier_minus_naive_ci": "[-0.006, -0.002]", "verdict_vs_naive_brier": "✓ beats (small)", "strategy": "statistically significant but effect is trivial (d≈0.01); structural gains likely require bullpen + rest, not parameter tweaks"},
-    "nhl": {"mae": 2.16, "mae_minus_nv0_ci": "[-0.095, -0.047]", "verdict_vs_zero": "✓ beats (small effect)", "brier": 0.2444, "brier_minus_naive_ci": "[-0.006, -0.001]", "verdict_vs_naive_brier": "✓ beats (small)", "strategy": "starting goalie is the most-cited missing signal; defer to after soccer Poisson"},
-    "mls": {"mae": 1.35, "mae_minus_nv0_ci": "[-0.046, +0.035]", "verdict_vs_zero": "~ tie", "brier": 0.2281, "brier_minus_naive_ci": "[-0.020, -0.006]", "verdict_vs_naive_brier": "✓ beats", "strategy": "margin model indistinguishable from predict-zero — soccer Poisson/Skellam is the priority"},
-    "epl": {"mae": 1.36, "mae_minus_nv0_ci": "[-0.039, +0.093]", "verdict_vs_zero": "~ tie (test slice ✗ LOSES but N=140)", "brier": 0.2140, "brier_minus_naive_ci": "[-0.042, -0.024]", "verdict_vs_naive_brier": "✓ beats (largest)", "strategy": "same as MLS; winner model works but margin model provides no value — Poisson first"}
-  },
-  "council_debts_open": 23,
-  "council_debts_closed_this_session": 10,
-  "prs_merged_since_sprint_10": 25,
-  "prs_open": 1,
-  "prs_open_note": "PR #26 is this very session's handoff doc. After it merges, prs_open returns to 0 and the next session starts clean."
+  "council_debts_open": 21,
+  "council_debts_closed_this_session": 2,
+  "council_debts_closed_ids_this_session": [14, 28],
+  "council_debts_new_this_session": [32],
+  "prs_merged_this_session": 3,
+  "prs_merged_since_sprint_10": 37,
+  "prs_open": 0,
+  "remote_branches_active": ["main"],
+  "remote_branches_deleted_this_session": 6,
+  "note": "Clean handoff state: local and remote are main-only, zero open PRs, all this-session debts either closed or filed."
 }

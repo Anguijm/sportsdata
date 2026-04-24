@@ -231,6 +231,98 @@ function initTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_mappings_provider ON team_mappings(provider, provider_id);
     CREATE INDEX IF NOT EXISTS idx_player_stats_sport ON player_stats(sport, season);
     CREATE INDEX IF NOT EXISTS idx_player_stats_team ON player_stats(team_abbr, sport);
+
+    -- ============================================================
+    -- NBA learned-model Phase 2: box-score plumbing
+    -- See Plans/nba-learned-model.md §Phase 2 (council-CLEAR r4).
+    -- MUST-HAVE fields enumerated in the plan are NOT NULL here;
+    -- NICE-TO-HAVE fields are nullable. Coverage ship rules
+    -- (98% aggregate / 95% per-season / 94% per-(team,season))
+    -- compute only over MUST-HAVE rows.
+    -- ============================================================
+
+    CREATE TABLE IF NOT EXISTS nba_game_box_stats (
+      -- Keys + audit (MUST-HAVE)
+      game_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      season TEXT NOT NULL,
+      first_scraped_at TEXT NOT NULL,  -- immutable scrape-time stamp
+      updated_at TEXT NOT NULL,        -- bumped on any MUST-HAVE change (change-detection guard)
+
+      -- Shooting (MUST-HAVE)
+      fga INTEGER NOT NULL,            -- field goal attempts
+      fgm INTEGER NOT NULL,            -- field goals made
+      fg3a INTEGER NOT NULL,           -- 3-point attempts
+      fg3m INTEGER NOT NULL,           -- 3-pointers made
+      fta INTEGER NOT NULL,            -- free throw attempts
+      ftm INTEGER NOT NULL,            -- free throws made
+
+      -- Rebounds (MUST-HAVE)
+      oreb INTEGER NOT NULL,           -- offensive rebounds
+      dreb INTEGER NOT NULL,           -- defensive rebounds
+      reb INTEGER NOT NULL,            -- total rebounds
+
+      -- Defense + ball handling (MUST-HAVE)
+      ast INTEGER NOT NULL,            -- assists
+      stl INTEGER NOT NULL,            -- steals
+      blk INTEGER NOT NULL,            -- blocks
+      tov INTEGER NOT NULL,            -- turnovers
+      pf  INTEGER NOT NULL,            -- personal fouls
+
+      -- Score + minutes (MUST-HAVE)
+      pts INTEGER NOT NULL,
+      minutes_played INTEGER NOT NULL,
+
+      -- Derived at scrape time (MUST-HAVE, pinned formula)
+      -- possessions = FGA + 0.44*FTA − OREB + TOV  (Oliver/basketball-reference)
+      -- Both teams' possession estimates are averaged and stored per-team.
+      possessions REAL NOT NULL,
+
+      -- NICE-TO-HAVE (nullable; reported but not gated)
+      time_of_possession TEXT,
+      points_off_turnovers INTEGER,
+      fast_break_points INTEGER,
+      points_in_paint INTEGER,
+      largest_lead INTEGER,
+      technical_fouls INTEGER,
+      flagrant_fouls INTEGER,
+
+      PRIMARY KEY (game_id, team_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_nba_box_season ON nba_game_box_stats(season);
+    CREATE INDEX IF NOT EXISTS idx_nba_box_team_season ON nba_game_box_stats(team_id, season);
+    CREATE INDEX IF NOT EXISTS idx_nba_box_updated ON nba_game_box_stats(updated_at);
+
+    -- Retroactive-correction audit log: one row per mutation, written
+    -- only when change-detection guard fires (see plan §Phase 2 item 3).
+    CREATE TABLE IF NOT EXISTS nba_box_stats_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      field TEXT NOT NULL,           -- e.g. 'fgm', 'pts'
+      old_value TEXT,                -- stringified; may be NULL on first insert
+      new_value TEXT,                -- stringified
+      changed_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_nba_box_audit_game ON nba_box_stats_audit(game_id, team_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_box_audit_time ON nba_box_stats_audit(changed_at);
+
+    -- Zod schema-drift detection: one row per unrecognized or
+    -- unexpectedly-missing field at scrape time (see plan §Phase 2
+    -- item 1). Continuous, not one-time.
+    CREATE TABLE IF NOT EXISTS scrape_warnings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sport TEXT NOT NULL,
+      source TEXT NOT NULL,          -- e.g. 'espn-box-stats'
+      game_id TEXT,                  -- nullable: some warnings aren't game-scoped
+      warning_type TEXT NOT NULL,    -- 'unknown_field' | 'missing_field' | 'schema_error'
+      detail TEXT NOT NULL,          -- field name or JSON schema error
+      scraped_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scrape_warnings_source ON scrape_warnings(source, scraped_at);
   `);
 }
 
@@ -736,4 +828,194 @@ export function getPlayerCount(sport?: string): number {
     return (db.prepare('SELECT COUNT(*) as c FROM player_stats WHERE sport = ?').get(sport) as { c: number }).c;
   }
   return (db.prepare('SELECT COUNT(*) as c FROM player_stats').get() as { c: number }).c;
+}
+
+// ============================================================
+// NBA box-stats Phase 2 persistence helpers
+// See Plans/nba-learned-model.md §Phase 2 (council-CLEAR r4).
+// ============================================================
+
+/** Minimal type for box-stats upsert (subset of NbaBoxStatsRow from
+ *  src/scrapers/espn-box-schema.ts, duplicated here to avoid a cross-module
+ *  import that would pull scrapers into storage layer). */
+interface NbaBoxStatsUpsertRow {
+  game_id: string;
+  team_id: string;
+  season: string;
+  first_scraped_at: string;
+  updated_at: string;
+  fga: number; fgm: number; fg3a: number; fg3m: number; fta: number; ftm: number;
+  oreb: number; dreb: number; reb: number;
+  ast: number; stl: number; blk: number; tov: number; pf: number;
+  pts: number; minutes_played: number; possessions: number;
+  time_of_possession?: string | null;
+  points_off_turnovers?: number | null;
+  fast_break_points?: number | null;
+  points_in_paint?: number | null;
+  largest_lead?: number | null;
+  technical_fouls?: number | null;
+  flagrant_fouls?: number | null;
+}
+
+/** MUST-HAVE fields for change detection. Mutations of these fields fire
+ *  an audit row and bump updated_at. NICE-TO-HAVE mutations do not
+ *  (per plan §Phase 2 item 3 change-detection guard). */
+const BOX_STATS_MUST_HAVE_NUMERIC: ReadonlyArray<keyof NbaBoxStatsUpsertRow> = [
+  'fga', 'fgm', 'fg3a', 'fg3m', 'fta', 'ftm',
+  'oreb', 'dreb', 'reb',
+  'ast', 'stl', 'blk', 'tov', 'pf',
+  'pts', 'minutes_played', 'possessions',
+];
+
+export interface BoxStatsUpsertResult {
+  status: 'inserted' | 'unchanged' | 'updated';
+  mutations: number; // count of MUST-HAVE fields that changed (0 for inserted/unchanged)
+}
+
+/**
+ * Upsert a single (game_id, team_id) box-stats row.
+ *
+ * - First insert: fresh row with first_scraped_at = updated_at = `now`;
+ *   no audit row (audit tracks mutations, not first-observations).
+ * - Repeat call with identical MUST-HAVE values: no-op. NICE-TO-HAVE
+ *   values in the new row are ignored (plan §Phase 2 item 3).
+ * - Repeat call with at least one MUST-HAVE differing: update all fields
+ *   + bump updated_at; write one audit row per changed MUST-HAVE field.
+ *   first_scraped_at is preserved.
+ *
+ * Atomic: UPDATE + audit-row inserts in a single transaction.
+ */
+export function upsertNbaBoxStats(
+  row: NbaBoxStatsUpsertRow,
+  now: string,
+): BoxStatsUpsertResult {
+  const db = getDb();
+
+  const existing = db.prepare(
+    `SELECT * FROM nba_game_box_stats WHERE game_id = ? AND team_id = ?`,
+  ).get(row.game_id, row.team_id) as NbaBoxStatsUpsertRow | undefined;
+
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO nba_game_box_stats (
+        game_id, team_id, season, first_scraped_at, updated_at,
+        fga, fgm, fg3a, fg3m, fta, ftm,
+        oreb, dreb, reb,
+        ast, stl, blk, tov, pf,
+        pts, minutes_played, possessions,
+        time_of_possession, points_off_turnovers, fast_break_points,
+        points_in_paint, largest_lead, technical_fouls, flagrant_fouls
+      ) VALUES (
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?
+      )
+    `).run(
+      row.game_id, row.team_id, row.season, row.first_scraped_at, now,
+      row.fga, row.fgm, row.fg3a, row.fg3m, row.fta, row.ftm,
+      row.oreb, row.dreb, row.reb,
+      row.ast, row.stl, row.blk, row.tov, row.pf,
+      row.pts, row.minutes_played, row.possessions,
+      row.time_of_possession ?? null,
+      row.points_off_turnovers ?? null,
+      row.fast_break_points ?? null,
+      row.points_in_paint ?? null,
+      row.largest_lead ?? null,
+      row.technical_fouls ?? null,
+      row.flagrant_fouls ?? null,
+    );
+    return { status: 'inserted', mutations: 0 };
+  }
+
+  // Compute MUST-HAVE field-level diffs
+  const changes: Array<{ field: string; oldVal: string; newVal: string }> = [];
+  for (const f of BOX_STATS_MUST_HAVE_NUMERIC) {
+    const oldV = existing[f];
+    const newV = row[f];
+    if (oldV !== newV) {
+      changes.push({ field: String(f), oldVal: String(oldV), newVal: String(newV) });
+    }
+  }
+
+  if (changes.length === 0) {
+    return { status: 'unchanged', mutations: 0 };
+  }
+
+  // Change detected: update all fields + bump updated_at + write audit rows.
+  // first_scraped_at is preserved from the existing row.
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE nba_game_box_stats SET
+        season = ?, updated_at = ?,
+        fga = ?, fgm = ?, fg3a = ?, fg3m = ?, fta = ?, ftm = ?,
+        oreb = ?, dreb = ?, reb = ?,
+        ast = ?, stl = ?, blk = ?, tov = ?, pf = ?,
+        pts = ?, minutes_played = ?, possessions = ?,
+        time_of_possession = ?, points_off_turnovers = ?, fast_break_points = ?,
+        points_in_paint = ?, largest_lead = ?, technical_fouls = ?, flagrant_fouls = ?
+      WHERE game_id = ? AND team_id = ?
+    `).run(
+      row.season, now,
+      row.fga, row.fgm, row.fg3a, row.fg3m, row.fta, row.ftm,
+      row.oreb, row.dreb, row.reb,
+      row.ast, row.stl, row.blk, row.tov, row.pf,
+      row.pts, row.minutes_played, row.possessions,
+      row.time_of_possession ?? null,
+      row.points_off_turnovers ?? null,
+      row.fast_break_points ?? null,
+      row.points_in_paint ?? null,
+      row.largest_lead ?? null,
+      row.technical_fouls ?? null,
+      row.flagrant_fouls ?? null,
+      row.game_id, row.team_id,
+    );
+    const insertAudit = db.prepare(`
+      INSERT INTO nba_box_stats_audit (game_id, team_id, field, old_value, new_value, changed_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    for (const c of changes) {
+      insertAudit.run(row.game_id, row.team_id, c.field, c.oldVal, c.newVal, now);
+    }
+  });
+  tx();
+
+  return { status: 'updated', mutations: changes.length };
+}
+
+/** Record scrape warnings (schema-drift detection surface). Batch insert. */
+export interface ScrapeWarningInput {
+  sport: string;
+  source: string;          // e.g. 'espn-box-stats'
+  game_id: string | null;
+  warning_type: 'unknown_field' | 'missing_field' | 'schema_error';
+  detail: string;
+  scraped_at: string;
+}
+
+export function recordScrapeWarnings(warnings: ScrapeWarningInput[]): number {
+  if (warnings.length === 0) return 0;
+  const db = getDb();
+  const insert = db.prepare(`
+    INSERT INTO scrape_warnings (sport, source, game_id, warning_type, detail, scraped_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const tx = db.transaction((ws: ScrapeWarningInput[]) => {
+    for (const w of ws) {
+      insert.run(w.sport, w.source, w.game_id, w.warning_type, w.detail, w.scraped_at);
+    }
+  });
+  tx(warnings);
+  return warnings.length;
+}
+
+/** Count rows in nba_game_box_stats. Optionally filter by season. */
+export function getNbaBoxStatsCount(season?: string): number {
+  const db = getDb();
+  if (season) {
+    return (db.prepare('SELECT COUNT(*) as c FROM nba_game_box_stats WHERE season = ?').get(season) as { c: number }).c;
+  }
+  return (db.prepare('SELECT COUNT(*) as c FROM nba_game_box_stats').get() as { c: number }).c;
 }

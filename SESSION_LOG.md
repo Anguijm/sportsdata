@@ -1,7 +1,61 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-22 (post-#36/#37/#38 merges — debts #27, #28, #14 all closed; shadow-prediction logging live)
+Last updated: 2026-04-24 (planning-only session — NBA neural-net pilot plan drafted, pre-council)
+
+---
+
+## 🧭 Remote Resume — 2026-04-24 (NBA neural-net planning, no code shipped)
+
+> **This session was planning-only.** No models changed, no data moved, no deploys. One new doc committed and pushed on branch `claude/nba-model-explanation-m8rX8`.
+>
+> For live-system status (models, data, open debts), the 2026-04-22 pickup block below is still the source of truth. Nothing in the live stack changed since then beyond the natural cron cadence.
+
+**What happened this session:**
+
+1. User asked for an explanation of the NBA prediction model. Covered the v5 (winner) + v4-spread (margin) architecture, the v0→v5 ratchet history, calibration via reliability diagrams, and the pre-declared-ship-rules governance.
+2. Drilled into specifics: confirmed we do NOT use box-score stats (STL/AST/BLK/TOP); we use season-aggregate point differential with a hardcoded 3-game streak flag and `lastNResults.slice(-5)` for recency. No EWMA / time decay. Explained the sigmoid function and the per-sport scale knob.
+3. User proposed a "Karpathy-style" neural-net rebuild (rolling windows, box-score features, Z-score normalization, BCE training loop, delete streak flag, shift(1)). Pushed back on parts of the framing:
+   - `shift(1)` is already type-enforced via `PredictionContext.asOfDate` — not a new requirement.
+   - STL/AST/BLK/TOP don't exist in the DB — data plumbing is a prerequisite.
+   - Transformer is wrong scale for ~4,100 NBA games; MLP or GBM is the right family.
+   - Deleting the streak flag pre-emptively confounds the A/B — let the learned model absorb it, then ablate.
+   - BCE alone doesn't guarantee calibration; need post-hoc Platt scaling.
+   - Council discipline (CLAUDE.md) requires a pre-declared plan before any model A/B code.
+4. User agreed to plan first. Drafted **`Plans/nba-neural-net.md`** (commit `b78161b`, pushed on `claude/nba-model-explanation-m8rX8`). Three-phase staged pilot, NBA only, other sports untouched.
+5. Sidebar explanations: MLP vs GBM, ONNX vs PyTorch (tradeoffs, why the plan prefers ONNX export for MLP / native format for GBM).
+
+**Where we are now:** plan is pre-council DRAFT. Awaits 5-expert council plan review (Math vote required — explicitly model work) before Phase 1 implementation begins. **No PR opened per `CLAUDE.md` ("commit and push ≠ open a PR").**
+
+**To resume in a remote session:**
+
+1. `git fetch origin && git checkout claude/nba-model-explanation-m8rX8` — the plan lives here.
+2. Read `Plans/nba-neural-net.md` front-to-back. The plan's "Council verdict" section at the bottom lists anticipated expert pushback areas to accelerate review.
+3. Convene the 5-expert council on the plan (per `.harness/council/*.md`). Plan review outcome is one of:
+   - **CLEAR** → start Phase 1 (rolling-window differential in TypeScript; cheapest falsification). Branch from `origin/main`.
+   - **WARN + mitigations pre-declared** → amend plan with a post-addendum, then CLEAR. Plans are append-only once CLEAR.
+   - **FAIL** → rework plan; do NOT start Phase 1.
+4. If council pushes toward GBM (LightGBM) over MLP, update the Phase 3 architecture section accordingly — the plan acknowledges this is likely.
+5. Phase 1 is independently useful even if Phases 2-3 never ship. Ship rules pre-declared:
+   - Brier beat over v5 on 2025-26 held-out slice with paired-diff CI below zero
+   - Reliability verdict stays HONEST, ECE ≤ v5 + 0.005
+   - v4-spread parallel rolling variant doesn't regress
+   - Cold-start (games < 10 team-GP) safely falls back to v5
+
+**Key context the remote session will NOT have in scope without re-reading:**
+
+- The pilot is explicitly NBA-only. NFL/MLB/NHL/MLS/EPL stay on v5 + v4-spread. Cross-sport rollout is a separate plan, separate council.
+- Test fold (2025-26 NBA games) is **write-once per phase** — re-running on it to "see if the tweak helps" is p-hacking and banned.
+- Streak-flag removal is NOT a Phase 1 goal. Only removable if Phase 3 learned model demonstrably absorbs the signal via ablation.
+- Architecture decision between ONNX export vs Python subprocess is deferred to Phase 3 plan review, NOT decided now.
+- MLP vs GBM is also deferred to Phase 3 plan review. Plan mentions both because GBM often wins on tabular data this size.
+
+**Files touched this session:**
+
+- `Plans/nba-neural-net.md` — new, 217 lines, pre-council draft
+- `SESSION_LOG.md` — this resume block
+
+**Open non-NBA-neural-net work from the 2026-04-22 pickup block still stands** (see below): debt #31 (home-favored bias in `getCalibration()`), shadow-analysis CLI/endpoint, ESPN injuries flat-day watch.
 
 ---
 

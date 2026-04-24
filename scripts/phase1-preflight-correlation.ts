@@ -308,38 +308,77 @@ function correlationsVsMargin(samples: Sample[]): {
   };
 }
 
-// ---------- Metric: paired-diff block-bootstrap SE ----------
+// ---------- Metric: paired-diff block-bootstrap SE (Proposal A, revised) ----------
+//
+// Addendum v2 methodology (council-CLEAR 2026-04-24): replaces the original
+// logit-space-Gaussian noise simulation with the plug-in estimator for
+// v5-vs-(v5-with-rolling-20-feature-swap). This is the paired Brier diff
+// between v5 and a "v6-simulated" that uses rolling-20 point differential
+// instead of season-to-date differential. Same sigmoid, scale, home-adv,
+// cold-start fallback.
+//
+// SE feeds forward to the §Phase 3 rule 1 0.010/3σ threshold.
+// Mean paired diff is INFORMATIONAL ONLY — NOT a ship signal.
+
+const V6_SIM_ROLLING_WINDOW = 20 as const; // premise-check grid-winner
+
+// Sigmoid constants — matches v5 for NBA
+const NBA_SIGMOID_SCALE = 0.10;
+const NBA_HOME_ADV = 2.25; // post-PR #34 recalibration
+const NBA_BASE_RATE = 0.57; // empirical NBA home-win rate (cold-start fallback)
+const V5_MIN_GAMES = 5;    // cold-start threshold in v5.predict
+
+function predictV6Simulated(s: Sample): { prob: number; coldStart: boolean } {
+  // Cold-start fallback: if either team has fewer than 20 rolling-window
+  // entries, or if v5 itself would have cold-started (games < 5), fall
+  // through to v5's season-diff path. This ensures v6-simulated is NEVER
+  // worse than v5 when it has less info than v5 does.
+  const homeRolling = s.homeRollingDiff.get(V6_SIM_ROLLING_WINDOW);
+  const awayRolling = s.awayRollingDiff.get(V6_SIM_ROLLING_WINDOW);
+
+  if (homeRolling == null || awayRolling == null) {
+    return { prob: s.probV5, coldStart: true };
+  }
+  if (s.ctx.home.games < V5_MIN_GAMES || s.ctx.away.games < V5_MIN_GAMES) {
+    return { prob: s.probV5, coldStart: true };
+  }
+
+  // v5 sigmoid with rolling-20 feature swap
+  const x = NBA_SIGMOID_SCALE * ((homeRolling - awayRolling) + NBA_HOME_ADV);
+  let prob = sigmoid(x);
+  prob = Math.max(0.15, Math.min(0.85, prob));
+  return { prob, coldStart: false };
+}
 
 function pairedDiffBlockBootstrapSE(samples: Sample[]): {
-  noiseSigma: number;
   pairedDiffMean: number;
   pairedDiffSE: number;
   blockCount: number;
+  pairCount: number;
+  coldStartExcluded: number;
 } {
-  // 1. Compute per-game logit-residuals. y is clipped to [0.01, 0.99]
-  //    to give logit-space distance; std of these is the noise σ.
-  const logitResiduals: number[] = [];
+  // 1. Compute per-game paired Brier diff (v6_sim − v5). Exclude games
+  //    where v6-simulated cold-started to v5 (identical predictions →
+  //    zero-diff blocks that artificially deflate SE).
+  const pairedDiffs: Array<{ diff: number; block: string }> = [];
+  let coldStartExcluded = 0;
   for (const s of samples) {
-    const yClip = s.game.home_win === 1 ? 0.99 : 0.01;
-    logitResiduals.push(logit(yClip) - logit(s.probV5));
-  }
-  const noiseSigma = std(logitResiduals);
-
-  // 2. For each game compute paired Brier diff between v5 and
-  //    {v5 + N(0, σ) in logit space}.
-  const pairedDiffs: Array<{ diff: number; block: string }> = samples.map((s) => {
-    const zNoisy = logit(s.probV5) + randNormal(noiseSigma);
-    const pNoisy = sigmoid(zNoisy);
+    const { prob: probV6, coldStart } = predictV6Simulated(s);
+    if (coldStart) {
+      coldStartExcluded++;
+      continue;
+    }
     const brierV5 = brier(s.probV5, s.game.home_win);
-    const brierNoisy = brier(pNoisy, s.game.home_win);
-    return {
-      diff: brierNoisy - brierV5, // noisy is expected to be worse → positive mean
+    const brierV6 = brier(probV6, s.game.home_win);
+    pairedDiffs.push({
+      diff: brierV6 - brierV5, // negative if v6 is better
       block: `${s.game.home_team_id}|${s.week}`,
-    };
-  });
+    });
+  }
 
-  // 3. Block bootstrap: group diffs by (home_team, week) cells; resample
-  //    blocks with replacement; aggregate mean paired diff; take std.
+  // 2. Block bootstrap: group diffs by (home_team, week); resample blocks
+  //    with replacement; aggregate mean paired diff; SE is std across
+  //    bootstrap means.
   const blocks = new Map<string, number[]>();
   for (const pd of pairedDiffs) {
     if (!blocks.has(pd.block)) blocks.set(pd.block, []);
@@ -365,10 +404,11 @@ function pairedDiffBlockBootstrapSE(samples: Sample[]): {
   }
 
   return {
-    noiseSigma,
     pairedDiffMean: mean(bootstrapMeans),
     pairedDiffSE: std(bootstrapMeans),
     blockCount: blockKeys.length,
+    pairCount: totalGames,
+    coldStartExcluded,
   };
 }
 
@@ -414,15 +454,19 @@ function main(): void {
   console.log(`   Premise threshold: Δ ≥ 0.02  →  ${premisePass ? 'PASS' : 'FAIL (re-council)'}`);
   console.log();
 
-  // 3. Power-check paired-diff SE
+  // 3. Power-check paired-diff SE (Proposal A, addendum v2 methodology)
   const power = pairedDiffBlockBootstrapSE(samples);
   const powerPass = power.pairedDiffSE <= 0.0033;
-  console.log(`## 3. Paired-diff block-bootstrap SE (power check)`);
-  console.log(`   Empirical logit-residual σ (noise scale): ${power.noiseSigma.toFixed(4)}`);
+  console.log(`## 3. Paired-diff block-bootstrap SE (power check, addendum v2 methodology)`);
+  console.log(`   Method: empirical v5-vs-(v5 with rolling-20-feature-swap), per council A-vote.`);
   console.log(`   Bootstrap: B=${BOOTSTRAP_B}, blocks=(home_team, ISO-week), block count=${power.blockCount}`);
-  console.log(`   Paired-diff mean: ${power.pairedDiffMean.toFixed(5)}`);
+  console.log(`   Paired games: ${power.pairCount}, cold-start excluded: ${power.coldStartExcluded}`);
   console.log(`   Paired-diff SE:   ${power.pairedDiffSE.toFixed(5)}`);
   console.log(`   Power threshold: SE ≤ 0.0033  →  ${powerPass ? 'PASS' : 'FAIL (re-council)'}`);
+  console.log();
+  console.log(`   ⚠ INFORMATIONAL-ONLY (not a ship signal):`);
+  console.log(`   Paired-diff mean (v6_sim − v5): ${power.pairedDiffMean.toFixed(5)}`);
+  console.log(`   (negative = v6_sim better on val fold; ship decision lives on test fold only)`);
   console.log();
 
   // 4. Summary
@@ -430,7 +474,14 @@ function main(): void {
   console.log(`   v5 Brier (anchor): ${v5Brier.toFixed(4)}`);
   console.log(`   Premise: ${premisePass ? 'PASS' : 'FAIL'} (Δ=${delta.toFixed(4)})`);
   console.log(`   Power:   ${powerPass ? 'PASS' : 'FAIL'} (SE=${power.pairedDiffSE.toFixed(5)})`);
-  console.log(`   Overall: ${premisePass && powerPass ? 'CLEAR — commit numbers to plan, proceed to Phase 1' : 'BLOCKED — re-council'}`);
+  const overall = premisePass && powerPass
+    ? 'CLEAR — commit numbers, proceed to Phase 1'
+    : premisePass
+      ? 'PARTIAL — premise OK, power fail, re-council'
+      : powerPass
+        ? 'PARTIAL — power OK, premise fail, skip Phase 1 per plan, proceed to Phase 2'
+        : 'BLOCKED — both fail, re-council';
+  console.log(`   Overall: ${overall}`);
 
   closeDb();
 }

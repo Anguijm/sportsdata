@@ -452,3 +452,71 @@ Per §Phase 1 failure modes: "If rule 1 fails, document the null result in `lear
 **Next gate: re-council plan review** on the methodology question (noise-model revision) AND on the forward path (abandon Phase 1 entirely, proceed to Phase 2, or revise-and-re-run). No v6 code written; test fold untouched; Phase 1 implementation branch (`claude/nba-learned-model-phase-1`) holds this addendum and the pre-flight script only.
 
 Pre-flight script: `scripts/phase1-preflight-correlation.ts`. Deterministic in its data reads; the bootstrap resampling uses `Math.random()` without a seed (re-runs produce slightly different SE at the ~0.0001 level, well inside the 0.0116 estimate). DB-read-only; no writes.
+
+---
+
+## Pre-flight addendum v2 — 2026-04-24 (methodology revision)
+
+**Status**: methodology re-council CLEAR (3/3 experts: Math, Stats, Prediction Accuracy — unanimous). Applied before re-running pre-flight.
+
+### Problem
+
+Addendum v1's power-check implemented the plan's §Phase 3 rule 1 noise-model spec literally: logit-space Gaussian noise with σ matched to `logit(y_clip) − logit(p_v5)` empirical std. On 2024-25 NBA data σ = 4.35, which simulates a competitor whose logit is perturbed by ~±4 per game — a totally-different model, not a marginal-improvement competitor. Resulting SE=0.0116 is ~3.5× the 0.0033 threshold, but the threshold was derived under an implicit near-v5-competitor assumption. Spec-empirics mismatch, not a threshold issue.
+
+### Revised methodology (pinned pre-rerun, per Stats requirement)
+
+**Proposal A — empirical v5-vs-(v5-with-rolling-20-feature-swap) paired-diff SE.** Replaces the noise simulation with the plug-in estimator for the exact quantity the ship gate bootstraps:
+
+1. Compute v5 predictions on 2024-25 val fold (already done).
+2. Compute a **v6-simulated** prediction: v5's sigmoid pipeline, unchanged, but with team-quality feature swapped from season-to-date point differential to **rolling-20-game point differential** (the grid-winner from premise correlations). Same scale (0.10), same home advantage (2.25), same injury handling, same clamp to [0.15, 0.85], same cold-start fallback (<5 games → baseRate). Season-reset at NBA season boundary consistent with `buildTeamStateUpTo` convention.
+3. For each val-fold game: compute per-game Brier diff (`brier_v6_sim − brier_v5`). Pair by game_id.
+4. Block-bootstrap SE with blocks = `(home_team, ISO-week)`, B = 10,000.
+5. Report **SE of paired diff** (power-check number; feeds forward into §Phase 3 rule 1 inheritance).
+6. Report **mean of paired diff** but **explicitly wall it off as informational-only — NOT a ship signal.** The val-fold mean paired diff is not a rule-1 gate number; the rule-1 gate lives on the test fold and is untouched. This wall prevents val-fold-ship-temptation if the mean paired diff happens to look attractive.
+
+Ship-rule threshold unchanged: **SE ≤ 0.0033 for the 0.010 Brier beat floor to be 3σ at N=test-fold-size**. Threshold was correct; estimator was wrong.
+
+### Council rationale (summary of the 3 votes)
+
+- **Math**: Proposal A is the plug-in estimator for the exact SE the ship gate bootstraps. No noise-model assumption; feature-driven ρ(v5, v6) captured correctly. B (Platt-proxy) measures a monotone rescale — not a feature-swap — so it understates SE for the actual competitor class. C (widen threshold) is ex-post ship-rule movement, banned by plan discipline.
+- **Stats**: A is the only estimator that targets the quantity of interest. B passes trivially because v5 is HONEST (Platt ≈ identity → σ ≈ 0). C acknowledges underpower without fixing it. Revision is methodologically legitimate because test fold is untouched and the threshold is unchanged; spec is being pinned pre-rerun.
+- **Prediction Accuracy**: A is correct with the explicit val-fold-ship-temptation mitigation (mean paired diff is informational, not a ship signal). Fixes the noise-model spec that Phase 3 would otherwise inherit 6+ months from now. B measures calibration-gap not feature-gap; C is gate movement.
+
+### Script change
+
+`scripts/phase1-preflight-correlation.ts` updated to implement the revised methodology. New predict function `predictV6Simulated(game, ctx, rollingDiffHome, rollingDiffAway)` mirrors v5's sigmoid but reads rolling-20 differentials instead of season-to-date. Games where either team has fewer than 20 rolling history entries fall back to v5's season-diff path (consistent with Phase 1 rule 4 cold-start spec; affects ~311 of 1321 val-fold games, mostly early-season). Cold-start-fallback games are excluded from paired-diff SE computation to avoid inflating the SE with identical-prediction zero-diff blocks (v6-simulated == v5 in those cases by construction).
+
+---
+
+## Pre-flight addendum v3 — 2026-04-24 (re-run with revised methodology)
+
+### Results
+
+| Quantity | Value | Pre-declared threshold | Disposition |
+|---|---|---|---|
+| v5 NBA Brier on 2024-25 val fold | 0.2161 (unchanged from v1) | — (anchor) | ✓ anchor |
+| Premise Δ(best rolling − season) | +0.0131 (unchanged from v1) | ≥ 0.02 | **FAIL (unchanged)** |
+| Paired-diff block-bootstrap SE | **0.00278** | ≤ 0.0033 | **PASS** |
+| Paired games (N after cold-start exclusion) | 1,010 | — | |
+| Cold-start excluded (v6_sim == v5 by construction) | 311 | — | |
+| Block count `(home_team, ISO-week)` | 550 | ≥ 50 stability floor | PASS |
+| Bootstrap resamples B | 10,000 | — | PASS |
+
+### Informational-only (walled off per council; NOT a ship signal)
+
+- Paired-diff mean (v6_sim − v5) on val fold: **+0.00040 Brier** (positive = v6_sim slightly *worse* than v5).
+
+This number is walled off from any ship decision per the methodology pin. It is reported here solely for transparency — and independently corroborates the premise failure at the Brier level: a rolling-20-feature-swap v6-simulated is on average ~0.0004 Brier *worse* than v5 on the val fold, not better. The correlation check (+0.0131 Pearson delta vs the 0.02 threshold) already told us the rolling-window premise was weakly supported; the informational Brier check confirms that the weak correlation edge doesn't convert to an outcome edge.
+
+### Disposition
+
+- **Premise**: FAIL (unchanged from addendum v1, confirmed by informational Brier check).
+- **Power**: **PASS** with revised methodology. Phase 3's rule-1 power-check spec can inherit the corrected methodology (Proposal A: empirical v5-vs-competitor paired-diff SE, no noise-model). The 0.010 Brier floor is 3.6σ-detectable at N=1010 paired val-fold games, so the same floor is viable on the test fold (which has similar N).
+- **Forward path**: per §Phase 1 failure modes, **skip Phase 1, proceed to Phase 2**. Phase 1 null result is documented in `learnings.md` (next commit). The methodology repair survives — §Phase 3 rule 1 power-check is now empirically grounded rather than noise-model-dependent, which Phase 3 inherits when it runs its own pre-flight.
+
+### What's live as of 2026-04-24 end-of-session
+
+- No v6 code written. v6 was only computed as a val-fold power-check simulation; no predictions written to DB, no `v6` export in `src/analysis/predict.ts`, no live-prediction wiring.
+- Test fold (2025-26) untouched by Phase 1 diagnostics.
+- Phase 1 implementation branch `claude/nba-learned-model-phase-1` holds: plan rename + pre-flight script + addenda v1/v2/v3. Branch will be closed at Phase 2 branch cut; pre-flight script + addenda survive as repo history.
+- Phase 2 starts on a new branch `claude/nba-learned-model-phase-2` from `origin/main` post-merge of this branch (or as a peer branch if this one is not merged).

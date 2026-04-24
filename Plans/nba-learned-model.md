@@ -520,3 +520,37 @@ This number is walled off from any ship decision per the methodology pin. It is 
 - Test fold (2025-26) untouched by Phase 1 diagnostics.
 - Phase 1 implementation branch `claude/nba-learned-model-phase-1` holds: plan rename + pre-flight script + addenda v1/v2/v3. Branch will be closed at Phase 2 branch cut; pre-flight script + addenda survive as repo history.
 - Phase 2 starts on a new branch `claude/nba-learned-model-phase-2` from `origin/main` post-merge of this branch (or as a peer branch if this one is not merged).
+
+---
+
+## Phase 2 addendum v4 — 2026-04-24 (convention alignment: zod → hand-rolled)
+
+**Status**: tactical pattern decision (not a re-council). Documented because it reverses a word-level specification in §Phase 2 item 1.
+
+### What the plan said
+
+§Phase 2 item 1: "Parse and validate against a **Zod schema** (new `src/scrapers/espn-box-schema.ts`); any unrecognized or unexpectedly-missing field fires a scrape-time warning..."
+
+### What was found
+
+`src/scrapers/validators.ts` header comment documents an **existing council decision against zod**: "Council mandate (Sprint 8): Hand-rolled type guards (no zod dependency — Engineer)". The Sprint 8 council mandate predates this plan and wasn't surfaced during the 4-round plan review — none of the 5 experts checked the existing scraper validator convention against the plan's "Zod schema" language.
+
+### Decision
+
+Phase 2's `src/scrapers/espn-box-schema.ts` uses the **existing hand-rolled `ValidationResult<T>` pattern** from `src/scrapers/validators.ts`, not zod. Rationale:
+
+- **Follows existing council decision.** Reversing it would require a re-council specifically on "should we add zod," which is a dep-change question the Phase 2 plan scope doesn't justify revisiting.
+- **Matches the codebase.** `src/scrapers/validators.ts` already defines `ValidationResult<T>`, `EspnScoreboardResponse`, `validateScoreboard()`, etc. Phase 2's box-stats validator is the same class of thing — schema-drift detection on an ESPN response — and should share the pattern.
+- **No new dep.** Adding zod requires package.json change + Dockerfile rebuild verification (Fly deployment) + test that the 512MB machine still boots. All out of scope for a Phase-2 scaffolding commit.
+- **Same plan-intent mechanisms are preserved.** The plan wanted "continuous drift detection with logged warnings." The hand-rolled pattern achieves this identically: `ScrapeWarning` types (`unknown_field` | `missing_field` | `schema_error`) are returned by the validator and persisted to the `scrape_warnings` table. Plan §Phase 2 item 1's intent is met; only the implementation vehicle differs.
+
+### What this changes in the plan
+
+In the plan body, mentally substitute every "Zod schema" reference with "hand-rolled validator in `src/scrapers/validators.ts` pattern." Ship-rule text doesn't change. Implementation-review gate for Phase 2 will verify: (a) the validator returns `ScrapeWarning[]` on drift, (b) `scrape_warnings` table is written by the caller, (c) fail-closed on MUST-HAVE drift and fail-open on NICE-TO-HAVE drift.
+
+Skeleton file committed in this branch (`src/scrapers/espn-box-schema.ts`) includes:
+- Typed output interfaces (`NbaBoxStatsRow`, `NbaBoxStatsGame`).
+- `ScrapeWarning` type aligned with the `scrape_warnings` DB table.
+- `MUST_HAVE_RAW_FIELDS` and `NICE_TO_HAVE_FIELDS` pinned constants.
+- `possessionsSingleTeam()` and `possessionsAveraged()` pinned formulas (basketball-reference Oliver).
+- `validateNbaBoxScore()` stub with implementation sketch in JSDoc (to be filled in when Phase 2 author has sample ESPN responses to trace from).

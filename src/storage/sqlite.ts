@@ -231,6 +231,98 @@ function initTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_mappings_provider ON team_mappings(provider, provider_id);
     CREATE INDEX IF NOT EXISTS idx_player_stats_sport ON player_stats(sport, season);
     CREATE INDEX IF NOT EXISTS idx_player_stats_team ON player_stats(team_abbr, sport);
+
+    -- ============================================================
+    -- NBA learned-model Phase 2: box-score plumbing
+    -- See Plans/nba-learned-model.md §Phase 2 (council-CLEAR r4).
+    -- MUST-HAVE fields enumerated in the plan are NOT NULL here;
+    -- NICE-TO-HAVE fields are nullable. Coverage ship rules
+    -- (98% aggregate / 95% per-season / 94% per-(team,season))
+    -- compute only over MUST-HAVE rows.
+    -- ============================================================
+
+    CREATE TABLE IF NOT EXISTS nba_game_box_stats (
+      -- Keys + audit (MUST-HAVE)
+      game_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      season TEXT NOT NULL,
+      first_scraped_at TEXT NOT NULL,  -- immutable scrape-time stamp
+      updated_at TEXT NOT NULL,        -- bumped on any MUST-HAVE change (change-detection guard)
+
+      -- Shooting (MUST-HAVE)
+      fga INTEGER NOT NULL,            -- field goal attempts
+      fgm INTEGER NOT NULL,            -- field goals made
+      fg3a INTEGER NOT NULL,           -- 3-point attempts
+      fg3m INTEGER NOT NULL,           -- 3-pointers made
+      fta INTEGER NOT NULL,            -- free throw attempts
+      ftm INTEGER NOT NULL,            -- free throws made
+
+      -- Rebounds (MUST-HAVE)
+      oreb INTEGER NOT NULL,           -- offensive rebounds
+      dreb INTEGER NOT NULL,           -- defensive rebounds
+      reb INTEGER NOT NULL,            -- total rebounds
+
+      -- Defense + ball handling (MUST-HAVE)
+      ast INTEGER NOT NULL,            -- assists
+      stl INTEGER NOT NULL,            -- steals
+      blk INTEGER NOT NULL,            -- blocks
+      tov INTEGER NOT NULL,            -- turnovers
+      pf  INTEGER NOT NULL,            -- personal fouls
+
+      -- Score + minutes (MUST-HAVE)
+      pts INTEGER NOT NULL,
+      minutes_played INTEGER NOT NULL,
+
+      -- Derived at scrape time (MUST-HAVE, pinned formula)
+      -- possessions = FGA + 0.44*FTA − OREB + TOV  (Oliver/basketball-reference)
+      -- Both teams' possession estimates are averaged and stored per-team.
+      possessions REAL NOT NULL,
+
+      -- NICE-TO-HAVE (nullable; reported but not gated)
+      time_of_possession TEXT,
+      points_off_turnovers INTEGER,
+      fast_break_points INTEGER,
+      points_in_paint INTEGER,
+      largest_lead INTEGER,
+      technical_fouls INTEGER,
+      flagrant_fouls INTEGER,
+
+      PRIMARY KEY (game_id, team_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_nba_box_season ON nba_game_box_stats(season);
+    CREATE INDEX IF NOT EXISTS idx_nba_box_team_season ON nba_game_box_stats(team_id, season);
+    CREATE INDEX IF NOT EXISTS idx_nba_box_updated ON nba_game_box_stats(updated_at);
+
+    -- Retroactive-correction audit log: one row per mutation, written
+    -- only when change-detection guard fires (see plan §Phase 2 item 3).
+    CREATE TABLE IF NOT EXISTS nba_box_stats_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      field TEXT NOT NULL,           -- e.g. 'fgm', 'pts'
+      old_value TEXT,                -- stringified; may be NULL on first insert
+      new_value TEXT,                -- stringified
+      changed_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_nba_box_audit_game ON nba_box_stats_audit(game_id, team_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_box_audit_time ON nba_box_stats_audit(changed_at);
+
+    -- Zod schema-drift detection: one row per unrecognized or
+    -- unexpectedly-missing field at scrape time (see plan §Phase 2
+    -- item 1). Continuous, not one-time.
+    CREATE TABLE IF NOT EXISTS scrape_warnings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sport TEXT NOT NULL,
+      source TEXT NOT NULL,          -- e.g. 'espn-box-stats'
+      game_id TEXT,                  -- nullable: some warnings aren't game-scoped
+      warning_type TEXT NOT NULL,    -- 'unknown_field' | 'missing_field' | 'schema_error'
+      detail TEXT NOT NULL,          -- field name or JSON schema error
+      scraped_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scrape_warnings_source ON scrape_warnings(source, scraped_at);
   `);
 }
 

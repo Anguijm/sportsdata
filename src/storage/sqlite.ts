@@ -137,6 +137,20 @@ function initTables(db: Database.Database): void {
     // Column already exists, ignore
   }
 
+  // Phase 2 impl-review migration: drop vestigial time_of_possession column
+  // from nba_game_box_stats. NBA doesn't report TOP in team boxscores; the
+  // column was specified in the plan then hardcoded to null by the validator.
+  // Domain-expert review flagged it. Safe to drop: Phase 2 backfill has not
+  // started, so no rows carry non-null TOP values.
+  try {
+    const cols = db.pragma('table_info(nba_game_box_stats)') as Array<{ name: string }>;
+    if (cols.some(c => c.name === 'time_of_possession')) {
+      db.exec('ALTER TABLE nba_game_box_stats DROP COLUMN time_of_possession');
+    }
+  } catch {
+    // Table doesn't exist yet (fresh install) — CREATE TABLE above omits the column.
+  }
+
   // P1-3 migration: migrate predictions UNIQUE constraint from 2-column
   // (game_id, model_version) to 3-column (game_id, model_version, prediction_source).
   // Fresh DBs already have the 3-column constraint from CREATE TABLE, but
@@ -279,7 +293,8 @@ function initTables(db: Database.Database): void {
       possessions REAL NOT NULL,
 
       -- NICE-TO-HAVE (nullable; reported but not gated)
-      time_of_possession TEXT,
+      -- NOTE: time_of_possession removed post-merge (NBA doesn't report TOP);
+      -- see migration block below + addendum v7 of the plan.
       points_off_turnovers INTEGER,
       fast_break_points INTEGER,
       points_in_paint INTEGER,
@@ -848,7 +863,6 @@ interface NbaBoxStatsUpsertRow {
   oreb: number; dreb: number; reb: number;
   ast: number; stl: number; blk: number; tov: number; pf: number;
   pts: number; minutes_played: number; possessions: number;
-  time_of_possession?: string | null;
   points_off_turnovers?: number | null;
   fast_break_points?: number | null;
   points_in_paint?: number | null;
@@ -858,8 +872,7 @@ interface NbaBoxStatsUpsertRow {
 }
 
 /** MUST-HAVE fields for change detection. Mutations of these fields fire
- *  an audit row and bump updated_at. NICE-TO-HAVE mutations do not
- *  (per plan §Phase 2 item 3 change-detection guard). */
+ *  an audit row AND bump updated_at. */
 const BOX_STATS_MUST_HAVE_NUMERIC: ReadonlyArray<keyof NbaBoxStatsUpsertRow> = [
   'fga', 'fgm', 'fg3a', 'fg3m', 'fta', 'ftm',
   'oreb', 'dreb', 'reb',
@@ -867,9 +880,19 @@ const BOX_STATS_MUST_HAVE_NUMERIC: ReadonlyArray<keyof NbaBoxStatsUpsertRow> = [
   'pts', 'minutes_played', 'possessions',
 ];
 
+/** NICE-TO-HAVE fields. Mutations bump updated_at (Phase-3 feature-cache
+ *  invalidation stays honest if a Phase-3 model later pulls in NICE fields)
+ *  but do NOT fire audit rows — audit table is reserved for MUST-HAVE
+ *  mutations which are load-bearing for coverage-gate semantics.
+ *  Policy set in Phase 2 impl-review (Stats expert recommendation). */
+const BOX_STATS_NICE_TO_HAVE: ReadonlyArray<keyof NbaBoxStatsUpsertRow> = [
+  'points_off_turnovers', 'fast_break_points', 'points_in_paint',
+  'largest_lead', 'technical_fouls', 'flagrant_fouls',
+];
+
 export interface BoxStatsUpsertResult {
   status: 'inserted' | 'unchanged' | 'updated';
-  mutations: number; // count of MUST-HAVE fields that changed (0 for inserted/unchanged)
+  mutations: number; // count of MUST-HAVE fields that changed (0 for inserted/unchanged/nice-only-updated)
 }
 
 /**
@@ -884,6 +907,15 @@ export interface BoxStatsUpsertResult {
  *   first_scraped_at is preserved.
  *
  * Atomic: UPDATE + audit-row inserts in a single transaction.
+ *
+ * **Single-threaded caller assumption.** The SELECT for `existing` runs
+ * outside the UPDATE transaction. Concurrent callers for the same
+ * (game_id, team_id) could read a stale `existing` and race on audit-row
+ * emission. The Phase 2 backfill and 7-day-recheck scripts are explicitly
+ * serial (plan §Phase 2 item 4, 2 req/s rate limit). If parallel callers
+ * are ever introduced, this function must be reworked — move the SELECT
+ * inside the transaction, or switch to `ON CONFLICT DO UPDATE ... RETURNING`
+ * with per-field diffing post-UPDATE.
  */
 export function upsertNbaBoxStats(
   row: NbaBoxStatsUpsertRow,
@@ -896,6 +928,11 @@ export function upsertNbaBoxStats(
   ).get(row.game_id, row.team_id) as NbaBoxStatsUpsertRow | undefined;
 
   if (!existing) {
+    // first_scraped_at and updated_at both pinned to `now` on INSERT.
+    // Prior version trusted row.first_scraped_at from the caller; validator
+    // writes `now` there, so behavior is unchanged in practice, but the
+    // field name promised "first observation time" while the contract was
+    // caller-enforced. DQ expert flagged it.
     db.prepare(`
       INSERT INTO nba_game_box_stats (
         game_id, team_id, season, first_scraped_at, updated_at,
@@ -903,7 +940,7 @@ export function upsertNbaBoxStats(
         oreb, dreb, reb,
         ast, stl, blk, tov, pf,
         pts, minutes_played, possessions,
-        time_of_possession, points_off_turnovers, fast_break_points,
+        points_off_turnovers, fast_break_points,
         points_in_paint, largest_lead, technical_fouls, flagrant_fouls
       ) VALUES (
         ?, ?, ?, ?, ?,
@@ -911,15 +948,14 @@ export function upsertNbaBoxStats(
         ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?
       )
     `).run(
-      row.game_id, row.team_id, row.season, row.first_scraped_at, now,
+      row.game_id, row.team_id, row.season, now, now,
       row.fga, row.fgm, row.fg3a, row.fg3m, row.fta, row.ftm,
       row.oreb, row.dreb, row.reb,
       row.ast, row.stl, row.blk, row.tov, row.pf,
       row.pts, row.minutes_played, row.possessions,
-      row.time_of_possession ?? null,
       row.points_off_turnovers ?? null,
       row.fast_break_points ?? null,
       row.points_in_paint ?? null,
@@ -930,7 +966,7 @@ export function upsertNbaBoxStats(
     return { status: 'inserted', mutations: 0 };
   }
 
-  // Compute MUST-HAVE field-level diffs
+  // Compute MUST-HAVE field-level diffs (fire audit rows)
   const changes: Array<{ field: string; oldVal: string; newVal: string }> = [];
   for (const f of BOX_STATS_MUST_HAVE_NUMERIC) {
     const oldV = existing[f];
@@ -940,11 +976,22 @@ export function upsertNbaBoxStats(
     }
   }
 
-  if (changes.length === 0) {
+  // Also detect NICE-TO-HAVE mutations. They bump updated_at (so Phase-3
+  // feature caches invalidate correctly if a future model reads them) but
+  // do NOT fire audit rows.
+  const niceChanged = BOX_STATS_NICE_TO_HAVE.some(f => {
+    const oldV = (existing[f] ?? null) as number | null;
+    const newV = (row[f] ?? null) as number | null;
+    return oldV !== newV;
+  });
+
+  if (changes.length === 0 && !niceChanged) {
     return { status: 'unchanged', mutations: 0 };
   }
 
-  // Change detected: update all fields + bump updated_at + write audit rows.
+  // Change detected: update all fields + bump updated_at. Audit rows
+  // emitted only for MUST-HAVE changes (changes.length may be 0 when
+  // only NICE-TO-HAVE fields changed — UPDATE still runs in that case).
   // first_scraped_at is preserved from the existing row.
   const tx = db.transaction(() => {
     db.prepare(`
@@ -954,7 +1001,7 @@ export function upsertNbaBoxStats(
         oreb = ?, dreb = ?, reb = ?,
         ast = ?, stl = ?, blk = ?, tov = ?, pf = ?,
         pts = ?, minutes_played = ?, possessions = ?,
-        time_of_possession = ?, points_off_turnovers = ?, fast_break_points = ?,
+        points_off_turnovers = ?, fast_break_points = ?,
         points_in_paint = ?, largest_lead = ?, technical_fouls = ?, flagrant_fouls = ?
       WHERE game_id = ? AND team_id = ?
     `).run(
@@ -963,7 +1010,6 @@ export function upsertNbaBoxStats(
       row.oreb, row.dreb, row.reb,
       row.ast, row.stl, row.blk, row.tov, row.pf,
       row.pts, row.minutes_played, row.possessions,
-      row.time_of_possession ?? null,
       row.points_off_turnovers ?? null,
       row.fast_break_points ?? null,
       row.points_in_paint ?? null,
@@ -972,12 +1018,14 @@ export function upsertNbaBoxStats(
       row.flagrant_fouls ?? null,
       row.game_id, row.team_id,
     );
-    const insertAudit = db.prepare(`
-      INSERT INTO nba_box_stats_audit (game_id, team_id, field, old_value, new_value, changed_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    for (const c of changes) {
-      insertAudit.run(row.game_id, row.team_id, c.field, c.oldVal, c.newVal, now);
+    if (changes.length > 0) {
+      const insertAudit = db.prepare(`
+        INSERT INTO nba_box_stats_audit (game_id, team_id, field, old_value, new_value, changed_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const c of changes) {
+        insertAudit.run(row.game_id, row.team_id, c.field, c.oldVal, c.newVal, now);
+      }
     }
   });
   tx();

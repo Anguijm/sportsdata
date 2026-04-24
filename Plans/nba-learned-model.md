@@ -412,3 +412,43 @@ Every phase must support instant rollback:
 - **Data Quality / Domain**: round-3 CLEAR; no changes in round 4 that touch their review surfaces.
 
 Deviating from this plan during implementation requires a fresh council pass. No silent scope drift across phase boundaries.
+
+---
+
+## Pre-flight addendum — 2026-04-24 (append-only; Phase 1 pre-flight results)
+
+Per §Phase 1 pre-flight, three numbers were to be committed pre-implementation. Ran `scripts/phase1-preflight-correlation.ts` against the live NBA corpus (21,694 games, of which 1,321 fall in the 2024-10-01 .. 2025-10-01 validation fold).
+
+### Results
+
+| Quantity | Value | Pre-declared threshold | Disposition |
+|---|---|---|---|
+| v5 NBA Brier on 2024-25 val fold | **0.2161** (N=1321, low-confidence=78) | — (anchor only) | Committed as incumbent anchor |
+| Pearson r, season-diff gap vs per-game margin | **0.4157** (N=1305) | — | Baseline |
+| Pearson r, rolling-N diff vs margin, N=5 | 0.3494 (N=1243) | — | |
+| Pearson r, rolling-N diff vs margin, N=7 | 0.3735 (N=1212) | — | |
+| Pearson r, rolling-N diff vs margin, N=10 | 0.3939 (N=1166) | — | |
+| Pearson r, rolling-N diff vs margin, N=15 | 0.4097 (N=1086) | — | |
+| Pearson r, rolling-N diff vs margin, N=20 | **0.4288** (N=1010) — best | — | |
+| Δ(best rolling − season) | **+0.0131** | Δ ≥ 0.02 absolute | **FAIL (premise not met)** |
+| Empirical logit-residual σ (noise scale) | 4.3525 | — | |
+| Paired-diff bootstrap mean (v5 vs v5+noise) | 0.1681 | — | |
+| Paired-diff bootstrap SE | **0.01163** | SE ≤ 0.0033 (→ 0.010 is 3σ) | **FAIL (underpowered)** |
+| Block count `(home_team, ISO-week)` | 721 | ≥ 50 stability floor | PASS |
+| Bootstrap resamples B | 10,000 | — | PASS |
+
+### Disposition per pre-declared rules
+
+- **Premise check FAILED.** Best rolling-N exceeds season-diff by only +0.0131 absolute Pearson, below the pre-declared 0.02 threshold. Per §Phase 1 pre-flight step 2: "If best rolling-N correlation does not exceed season-diff correlation by at least 0.02 (absolute Pearson), Phase 1 is unlikely to pass rule 1 and we should re-council before writing v6 code." The rolling-window premise is weakly supported on 2024-25 NBA data — the signal exists (longer N's beat season-diff by small margins, and rolling-N improves monotonically with N from N=5 to N=20) but doesn't clear the cheap-falsifier bar. Notably, **N=20 won the grid, not a shorter window** — "more data helps" dominates "recency helps" in this corpus.
+
+- **Power check FAILED.** Paired-diff SE ≈ 0.0116, ~3.5× the 0.0033 threshold. Per §Phase 1 pre-flight step 3: "If SE > 0.0033, even Phase 1's 0.010 gate is underpowered on current test-fold size and we re-council." The 0.010 Brier-beat floor would be < 1σ under the current noise-model simulation — statistically undetectable.
+
+- **Methodology flag for re-council:** the power-check noise model, as specified in the plan (§Phase 3 rule 1 power check), adds logit-space Gaussian noise with σ matched to empirical `logit(y_clip) − logit(p_v5)` residuals. On this data that σ = 4.35, corresponding to very large per-game logit perturbations. This produces a v5-vs-(v5+noise) comparison that is NOT analogous to a v5-vs-v6 comparison (where v6 is a marginal refinement of v5). The pre-declared 0.0033 threshold implicitly assumed a near-v5 competitor; the as-written noise model produces a far-from-v5 competitor, inflating SE mechanically. The spec was council-CLEAR at round 3 but its empirical consequence was not foreseen by any reviewer. Re-council should decide: **(a)** keep the noise model as-written and accept Phase 1 cannot run (premise + power both FAILED honestly), **(b)** revise the noise model to a marginal-improvement proxy (e.g., σ = std of `logit(p_platt) − logit(p_v5_raw)` from a Platt fit — how far a calibrated v5 is from raw v5 — a realistic marginal-improvement scale), or **(c)** proceed to Phase 2 regardless, since Phase 2 is independently useful per §Phase 1 rule-1-failure response.
+
+### Pre-declared response path
+
+Per §Phase 1 failure modes: "If rule 1 fails, document the null result in `learnings.md` and SKIP to Phase 2 (data plumbing is independently useful for reporting / Phase 3 regardless)." The premise failure here is pre-rule-1 (caught at pre-flight, before any v6 code was written — as intended). The explicit plan response is to skip to Phase 2; the power-check failure compounds this by suggesting Phase 3's gate would also be underpowered even if Phase 2 landed.
+
+**Next gate: re-council plan review** on the methodology question (noise-model revision) AND on the forward path (abandon Phase 1 entirely, proceed to Phase 2, or revise-and-re-run). No v6 code written; test fold untouched; Phase 1 implementation branch (`claude/nba-learned-model-phase-1`) holds this addendum and the pre-flight script only.
+
+Pre-flight script: `scripts/phase1-preflight-correlation.ts`. Deterministic in its data reads; the bootstrap resampling uses `Math.random()` without a seed (re-runs produce slightly different SE at the ~0.0001 level, well inside the 0.0116 estimate). DB-read-only; no writes.

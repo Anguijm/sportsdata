@@ -1,15 +1,17 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-24 (NBA learned-model pilot: plan CLEAR + Phase 1 null + Phase 2 scaffolding — 7 commits across 2 branches, no merge to `main`)
+Last updated: 2026-04-24 (Sprint 10.11 — NBA learned-model pilot: plan CLEAR + Phase 1 null + Phase 2 scaffolding. **PR #40 merged to `main` at commit `6aae233`**. Fly auto-deploy succeeded 11:09 UTC; API healthy with 3 new empty tables.)
 
 ---
 
-## 🧭 Remote Resume — 2026-04-24 (NBA learned-model pilot — plan CLEAR, Phase 1 null, Phase 2 scaffolding)
+## 🧭 Remote Resume — 2026-04-24 (Sprint 10.11 — SHIPPED via PR #40)
 
-> **Substantial session.** 7 commits shipped across 2 new branches. Plan went from pre-council draft → 5× CLEAR across 4 council rounds. Phase 1 pre-flight falsified the rolling-window premise (as the gate was designed to). Phase 2 scaffolding laid down (schema + validator + scraper client + upsert). **Nothing merged to `main`** — all work lives on feature branches pending your review.
+> **Substantial session.** 12 commits shipped. Plan went from pre-council draft → 5× CLEAR across 4 council rounds. Phase 1 pre-flight falsified the rolling-window premise (as the gate was designed to). Phase 2 scaffolding laid down (schema + validator + scraper client + upsert). **Merged via PR #40** at 2026-04-24 11:07 UTC; Fly auto-deploy succeeded 11:09 UTC; live API healthy.
 >
-> For live-system state (v5/v4-spread production, ESPN cron, non-NBA-pilot backlog), the 2026-04-22 pickup block below is still authoritative. Nothing in production changed.
+> `main` now contains everything: council-CLEAR plan `Plans/nba-learned-model.md` (with 6 addenda), `scripts/phase1-preflight-correlation.ts` + 2 Phase 2 test scripts, `src/scrapers/espn-box-schema.ts`, updated `src/storage/sqlite.ts` (3 new tables + upsert + warnings helper), updated `src/scrapers/espn.ts` (`fetchNbaBoxScore()`), real ESPN fixture in `src/scrapers/__tests__/fixtures/`.
+>
+> Phase 2 code is **DORMANT on main** — `fetchNbaBoxScore()` and `upsertNbaBoxStats()` are exported but have no runtime caller. The 3 new SQLite tables exist empty on the Fly DB (created by `initTables()` on first post-deploy boot). **First real Phase 2 activity happens when someone runs a backfill script** (debt #33, not yet written).
 
 ### What happened this session (2026-04-24)
 
@@ -37,47 +39,51 @@ Last updated: 2026-04-24 (NBA learned-model pilot: plan CLEAR + Phase 1 null + P
 - Upsert with change-detection audit in `src/storage/sqlite.ts`: `upsertNbaBoxStats()` returns {inserted, unchanged, updated}; only bumps `updated_at` and writes audit rows when MUST-HAVE fields actually change. NICE-TO-HAVE-only changes are no-ops. `first_scraped_at` preserved across updates.
 - Two test scripts (tsx-run, no test framework): `scripts/test-espn-box-schema.ts` (50+ validator assertions), `scripts/test-nba-box-upsert.ts` (5 upsert scenarios against /tmp SQLite). All pass.
 
-### Where we are now
+### Where we are now (post-merge)
 
-**Plan:** `Plans/nba-learned-model.md` is **council-CLEAR** at round 4. Append-only from here. Addenda v1-v4 document: pre-flight v1 results (both FAIL), methodology revision (Proposal A), v3 re-run results (power PASS, premise unchanged), zod→hand-rolled convention alignment.
+**Plan:** `Plans/nba-learned-model.md` is **council-CLEAR** at round 4, with 6 addenda (v1–v6). On `main`. Append-only from here. Addenda log: (v1) Phase 1 pre-flight v1 failure disposition, (v2) methodology pin pre-rerun, (v3) v3 re-run results, (v4) zod→hand-rolled convention alignment, (v5) Phase 1 null scope clarification, (v6) council correction of v5 overclaims + Phase 3 plan-review items.
 
-**Branches on remote (NONE merged to `main`):**
-- `claude/nba-model-explanation-m8rX8` — plan-only ancestor (2 commits beyond main + 1 post-CLEAR revision; `197e74b`).
-- `claude/nba-learned-model-phase-1` — plan + pre-flight script + null-result addendum + learnings update (4 commits beyond main; tip `0c15bd0`). Effectively archival — Phase 2 branch carries forward all of its content.
-- `claude/nba-learned-model-phase-2` — **active branch** with 7 commits beyond main (tip `093392b`). Contains: plan (renamed), pre-flight + null result, Phase 2 schema + validator + scraper + upsert + 2 test scripts + 1 real fixture.
+**Branch state on remote (post-merge):**
+- `main` at **`6aae233`** (merge commit of PR #40) — contains everything.
+- `claude/nba-learned-model-phase-2` — merged to `main` via PR #40 2026-04-24 11:07 UTC. Archival; `check-branch-not-merged.sh` hook will block any re-push.
+- `claude/nba-learned-model-phase-1` — superseded by phase-2 before merge; its content is on `main`. Archival.
+- `claude/nba-model-explanation-m8rX8` — plan-only ancestor; merged into phase-2 branch via `05578b1` before PR #40. Archival.
+- Optional housekeeping (not done this session): prune the 3 archival remote branches with `git push origin --delete <branch>`.
 
-**Live production:** unchanged since 2026-04-22 (Sprint 10.10). v5 winner + v4-spread margin on 6 sports, shadow logging on NBA/NFL/MLB/NHL, nightly cron, twice-daily predictions. No Fly deploys this session.
+**Live production (post-deploy):**
+- `main` HEAD: `6aae233` (PR #40 merge)
+- Fly auto-deploy: succeeded 2026-04-24 11:09 UTC (~67s). Live API `GET /api/health` returned `{status:"ok", games: 21774, results: 21604, last_scrape_at: "2026-04-24T07:07:06Z"}`.
+- **Production behavior unchanged**: v5 + v4-spread on 6 sports, shadow logging on NBA/NFL/MLB/NHL, nightly cron, twice-daily predictions. No new endpoints, no model version change.
+- **DB schema changed**: on first post-deploy boot `initTables()` created 3 new empty tables on the Fly SQLite: `nba_game_box_stats`, `nba_box_stats_audit`, `scrape_warnings`. Created via `CREATE TABLE IF NOT EXISTS`, idempotent.
+- **Phase 2 code is DORMANT**: `fetchNbaBoxScore()` and `upsertNbaBoxStats()` exported but have no runtime caller yet. First real use when someone runs the (not-yet-written) backfill script.
 
-**Scheduled remote agent:** created to fire 2026-05-08 01:00 UTC (`trig_016iJVBF3UuTL6T6JA66PYEo`). Checks whether Phase 1 pre-flight numbers landed (YES) and whether a Phase 1 branch opened (YES). Will return `STATUS: PROGRESS`, no nudge. If you want it re-targeted at Phase 2 milestones (e.g. "has box-stats coverage reached 98%?"), update the routine.
+**Scheduled remote agent:** created to fire 2026-05-08 01:00 UTC (`trig_016iJVBF3UuTL6T6JA66PYEo`). Checks for pre-flight numbers (on main now), Phase 1 branch (archival), plan rename (on main now). Will still return `STATUS: PROGRESS`, no nudge. If you want it re-targeted at Phase 2 *completion* milestones (e.g. "did backfill run, did nba_game_box_stats reach ≥98% coverage?"), update the routine via claude.ai/code/routines.
 
 ### To resume in a remote session
 
-1. `git fetch origin` and check out the active branch:
-   ```
-   git checkout claude/nba-learned-model-phase-2
-   ```
-   (Tip: `093392b`, 7 commits beyond main. Phase 1 branch is redundant now — its content is carried forward here.)
+1. `git fetch origin && git checkout main && git pull` — everything is here. No feature-branch checkout needed.
 
-2. Read the plan at `Plans/nba-learned-model.md`, paying attention to addenda v1-v4 at the bottom. Plan body is append-only; don't back-edit.
+2. Read `Plans/nba-learned-model.md` front-to-back, **including all 6 addenda at the bottom**. Plan body is append-only; don't back-edit. Addendum v6 is the authoritative final reading on the Phase 1 null result's scope.
 
-3. Run the two test scripts to verify local state is green:
+3. Verify local tests still green against merged code:
+   ```bash
+   npx tsc --noEmit                                    # should be clean
+   npx tsx scripts/test-espn-box-schema.ts             # validator, 50+ asserts
+   npx tsx scripts/test-nba-box-upsert.ts              # upsert, 5 scenarios on /tmp DB
+   npx tsx scripts/phase1-preflight-correlation.ts     # reproduces addendum v3 numbers
    ```
-   npx tsx scripts/test-espn-box-schema.ts    # validator against real fixture
-   npx tsx scripts/test-nba-box-upsert.ts     # upsert scenarios against /tmp DB
-   ```
-   Both should pass with 0 failures. Running takes <5s total.
 
-4. **Next concrete Phase 2 work** (in priority order):
-   - **`scripts/backfill-nba-box-stats.ts` (new).** Iterate over resolved NBA games in `game_results`, call `fetchNbaBoxScore()`, call `upsertNbaBoxStats()`. Expected runtime: ~40 min at 2 req/s for ~5,000 resolved NBA games. Plan constraint: "rate-limit at 2 req/s." Needs live ESPN access. Logs warnings to `scrape_warnings`.
-   - **`scripts/recheck-recent-box-stats.ts` (new).** Fetch box scores for all NBA games in the last 7 days on every run. Uses the same `fetchNbaBoxScore` + `upsertNbaBoxStats`; audit table captures retroactive ESPN corrections. Designed to run from cron; not yet wired into scheduler.
-   - **`scripts/audit-espn-box-stats.ts` (new).** One-shot cross-source check: sample 50-100 NBA games, compare ESPN-scraped values against manually-curated basketball-reference URL list (hard-coded in the script). Per plan §Phase 2 ship rule 5: raw counts (FGM/FGA/REB/etc.) must match **exactly**; derived rates (eFG%/ORtg/possessions) allow 1% tolerance. Results committed as `docs/espn-bbref-audit.md`.
-   - **Phase 2 council implementation review.** Plan + validator + scraper + upsert should go through 5-expert implementation review before the backfill runs, per Council Discipline protocol ("Every substantive change — plan, implementation, or test results — runs through the 5-expert council"). If wanted, run council on the Phase 2 commits currently on `claude/nba-learned-model-phase-2`.
-   - **Phase 2 ship gate.** Rules 1-5 pre-declared in plan. Rule 1 (≥98% aggregate MUST-HAVE coverage), Rule 2 (≥95% per-season), Rule 3 (≥94% per-(team, season) cell), Rule 4 (schema integrity + audit + change-detection verified by integration test), Rule 5 (no regression + bbref cross-source audit passes).
+4. **Next concrete Phase 2 work (debt #33)** — cut a new branch from `main`, e.g. `claude/nba-phase2-backfill`:
+   - **`scripts/backfill-nba-box-stats.ts` (new).** Iterate over resolved NBA games in `game_results`, call `fetchNbaBoxScore()` → `upsertNbaBoxStats()`. ~40 min runtime at 2 req/s for ~5,000 games. Plan constraint: rate-limit at 2 req/s. Logs drift warnings via `recordScrapeWarnings()`.
+   - **`scripts/recheck-recent-box-stats.ts` (new).** Fetch box scores for all NBA games in the last 7 days on every run. Same fetch+upsert; audit table captures retroactive ESPN corrections. Run from cron once wired in.
+   - **`scripts/audit-espn-box-stats.ts` (new).** One-shot cross-source check: sample 50–100 NBA games, compare ESPN values against manually-curated basketball-reference URLs. Raw counts: exact match. Derived rates: 1% tolerance. Commit results to `docs/espn-bbref-audit.md`.
+   - **Phase 2 council implementation review.** Council discipline says every substantive change goes through implementation review. The merged Phase 2 code (schema + validator + scraper client + upsert) did NOT yet go through this gate — do it before running the backfill so the scaffolding can be corrected if issues surface. Council on the code that's now on `main` (easy to reference: PR #40 files tab).
+   - **Phase 2 ship gate** (plan Rules 1–5): Rule 1 (≥98% aggregate MUST-HAVE coverage), Rule 2 (≥95% per-season), Rule 3 (≥94% per-(team, season) cell), Rule 4 (schema integrity + audit + change-detection verified by integration test — already covered by `test-nba-box-upsert.ts`), Rule 5 (no regression elsewhere + bbref cross-source audit passes).
 
 5. **Alternative next-session priorities** (if pausing Phase 2):
-   - Debt #31 (home-favored bias in `getCalibration()` in `resolve-predictions.ts`) — small targeted PR, ~30 min.
-   - Debt #32 (shadow-analysis CLI once N≥30 per sport × model accumulates). **Gating on sample size** — may not be ready yet; check `SELECT COUNT(*) FROM predictions WHERE model_version LIKE '%-naive' GROUP BY sport, model_version`.
-   - ESPN injury flat-day watch (started Sprint 10.10) — check whether ESPN injury data has recovered; if 3-day flat trend, escalate to debt #19 (second injury provider).
+   - Debt #31 (home-favored bias in live `getCalibration()`) — ~30 min quick win, orthogonal to pilot.
+   - Debt #32 (shadow-analysis CLI) — gated on N≥30 per sport × model. Check first: `sqlite3 data/sqlite/sportsdata.db "SELECT sport, model_version, COUNT(*) FROM predictions WHERE model_version LIKE '%-naive' GROUP BY sport, model_version"`.
+   - ESPN injury flat-day watch — check `last_scrape_at` + a recent prediction's `home_out_impact`; if still flat 2–3 days after Sprint 10.10, escalate to debt #19.
 
 ### Key context the remote session will NOT have without re-reading
 
@@ -87,22 +93,22 @@ Last updated: 2026-04-24 (NBA learned-model pilot: plan CLEAR + Phase 1 null + P
 - **No zod dep** — repo mandated against it in Sprint 8. Hand-rolled validators only. Plan's original "Zod schema" wording was a cross-council miss; addendum v4 captures the resolution.
 - **Test fold (2025-26 NBA games) remains UNTOUCHED.** Pre-flight used the 2024-25 val fold for all diagnostics. Don't touch the test fold in Phase 2 — it's still reserved for any future Phase 3 work.
 - **Streak flag still live** in v5/v4-spread. Phase 1 didn't touch it. Removal still gated on an ablation test from a learned model that demonstrably absorbs the signal — that's Phase 3 contingent, not current work.
-- **None of these branches are merged.** `main` is unchanged. Open PRs intentionally not created (per `CLAUDE.md` "commit and push ≠ open a PR"). If you want to ship, open a PR for `claude/nba-learned-model-phase-2` against `main` (it contains everything from all 3 branches).
+- **Everything is on `main`.** PR #40 merged 2026-04-24 11:07 UTC. Fly deploy succeeded. No outstanding branches need attention; the 3 feature branches (`claude/nba-learned-model-phase-{1,2}` and `claude/nba-model-explanation-m8rX8`) are archival and can be pruned at your convenience (`git push origin --delete <branch>`). The `check-branch-not-merged.sh` hook will block any accidental re-push to them.
 
-### Files touched this session
+### Files touched this session (all on `main` post-PR-#40)
 
 **New files:**
-- `Plans/nba-learned-model.md` — renamed from `nba-neural-net.md`, expanded with 4 addenda. Council-CLEAR round 4.
+- `Plans/nba-learned-model.md` — renamed from `nba-neural-net.md`, expanded with 6 addenda. Council-CLEAR round 4.
 - `scripts/phase1-preflight-correlation.ts` — premise + power diagnostics
 - `scripts/test-espn-box-schema.ts` — validator integration test against real fixture
 - `scripts/test-nba-box-upsert.ts` — upsert + audit + change-detection test
-- `src/scrapers/espn-box-schema.ts` — validator module, hand-rolled, 300+ lines
+- `src/scrapers/espn-box-schema.ts` — validator module, hand-rolled
 - `src/scrapers/__tests__/fixtures/espn-nba-box-401811002.json` — real ESPN response (78KB trimmed)
 
 **Modified files:**
 - `src/scrapers/espn.ts` — added `fetchNbaBoxScore()` + imports
-- `src/storage/sqlite.ts` — added 3 tables + `upsertNbaBoxStats` + `recordScrapeWarnings` + `getNbaBoxStatsCount`
-- `learnings.md` — appended Phase 1 null-result entry (10 KEEP/IMPROVE/INSIGHT items)
+- `src/storage/sqlite.ts` — added 3 tables (nba_game_box_stats / nba_box_stats_audit / scrape_warnings) + `upsertNbaBoxStats` + `recordScrapeWarnings` + `getNbaBoxStatsCount`
+- `learnings.md` — appended Phase 1 null-result entry (10 KEEP/IMPROVE/INSIGHT items + v6 CORRECTION)
 - `SESSION_LOG.md` — this resume block + Sprint 10.11 entry below
 
 ---
@@ -111,14 +117,14 @@ Last updated: 2026-04-24 (NBA learned-model pilot: plan CLEAR + Phase 1 null + P
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log before acting on it. Git history is the authoritative timeline.
 
-**Status as of 2026-04-24 end-of-session (Sprint 10.11 — NBA learned-model pilot):**
+**Status as of 2026-04-24 end-of-session (Sprint 10.11 — SHIPPED):**
 
-- **Plan** `Plans/nba-learned-model.md` is **council-CLEAR** round 4 (5× CLEAR, avg 8.9/10). Append-only from here. Four addenda already appended: pre-flight v1 results (premise + power both FAIL), methodology revision (Proposal A, unanimous 3-expert re-council), v3 re-run (power PASS 0.00278, premise still FAIL), zod→hand-rolled convention alignment.
-- **Phase 1 is DONE (null result, Phase 1 abandoned, test fold untouched).** Rolling-window premise weakly supported on NBA; N=20 won the grid; v6_sim mean paired diff = +0.0004 (v6 worse than v5). Null result documented in `learnings.md` per plan §Phase 1 rule-1-failure path.
-- **Phase 2 scaffolding landed** on `claude/nba-learned-model-phase-2`: 3 new SQLite tables + hand-rolled validator + real-fixture test + scraper client + change-detection upsert + 2 passing test scripts. Nothing yet called from live cron — no production impact.
-- **3 feature branches on remote, none merged to `main`:** `claude/nba-model-explanation-m8rX8` (plan-only ancestor), `claude/nba-learned-model-phase-1` (pre-flight only; archival), `claude/nba-learned-model-phase-2` (everything above + Phase 2; **active branch**, 7 commits beyond main, tip `093392b`).
-- **Production is unchanged since Sprint 10.10 (2026-04-22):** v5 winner + v4-spread margin on 6 sports, shadow logging on NBA/NFL/MLB/NHL, nightly cron, twice-daily predictions. No Fly deploys this session.
-- **Pre-existing backlog from Sprint 10.10 still stands** (debts #31, #32, ESPN injury watch). Sprint 10.11 added **debt #33** (Phase 2 completion).
+- **PR #40 MERGED** to `main` at 2026-04-24 11:07 UTC (merge commit `6aae233`). Fly auto-deploy succeeded 11:09 UTC; API `/api/health` returning `{status:"ok", games:21774, results:21604}`.
+- **Plan** `Plans/nba-learned-model.md` is on `main`, **council-CLEAR round 4** (5× CLEAR, avg 8.9/10). 6 addenda appended (v1–v6). Append-only from here.
+- **Phase 1 done (null result, abandoned).** Rolling-window-on-point-diff premise narrowly failed (Δ=+0.0131 < 0.02 threshold); test fold untouched; methodology repair survives for Phase 3. Scope-clarified per addendum v6: Phase 1's null is specific to point-diff — rolling/EWMA on Phase 3's rich features (Net Rating, eFG%, TOV%, etc.) is an untested empirical question; Phase 3's 9-candidate grid is feature-form SELECTION, not a hypothesis test against season-aggregate (season-aggregate is not currently a grid candidate).
+- **Phase 2 scaffolding on `main`, DORMANT.** 3 new SQLite tables (empty), hand-rolled validator, scraper client `fetchNbaBoxScore()`, upsert `upsertNbaBoxStats()` with change-detection audit, real ESPN fixture, 2 passing integration tests. No runtime caller yet; first real use when debt #33's backfill script lands.
+- **Production:** v5 + v4-spread on 6 sports, shadow logging on NBA/NFL/MLB/NHL, nightly cron, twice-daily predictions — all unchanged in behavior. Only DB schema changed: 3 new empty tables exist on Fly.
+- **Pre-existing backlog from Sprint 10.10 still stands** (debts #31, #32, ESPN injury watch). Sprint 10.11 added **debt #33** (Phase 2 completion: backfill + recheck + bbref audit + implementation council review).
 
 **What shipped this session (2026-04-24, Sprint 10.11):**
 
@@ -204,11 +210,11 @@ Seven commits across two feature branches. **No PRs opened. No merge to `main`. 
 
 **Sprint 10.11 closed (Phase 1 null) + opened debt #33 (Phase 2 completion).** Priority queue reshuffled:
 
-1. **Debt #33 (NEW) — Phase 2 implementation completion.** Active branch `claude/nba-learned-model-phase-2`. Scaffolding landed; three scripts remain:
-   - `scripts/backfill-nba-box-stats.ts` — iterate ~5000 resolved NBA games, call `fetchNbaBoxScore` → `upsertNbaBoxStats`, log warnings. ~40 min runtime at 2 req/s rate limit. **Needs live ESPN access; run locally and verify row counts before pushing.**
+1. **Debt #33 (NEW) — Phase 2 implementation completion.** Scaffolding **on `main` via PR #40** (schema + validator + scraper client + upsert + 2 tests + fixture). Cut a new branch from `main` (e.g. `claude/nba-phase2-backfill`) for the remaining work:
+   - `scripts/backfill-nba-box-stats.ts` — iterate ~5000 resolved NBA games, call `fetchNbaBoxScore` → `upsertNbaBoxStats`, log warnings via `recordScrapeWarnings`. ~40 min runtime at 2 req/s rate limit. **Needs live ESPN access; run locally and verify row counts before pushing.**
    - `scripts/recheck-recent-box-stats.ts` — 7-day retroactive-correction cron. Same fetch+upsert; audit table captures mutations.
    - `scripts/audit-espn-box-stats.ts` — one-shot bbref cross-source check (manually curated URLs in-script; raw counts exact match; derived rates 1% tolerance). Results to `docs/espn-bbref-audit.md`.
-   - Council implementation review on Phase 2 code (plan + validator + scraper + upsert) per Council Discipline protocol. Ship gate is Rules 1-5 in plan §Phase 2 — coverage floors (98/95/94%), schema integrity (with audit + change-detection verified by integration test), no regression + bbref audit.
+   - **Phase 2 council implementation review** on the scaffolding now on `main` (PR #40 files-tab is easy reference). Should happen before the backfill actually runs so issues in the merged code can be caught and corrected in a follow-up PR. Ship gate is Rules 1-5 in plan §Phase 2 — coverage floors (98/95/94%), schema integrity (with audit + change-detection verified by integration test — already covered by `test-nba-box-upsert.ts`), no regression + bbref audit.
 2. **Debt #31 — home-favored bias in live `getCalibration()`.** Quick win (~30 min). Port the `pickedHome = p >= 0.5` transform that PR #30 applied to `reliability.ts` into `resolve-predictions.ts:getCalibration()`. Same class of bug; affects live calibration plot quality. Independent of NBA-pilot work — good break-glass task.
 3. **Debt #32 — shadow-analysis CLI/endpoint.** Gated on N≥30 per sport × model. Check `SELECT COUNT(*) FROM predictions WHERE model_version LIKE '%-naive' GROUP BY sport, model_version` first; if N<30 on most sports, defer. Pre-declared constraints in `Plans/shadow-prediction-logging.md`: Bonferroni-adjust α=0.05/8 or single primary ship metric; `|adj.made_at − naive.made_at| < 60s` pair filter.
 4. **Watch: ESPN injuries.** Still flat as of 2026-04-22 predict cron. If 2-3 more crons produce zero `home_out_impact`, escalate to **debt #19** (second injury data provider — trigger: ≥3 failures/week for 2 weeks).
@@ -847,9 +853,9 @@ Short, targeted sprint triggered by a real cron-fail incident at 2026-04-15 06:2
 
 ---
 
-### Sprint 10.11 — NBA Learned-Model Pilot: plan CLEAR + Phase 1 null + Phase 2 scaffolding (2026-04-24)
+### Sprint 10.11 — NBA Learned-Model Pilot: plan CLEAR + Phase 1 null + Phase 2 scaffolding (2026-04-24; SHIPPED via PR #40)
 
-**Single session. Seven commits across two feature branches. No merge to `main`, no production change.**
+**Single session. 12 commits. Merged to `main` via PR #40 at 11:07 UTC; Fly auto-deploy succeeded 11:09 UTC. 3 new empty SQLite tables on production. No runtime behavior change.**
 
 **Plan iteration (4 council rounds, 5-expert parallel each):**
 
@@ -888,11 +894,13 @@ Plan file renamed from `nba-neural-net.md` → `nba-learned-model.md` per its ow
 - `src/storage/sqlite.ts` — `upsertNbaBoxStats()` + `recordScrapeWarnings()` + `getNbaBoxStatsCount()`. Change-detection guard: `updated_at` bump and audit row only when MUST-HAVE fields differ; NICE-TO-HAVE-only changes are no-ops; `first_scraped_at` preserved across updates; atomic via `db.transaction()`.
 - `scripts/test-espn-box-schema.ts` + `scripts/test-nba-box-upsert.ts` — tsx-run integration tests (no test-framework dep). 50+ validator assertions + 5 upsert scenarios. All pass.
 
-**Branches on remote after this session:**
+**Branches on remote after this session (post-merge):**
 
-- `claude/nba-model-explanation-m8rX8` — plan-only ancestor. 2 commits beyond main pre-session + 1 post-CLEAR revision (`197e74b`). Archival.
-- `claude/nba-learned-model-phase-1` — plan + pre-flight + null-result addendum + learnings update. Tip `0c15bd0`. Effectively archival (its content is carried forward by Phase 2 branch).
-- `claude/nba-learned-model-phase-2` — **active branch with 7 commits beyond main, tip `093392b`.** Contains everything above + Phase 2 scaffolding.
+- `main` — **at `6aae233`**, contains everything from PR #40. Fly auto-deployed at 11:09 UTC.
+- `claude/nba-learned-model-phase-2` — merged via PR #40 at 2026-04-24 11:07 UTC. Archival.
+- `claude/nba-learned-model-phase-1` — superseded by phase-2 before merge; content on `main`. Archival.
+- `claude/nba-model-explanation-m8rX8` — plan-only ancestor; merged into phase-2 via `05578b1` before PR #40. Archival.
+- Housekeeping optional: prune the 3 archival branches with `git push origin --delete <branch>`.
 
 **Scheduled remote agent:** `trig_016iJVBF3UuTL6T6JA66PYEo` fires once 2026-05-08 01:00 UTC. Checks for pre-flight numbers / Phase 1 branch / rename. Given all 3 happened, will return `STATUS: PROGRESS`, no nudge.
 
@@ -948,7 +956,7 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 30 | **`check-branch-not-merged.sh` false-positives on chained `git commit && git push` in a single Bash tool call.** Hook evaluates `git diff origin/main..HEAD --name-only` once before the chained commands execute, so the pre-commit (empty-diff) state triggers a deny even when the chained commit would create the diff. Current workaround: split chained commands into two Bash calls. Possible fix: skip-when-push-is-chained-with-prior-commit, OR switch detection to look at `@{upstream}..HEAD` instead of `origin/main..HEAD`. Surfaced while pushing the cron-retry branch (Sprint 10.8). | Sprint 10.8 (hook self-limitation surfaced by cron-retry work) | **Low** — workaround is trivial; real fix is nice-to-have |
 | 31 | **Same home-favored bias in the existing `getCalibration()` in `resolve-predictions.ts`.** Codex found this class of bug in reliability.ts during PR #30 review; the existing live-calibration code predates my changes and still filters `p < 0.5`. Apply the same `pickedHome = p >= 0.5` transform so the NBA-live calibration surfaces include away-favored picks. Small targeted PR when someone has the cycles. | Sprint 10.8 Codex review on PR #30 (out-of-scope at the time) | **P2** — affects live track record calibration quality |
 | 32 | **Shadow-analysis CLI/endpoint.** Follow-up to debt #14 (PR #38). Compute per-sport / per-model Brier (v5) or MAE (v4-spread) delta between adjusted and naive shadow pairs once N≥30 resolved pairs per (sport × model) accumulate. Two pre-declared constraints from `Plans/shadow-prediction-logging.md`: (1) Bonferroni-adjust (α=0.05/8) or pre-declare a single primary ship metric, since 4 sports × 2 models = 8 comparisons; (2) filter pairs to `\|adj.made_at − naive.made_at\| < 60s` to exclude temporally-skewed backfill pairs. | Sprint 10.10 — surfaced as out-of-scope in debt #14's plan | **HIGH** — gated on N≥30 per sport × model (~2-3 weeks for NBA/MLB/NHL, longer for NFL) |
-| 33 | **NBA learned-model Phase 2 completion.** Active branch `claude/nba-learned-model-phase-2` (tip `093392b`). Scaffolding landed (schema + validator + fixture + scraper client + upsert + 2 test scripts). Remaining: (a) `scripts/backfill-nba-box-stats.ts` — iterate resolved NBA games, fetch+upsert, ~40 min at 2 req/s; (b) `scripts/recheck-recent-box-stats.ts` — 7-day retroactive-correction cron; (c) `scripts/audit-espn-box-stats.ts` — one-shot bbref cross-source check (manually-curated URL list, exact-match for counts, 1% tolerance for rates); (d) Phase 2 council implementation review. Ship gate is plan Rules 1-5: aggregate 98% + per-season 95% + per-(team,season) 94% coverage + schema integrity + no-regression-elsewhere. Phase 3 is **blocked on Phase 2 clean merge** per plan gating rule. | Sprint 10.11 | **HIGH** — plan pre-declares Phase 2 as prerequisite for any future Phase 3 work; also independently useful for reporting / Phase 3-less NBA analytics |
+| 33 | **NBA learned-model Phase 2 completion.** Scaffolding **merged to `main` via PR #40** (2026-04-24): schema + validator + fixture + scraper client + upsert + 2 test scripts. 3 new empty tables live on Fly. Remaining work for a new branch cut from `main`: (a) `scripts/backfill-nba-box-stats.ts` — iterate resolved NBA games, fetch+upsert, ~40 min at 2 req/s live ESPN; (b) `scripts/recheck-recent-box-stats.ts` — 7-day retroactive-correction cron; (c) `scripts/audit-espn-box-stats.ts` — one-shot bbref cross-source check (manually-curated URL list, exact-match for counts, 1% tolerance for rates); (d) **Phase 2 council implementation review** on the code now on `main` (PR #40's files tab is easy reference). Ship gate is plan Rules 1-5: aggregate 98% + per-season 95% + per-(team,season) 94% coverage + schema integrity + no-regression-elsewhere. Phase 3 is **blocked on Phase 2 clean merge with passing ship gate** per plan gating rule. | Sprint 10.11 | **HIGH** — plan pre-declares Phase 2 as prerequisite for any future Phase 3 work; also independently useful for reporting / Phase 3-less NBA analytics |
 
 **Audit performed Sprint 10.8 (council mandate):** All debts re-checked against current `main` after PR #29 merged. Debt #13 closed (PR #28). Debt #11 promoted to P0 and generalized (NBA-live → all-sport reliability diagrams from baseline). Old debt #18 "Dixon-Coles" (filed as single item in the PR #29 description) split into #24 (τ, math-proven zero margin impact) and #25 (ξ time-decay MLE, blocked on #26). Debts from earlier sprints have their original numbering preserved (#14-#23); new Sprint 10.8 debts are #24-#26.
 
@@ -971,7 +979,7 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | Debt #27 — NBA v4-spread home-advantage re-calibration (3.0 → 2.25) | PR #34 (Sprint 10.9.5, 2026-04-20). signedResid −0.605 → +0.001. Council 5/5 CLEAR. |
 | Debt #28 — MLS/EPL v5 sigmoid scale re-calibration | PR #36 (Sprint 10.10, 2026-04-22). MLS 0.60→0.80, EPL 0.60→0.90. Both flipped SHY→HONEST. Brier improves on both. |
 | Debt #14 — Shadow-prediction logging for forward A/B | PR #38 (Sprint 10.10, 2026-04-22). `v5-naive` + `v4-spread-naive` rows written when `hasInjuryData && !lowConfidence` on NBA/NFL/MLB/NHL. Codex P1+P2 addressed. |
-| **NBA learned-model Phase 1 (premise-fail, pre-flight-abandoned)** | Sprint 10.11 (2026-04-24). `Plans/nba-learned-model.md` council-CLEAR r4; pre-flight premise Δ=+0.0131 < 0.02 threshold → Phase 1 abandoned per plan discipline; null result in `learnings.md`. Test fold untouched. Methodology repair survives for Phase 3 (Proposal A plug-in estimator). Commits `0c15bd0` and earlier on `claude/nba-learned-model-phase-1` branch. |
+| **NBA learned-model Phase 1 (premise-fail, pre-flight-abandoned)** | Sprint 10.11 (2026-04-24), shipped via PR #40. `Plans/nba-learned-model.md` council-CLEAR r4 on `main`; pre-flight premise Δ=+0.0131 < 0.02 threshold → Phase 1 abandoned per plan discipline; null result in `learnings.md`. Test fold untouched. Methodology repair survives for Phase 3 (Proposal A plug-in estimator). |
 
 ### Deferred (no timeline)
 
@@ -1107,11 +1115,7 @@ npm run viz           # Both API + Vite together
 For an up-to-date list, use `git log --oneline main`. Major milestones:
 
 ```
-Sprint 10.11 (branches only; NOT merged to main):
-  claude/nba-learned-model-phase-2 — tip 093392b — 7 commits (plan CLEAR r4 + Phase 1 null + Phase 2 scaffolding)
-  claude/nba-learned-model-phase-1 — tip 0c15bd0 — 4 commits (subset of above; archival)
-  claude/nba-model-explanation-m8rX8 — tip 197e74b — 3 commits (plan-only; archival)
-
+PR #40 NBA learned-model pilot: plan CLEAR + Phase 1 null + Phase 2 scaffold — Sprint 10.11 (merge commit 6aae233)
 PR #39 Session handoff: Sprint 10.10 (MLS/EPL sigmoid + shadow logging + housekeeping)
 PR #38 Shadow-prediction logging (debt #14 closed) — Sprint 10.10
 PR #37 Housekeeping — viz research to docs/, gitignore tool artifacts

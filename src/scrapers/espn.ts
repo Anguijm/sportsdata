@@ -15,6 +15,10 @@ import {
   validateScoreboard, validateTeams,
   type EspnScoreboardResponse, type EspnTeamsResponse, type ValidationResult,
 } from './validators.js';
+import {
+  validateNbaBoxScore,
+  type NbaBoxStatsGame, type ScrapeWarning,
+} from './espn-box-schema.js';
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
@@ -161,6 +165,69 @@ export function fetchScoreboard(sport: Sport, dates?: string): Promise<Game[]> {
 /** Fetch teams for a sport */
 export function fetchTeams(sport: Sport): Promise<Team[]> {
   return scrapedFetch(sport, 'teams', 'teams', validateTeams, normalizeTeams);
+}
+
+// --- NBA per-game box-score (Phase 2) ---
+// See Plans/nba-learned-model.md §Phase 2.
+
+export interface BoxScoreFetchResult {
+  ok: boolean;
+  data?: NbaBoxStatsGame;
+  warnings: ScrapeWarning[];
+  reason?: string;
+}
+
+/**
+ * Fetch per-game box-score from ESPN's summary endpoint and validate it
+ * into a NbaBoxStatsGame. Rate-limit-aware, retry-on-network-error,
+ * fail-closed on schema drift.
+ *
+ * The caller provides team IDs in our `nba:ABBR` namespace; the validator
+ * verifies ESPN's abbreviations match.
+ *
+ * Warnings are returned to the caller (which persists them via
+ * recordScrapeWarnings in the DB layer), not silently swallowed.
+ */
+export async function fetchNbaBoxScore(
+  gameId: string,          // namespaced: "nba:401811002"
+  homeTeamId: string,      // namespaced: "nba:DEN"
+  awayTeamId: string,      // namespaced: "nba:POR"
+  season: string,          // e.g. "2025-26"
+): Promise<BoxScoreFetchResult> {
+  // Strip "nba:" prefix for ESPN event ID
+  const eventId = gameId.replace(/^nba:/, '');
+  const url = `${ESPN_BASE}/${SPORT_PATHS.nba}/summary?event=${eventId}`;
+  const scrapedAt = new Date().toISOString();
+
+  let lastError = 'unknown';
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      const response = await rateLimitedFetch(url);
+      if (!response.ok) {
+        lastError = `HTTP ${response.status}: ${response.statusText}`;
+        if (attempt < RETRY_ATTEMPTS - 1) {
+          await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+          continue;
+        }
+        return { ok: false, warnings: [], reason: lastError };
+      }
+
+      const raw = await response.json() as unknown;
+      const validation = validateNbaBoxScore(raw, gameId, homeTeamId, awayTeamId, season, scrapedAt);
+      if (!validation.ok) {
+        // Schema drift — do NOT retry, fail closed immediately per existing convention.
+        // Warnings (if any) are returned so the caller can persist to scrape_warnings.
+        return { ok: false, warnings: validation.warnings, reason: `schema validation: ${validation.reason}` };
+      }
+      return { ok: true, data: validation.data, warnings: validation.warnings };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      if (attempt < RETRY_ATTEMPTS - 1) {
+        await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      }
+    }
+  }
+  return { ok: false, warnings: [], reason: `network error after ${RETRY_ATTEMPTS} attempts: ${lastError}` };
 }
 
 // --- Normalizers (response types now in validators.ts) ---

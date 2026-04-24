@@ -595,3 +595,62 @@ This means **the rolling-window question is re-opened and re-tested in Phase 3**
 - The Phase 1 abandonment decision — correct and stays. v6 (rolling-point-diff as v5 drop-in) is a null result and that path is closed.
 
 This addendum is a **scope clarification**, not a methodology or ship-rule change. No re-council required — the plan body's Phase 3 feature-form grid already encoded this distinction; the documentation overreach was downstream of the plan, not in it.
+
+---
+
+## Addendum v6 — 2026-04-24 (council correction of v5 overreach)
+
+**Status**: 4-expert council review of addendum v5 returned 2× CLEAR (Pred, Domain) + 2× WARN (Stats, Math). This addendum corrects three specific overclaims in v5 and surfaces one Phase-3-plan-review item that v5 elided.
+
+Per append-only discipline, v5 is NOT back-edited; v6 amends it here. Subsequent readers should treat v6 as the authoritative reading.
+
+### Correction 1 — Phase 3 grid is feature-form selection, NOT a clean hypothesis test of recency-vs-aggregate
+
+**What v5 said:** "Phase 3's 9-candidate grid (5 rolling-N × 4 EWMA-h) re-tests the rolling-window hypothesis on those richer inputs."
+
+**Why Stats flagged it:** the grid picks a winner among 9 recency-weighted candidates. **Season-aggregate is not one of the 9 candidates.** As currently specified in §Training protocol, Phase 3 cannot pick season-aggregate over rolling/EWMA — it's not on the ballot. So the addendum-v5 conditional "only if Phase 3 picks season-aggregate over all 9 candidates does the broader 'recency doesn't help NBA' claim gain support" is unfalsifiable: the antecedent can never be true.
+
+**Corrected framing:**
+- Phase 3's inner-CV grid is **feature-form selection** among recency-weighted candidates. It picks the *best* rolling/EWMA form; it does not compare that form against a season-aggregate baseline.
+- The test-fold ship gate (§Phase 3 rule 1) compares the full Phase 3 learned model (with its selected feature form) against the incumbent — v6 if Phase 1 shipped, or v5 if Phase 1 did not ship. **v5's feature is season-aggregate point differential.** So the test-fold comparison IS implicitly "Phase 3 (rich features, rolling/EWMA form) vs. v5 (point-diff, season-aggregate)" — but this is an *architectural* comparison, not a clean recency-vs-aggregate feature-form comparison.
+- To cleanly test "rolling-window on rich features beats season-aggregate on rich features," the Phase 3 plan review (when it happens) should consider **adding season-aggregate as a 10th feature-form candidate** to the inner-CV grid. This is a Phase 3 plan-review item, not a decision made here.
+
+### Correction 2 — "Larger effective sample size per game" conflates sub-events with estimator-n
+
+**What v5 said:** "Box-score features have larger effective sample size per game (more datapoints per game than one margin number), making rolling-N noise cheaper than it is on noisy aggregate margin."
+
+**Why Math + Domain flagged it:** point-diff is itself a high-n per-game quantity — it's the sum of ~200 possession outcomes. Treating it as "one number" vs. eFG%'s "85 FGA" understates point-diff's effective n. Worse, eFG%/TOV%/pace are correlated derivatives of the same possession-level data, not independent measurements — treating them as independent "more datapoints" inflates ESS.
+
+**Corrected framing:** the real distinction is the **ratio of within-season trend variance (a) to per-game sampling variance (b)**. For rolling-N to beat season-aggregate on a feature, (a) must be large relative to (b). Point-diff has large per-game sampling variance (σ ≈ 12 pts in NBA) and plausibly small within-season trend variance for the bulk of the league. Box-score rate features have smaller per-game sampling variance (eFG% σ ≈ 5 percentage points on ~85 FGA) but the within-season trend variance is an empirically open question — it *may* be proportionally larger (due to lineup/tactical shifts that don't register in margin) or it may be similar. The addendum-v5 assertion that box-score features have "inherently larger" ESS or are "inherently more recency-sensitive" is not supported by first principles; it's a plausible prior, not a fact.
+
+### Correction 3 — "Inherently" overclaims; "untested empirical question" is the honest register
+
+**What v5 said:** "Box-score features are **inherently** more recency-sensitive than coarse point-diff..."
+
+**Why Math + Domain flagged it:** "inherently" claims a property; the evidence supports a hypothesis at most. A drop-in fix: change "inherently" to "may be" throughout. The `learnings.md` CORRECTION bullet already uses the honest register ("remains an untested empirical question"); the plan addendum should match.
+
+### Correction 4 — Multiple-testing inflation in the 9-candidate grid
+
+**What v5 elided:** the 9-candidate inner-CV is a **selection procedure**, not a hypothesis test. Picking best-of-9 biases the selected candidate's inner-fold margin upward by ~O(σ·√(2 ln 9)) ≈ 2.1σ under independence. The plan's test-fold gate (single declared winner on held-out test fold) is the right ultimate guard, but the addendum should flag this inflation so Phase 3's plan review can bake in the mitigation.
+
+**Corrected framing:** Phase 3 plan review should either (a) pre-declare a Bonferroni-style adjustment on the winner's test-fold CI threshold (e.g., tighten from 95% one-sided to 99.4% one-sided per 9-way selection), or (b) explicitly pre-declare that the held-out test fold is the final arbiter and the inner-CV margin is expected to be optimism-biased. This is a **Phase 3 plan-review item**, not a Phase 1 or v5 correction.
+
+### What this addendum does NOT change
+
+- Phase 1 null result, disposition, or ship-gate application — unchanged.
+- Phase 2 scope, MUST-HAVE schema, coverage floors, audit protocol — unchanged.
+- Phase 3 ship rules (the six pre-declared gates) — unchanged in value; rule 1's inner-CV multiple-testing mitigation is flagged here as an item for the Phase 3 plan-review gate but not re-written into the plan body yet.
+- Plan body addenda v1–v4 — unchanged (append-only discipline).
+
+### Plan-review items for future Phase 3 plan review
+
+Capture for the reviewer when Phase 3 plan review convenes (post-Phase 2 merge):
+
+1. **Add season-aggregate as a 10th feature-form candidate** to the Phase 3 inner-CV grid, OR explicitly state that the test-fold comparison against v5 (which uses season-aggregate) is the *only* recency-vs-aggregate comparison the plan provides.
+2. **Pre-declare multiple-testing mitigation** for the 9-way (or 10-way) feature-form selection: Bonferroni-adjusted CI threshold, or a documented acceptance of the optimism bias in the winner's inner-fold estimate.
+3. **Opponent-adjustment sanity** (flagged by Domain in v5 council): rolling-window on rate stats is vulnerable to schedule-strength confounds; SoS-adjusted rate features should be the primary benchmark, not raw rolling rate.
+4. **Season-segment stability** (flagged by Domain): the rolling-vs-aggregate relationship may be strongest in the last ~15 games of the season (tanking, rotation experiments) and weakest in the middle third. Check whether the grid winner is stable across season-segments, not just pooled.
+
+### Council process note
+
+The v5 addendum claimed "No re-council required." Council happened anyway (4-expert panel) at user request, and correctly caught two material overclaims. **Lesson**: even "scope clarifications" that don't change ship rules can embed factual claims worth council-reviewing. For future addenda that introduce *any* empirical or factual assertion (not just ship-rule changes), default to running the council loop.

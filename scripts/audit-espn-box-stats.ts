@@ -222,6 +222,7 @@ function main(): void {
   lines.push('## Aggregate');
   lines.push('');
   lines.push(`Entries audited: ${truth.length - entriesWithMissingRows} / ${truth.length}`);
+  lines.push(`Skipped (missing nba_game_box_stats row): ${entriesWithMissingRows}`);
   lines.push(`Total raw count failures: ${totalRawFailures}`);
   lines.push(`Total derived rate failures: ${totalRateFailures}`);
   lines.push(`Total rates skipped (no ground-truth): ${totalRateSkipped}`);
@@ -231,8 +232,15 @@ function main(): void {
   if (truth.length < 50) {
     lines.push(`Pass-A (informational, N=${truth.length}). Phase-2 ship rule 5 requires Pass-B (N≥50). Not yet ship-claim-eligible.`);
   } else {
-    const passA = totalRawFailures === 0 && totalRateFailures === 0;
-    lines.push(`Pass-B candidate (N=${truth.length}). Status: ${passA ? '**PASS**' : '**FAIL**'}.`);
+    // Pass-B requires: full N≥50 ground-truth, every entry actually audited
+    // (no missing rows), zero raw-count failures, zero rate failures.
+    // Skipped entries are coverage holes — they cannot be silently passed.
+    const passB = totalRawFailures === 0 && totalRateFailures === 0 && entriesWithMissingRows === 0;
+    const reasons: string[] = [];
+    if (entriesWithMissingRows > 0) reasons.push(`${entriesWithMissingRows} entries missing from nba_game_box_stats`);
+    if (totalRawFailures > 0) reasons.push(`${totalRawFailures} raw-count failures`);
+    if (totalRateFailures > 0) reasons.push(`${totalRateFailures} derived-rate failures`);
+    lines.push(`Pass-B candidate (N=${truth.length}). Status: ${passB ? '**PASS**' : `**FAIL** — ${reasons.join('; ')}`}.`);
   }
 
   writeFileSync(outPath, lines.join('\n') + '\n');

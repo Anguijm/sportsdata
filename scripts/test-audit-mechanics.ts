@@ -9,8 +9,14 @@
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
+
+// Repo root resolved from this file's location, so the test runs from any
+// working directory and on any machine (CI included).
+const __filename = fileURLToPath(import.meta.url);
+const REPO_ROOT = resolve(dirname(__filename), '..');
 
 let failures = 0;
 function assertEq<T>(actual: T, expected: T, label: string): void {
@@ -83,19 +89,19 @@ writeFileSync(truthFile, JSON.stringify(truthAllPass));
 process.env.SQLITE_PATH = tmpDb;
 closeDb();
 execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
-  cwd: '/home/johnanguiano/projects/sportsdata',
+  cwd: REPO_ROOT,
   env: { ...process.env, AUDIT_TRUTH_OVERRIDE: truthFile },
 });
 
 // The script reads `data/espn-bbref-audit-truth.json` directly — temporarily swap it.
 // Restore the empty version after.
-const realTruthPath = '/home/johnanguiano/projects/sportsdata/data/espn-bbref-audit-truth.json';
+const realTruthPath = join(REPO_ROOT, 'data/espn-bbref-audit-truth.json');
 const realTruthBackup = readFileSync(realTruthPath, 'utf8');
 try {
   // Scenario 1: all pass
   writeFileSync(realTruthPath, JSON.stringify(truthAllPass));
   execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
-    cwd: '/home/johnanguiano/projects/sportsdata',
+    cwd: REPO_ROOT,
   });
   let report = readFileSync(reportFile, 'utf8');
   assertContains(report, 'raw count failures: 0', 'scenario 1: all-pass raw counts → 0 failures');
@@ -107,7 +113,7 @@ try {
   truthOneOff[0].home_raw_counts.fgm = 49; // we have 50, expected 49
   writeFileSync(realTruthPath, JSON.stringify(truthOneOff));
   execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
-    cwd: '/home/johnanguiano/projects/sportsdata',
+    cwd: REPO_ROOT,
   });
   report = readFileSync(reportFile, 'utf8');
   assertContains(report, 'raw count failures: 1', 'scenario 2: 1 raw count off → 1 failure');
@@ -118,7 +124,7 @@ try {
   truthRateOff[0].home_published_rates.efg_pct = expectedEfg(homeRow) * 1.05; // 5% off
   writeFileSync(realTruthPath, JSON.stringify(truthRateOff));
   execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
-    cwd: '/home/johnanguiano/projects/sportsdata',
+    cwd: REPO_ROOT,
   });
   report = readFileSync(reportFile, 'utf8');
   assertContains(report, 'derived rate failures: 1', 'scenario 3: 5%-off rate → 1 failure');
@@ -129,7 +135,7 @@ try {
   truthNullRate[0].home_published_rates.efg_pct = null;
   writeFileSync(realTruthPath, JSON.stringify(truthNullRate));
   execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
-    cwd: '/home/johnanguiano/projects/sportsdata',
+    cwd: REPO_ROOT,
   });
   report = readFileSync(reportFile, 'utf8');
   assertContains(report, 'derived rate failures: 0', 'scenario 4: null expected → 0 failures');
@@ -138,7 +144,7 @@ try {
   // Scenario 5: empty truth file → N=0 stub report
   writeFileSync(realTruthPath, '[]');
   execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
-    cwd: '/home/johnanguiano/projects/sportsdata',
+    cwd: REPO_ROOT,
   });
   report = readFileSync(reportFile, 'utf8');
   assertContains(report, 'Sample size N: 0', 'scenario 5: empty truth → N=0');
@@ -149,10 +155,25 @@ try {
   truthMissingRow[0].game_id = 'nba:bdl-nonexistent';
   writeFileSync(realTruthPath, JSON.stringify(truthMissingRow));
   execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
-    cwd: '/home/johnanguiano/projects/sportsdata',
+    cwd: REPO_ROOT,
   });
   report = readFileSync(reportFile, 'utf8');
   assertContains(report, 'not present in `nba_game_box_stats`', 'scenario 6: missing row reported');
+
+  // Scenario 7 (Codex P1 fix): N≥50 ground-truth with skipped entries must
+  // FAIL Pass-B disposition, not silently pass. Construct 50 entries: 49
+  // pointing at the seeded test row, 1 pointing at a non-existent game.
+  const truthPassB: typeof truthAllPass = [];
+  for (let i = 0; i < 50; i++) truthPassB.push(JSON.parse(JSON.stringify(truthAllPass[0])));
+  truthPassB[0].game_id = 'nba:bdl-missing-1'; // missing in nba_game_box_stats
+  writeFileSync(realTruthPath, JSON.stringify(truthPassB));
+  execSync(`SQLITE_PATH=${tmpDb} npx tsx scripts/audit-espn-box-stats.ts --out ${reportFile}`, {
+    cwd: REPO_ROOT,
+  });
+  report = readFileSync(reportFile, 'utf8');
+  assertContains(report, 'Pass-B candidate (N=50)', 'scenario 7: Pass-B disposition reached at N=50');
+  assertContains(report, '**FAIL**', 'scenario 7: skipped entries → FAIL (not silent PASS)');
+  assertContains(report, '1 entries missing from nba_game_box_stats', 'scenario 7: failure reason cites missing entries');
 } finally {
   writeFileSync(realTruthPath, realTruthBackup);
   rmSync(tmpDir, { recursive: true, force: true });

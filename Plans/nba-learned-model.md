@@ -554,3 +554,44 @@ Skeleton file committed in this branch (`src/scrapers/espn-box-schema.ts`) inclu
 - `MUST_HAVE_RAW_FIELDS` and `NICE_TO_HAVE_FIELDS` pinned constants.
 - `possessionsSingleTeam()` and `possessionsAveraged()` pinned formulas (basketball-reference Oliver).
 - `validateNbaBoxScore()` stub with implementation sketch in JSDoc (to be filled in when Phase 2 author has sample ESPN responses to trace from).
+
+---
+
+## Scope clarification addendum v5 — 2026-04-24 (rolling-window on rich features is still open)
+
+### What Phase 1 actually ruled out vs what remains open
+
+Phase 1's pre-flight premise check tested **one specific hypothesis**: "rolling-N point differential beats season-aggregate point differential as a drop-in team-quality feature in the v5 sigmoid." That hypothesis failed: best rolling-N (N=20) Pearson vs forward margin = 0.4288, season-diff = 0.4157, Δ = +0.0131 < pre-declared 0.02 threshold. v6-simulated (v5 with rolling-20 feature-swap) also showed a *positive* val-fold mean paired Brier diff of +0.00040 (v6_sim slightly worse than v5), confirming the correlation finding at the outcome level.
+
+**What this result does NOT rule out:**
+
+1. **Rolling-window on richer box-score features.** The Phase 3 feature list (§Features) uses rolling-window of Net Rating, ORtg, DRtg, eFG%, TOV%, OREB%, DREB%, 3P-rate, AST/STL/BLK per possession — NOT just point-differential. Box-score features are inherently more recency-sensitive than point-diff because (a) they respond to tactical shifts (rotation changes, coaching adjustments, scheme evolution) that don't show in aggregate margin, (b) their effective sample size per game is larger (more datapoints per game than one margin number), making rolling-N noise cheaper than it is on noisy aggregate margin, (c) some features (e.g., 3P-rate after a trade-deadline wing addition) can shift materially mid-season in ways season-aggregate smears away.
+2. **EWMA time-decay on rich features.** Phase 3's grid already includes 4 EWMA half-lives {5, 10, 15, 20}. Exponential decay with a short half-life may show a larger vs-season edge than hard rolling-N even when the hard-rolling-N comparison is narrow.
+3. **Rolling-window of opponent-adjusted metrics.** SoS-adjusted Net Rating (plan §Features) is a second-order quantity; its rolling-window behavior is an empirically open question distinct from rolling-window of raw point-diff.
+
+### Phase 3 grid still tests rolling-window, on richer inputs
+
+Per §Training protocol, Phase 3 does a nested time-ordered 5-fold inner-CV over **9 feature-form candidates**: 5 rolling-N × 4 EWMA-h. Each candidate is evaluated on the full Phase 3 feature vector (Net Rating, eFG%, TOV%, rest, B2B split, circadian, etc.) — not on the Phase 1 coarse-point-diff feature. Per-game-pooled Brier across time-ordered held-out slices ranks the candidates; single winner moves to the test fold.
+
+This means **the rolling-window question is re-opened and re-tested in Phase 3**, with the richer inputs that make the "recency matters" premise more plausible. Phase 1's result is informative but not load-bearing for Phase 3's grid outcome.
+
+### Documentation correction
+
+- `learnings.md` entry "Phase 1 premise null result" originally wrote: *"Rolling-window premise is weakly supported at best on NBA"* and *"'More data beats recency' for NBA team quality."* Both statements are overreach. The accurate claim is: *"Rolling-window of season-aggregate POINT DIFFERENTIAL is weakly supported over season-aggregate point differential on NBA — Δ=+0.0131 Pearson, N=20 window winning, falling short of pre-declared 0.02 threshold. Rolling-window of richer box-score features is untested in Phase 1 and remains a Phase 3 grid candidate."* Correction filed in next learnings commit.
+- `SESSION_LOG.md` "Remote Resume" statement "Phase 1 is DONE" correctly refers to v6 (rolling-point-diff drop-in) being abandoned, but the surrounding language "Don't 'try again' on v6 rolling-window — the premise is empirically weak on NBA" is overly broad; only v6-as-rolling-point-diff is abandoned. Rolling-window on Phase 3 features is NOT abandoned. Correction filed in next session log commit.
+- `project_sportsdata_foundation.md` (memory) historical finding "More data beats recency for 82-game NBA seasons" is overreach for the same reason. Correction: "More data beats recency **for NBA point-differential specifically** — rolling-window behavior on richer box-score features is untested on NBA and remains a Phase 3 grid candidate."
+
+### Implications for forward work
+
+- **Phase 2 remains unchanged.** Box-score plumbing is independently valuable for Phase 3 regardless; the rolling-window question reopening doesn't alter Phase 2 scope.
+- **Phase 3 feature-form search is not a formality.** If Phase 2 lands box-score data cleanly, the 9-candidate rolling/EWMA grid could plausibly pick a non-trivial winner (e.g., EWMA-h=10 on Net Rating) that outperforms season-aggregate on those features. The Phase 3 plan-review gate will re-evaluate the "recency matters" hypothesis at that time, with empirics.
+- **If Phase 3 rolling-window also fails to beat season-aggregate on rich features**, THEN the broader "recency doesn't help NBA team quality" claim would be supported — but that's a Phase 3 conclusion, not a Phase 1 one.
+
+### What does NOT change in the plan body
+
+- Phase 1 ship gate threshold (0.02 Pearson Δ) — stays pre-declared, was correctly applied.
+- Phase 3 ship rules — unchanged; the 0.010 Brier floor and 3σ power threshold remain.
+- Phase 3 feature list, feature-form grid, and inner-CV protocol — unchanged; they already test rolling-window on rich features.
+- The Phase 1 abandonment decision — correct and stays. v6 (rolling-point-diff as v5 drop-in) is a null result and that path is closed.
+
+This addendum is a **scope clarification**, not a methodology or ship-rule change. No re-council required — the plan body's Phase 3 feature-form grid already encoded this distinction; the documentation overreach was downstream of the plan, not in it.

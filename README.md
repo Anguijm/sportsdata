@@ -218,15 +218,16 @@ Daily cron (`predict-cron.yml`, 05:00 + 22:00 UTC):
 1. `POST /api/trigger/scrape?sport=all` — scrapes all 6 leagues + writes odds to games
 2. `POST /api/trigger/predict` — generates v2 winner + v4-spread predictions, resolves outcomes
 
-## Current Stats (as of Sprint 10.6)
+## Current Stats (as of Sprint 10.12 — 2026-04-25)
 
 - **6 leagues**: NFL, NBA, MLB, NHL, MLS, EPL — all selectable from the frontend
 - **174 teams** normalized across providers
-- **4,100+ games** in DB · outcomes resolved automatically via cron
+- **21,774 games** in DB · 21,605 outcomes resolved · cron auto-resolves nightly
 - **5,000+ player stats** (all 6 sports via ESPN core API)
-- **v2 predictions** (winner): 2,500+ backfilled · 61.4% accuracy · 0.249 Brier
-- **v4-spread predictions** (ATS): accumulating live — track record displays at N≥30
+- **v5 + v4-spread predictions** live across NBA/NFL/MLB/NHL (winner + ATS); v2 backfill (12,813 games) retained as calibration baseline
+- **NBA box-score data** (Phase 2): 7,604 rows / 3,802 games × 3 seasons (2023-24 through 2025-26). 4 of 5 ship-rule gates met (coverage 100% on aggregate / per-season / per-cell + schema integrity); cross-source bbref audit Pass-B is the 5th and final gate.
 - **MLB pitcher data**: probable starters + ERA extracted from ESPN scoreboard
+- **Shadow predictions** (forward A/B for injury signal): live infra; awaiting non-empty ESPN injury flow
 
 ## Live URLs
 

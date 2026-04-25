@@ -317,7 +317,7 @@ export interface Calibration {
   backfill: CalibrationCohort;
 }
 
-interface CalibrationRow {
+export interface CalibrationRow {
   predicted_prob: number;
   was_correct: number;
   low_confidence: number;
@@ -363,7 +363,7 @@ function emptyCohort(source: 'live' | 'backfill', binCount: number): Calibration
   };
 }
 
-function computeCohort(
+export function computeCohort(
   rows: CalibrationRow[],
   source: 'live' | 'backfill',
   binCount: number,
@@ -377,11 +377,24 @@ function computeCohort(
   );
 
   for (const row of rows) {
+    // `predicted_prob` is P(home_wins) in [0, 1]. Convert to confidence-in-pick
+    // in [0.5, 1.0] so away-favored games (p < 0.5) also contribute to
+    // calibration. `was_correct` is already correct-against-the-pick (see
+    // resolveDuePredictions; for non-spread models it's
+    // `predicted_winner === actual_winner ? 1 : 0`), so it pairs with the
+    // confidence-in-pick directly.
+    // (Debt #31 fix — same class of bug PR #30 fixed in reliability.ts:171.
+    // Previously `p < 0.5` rows were silently dropped, biasing live ECE
+    // toward home-favored predictions only.)
     const p = row.predicted_prob;
-    if (p < 0.5 || p > 1.0) continue; // defensive: shouldn't happen given convention
-    let idx = Math.floor((p - 0.5) / binWidth);
+    if (!Number.isFinite(p) || p < 0 || p > 1) continue; // defensive
+    const pickedHome = p >= 0.5;
+    const confidence = pickedHome ? p : 1 - p;
+    if (confidence < 0.5 || confidence > 1.0) continue; // defensive post-transform
+    let idx = Math.floor((confidence - 0.5) / binWidth);
     if (idx >= binCount) idx = binCount - 1; // terminal bin closed on both ends
-    buckets[idx]!.sumPred += p;
+    if (idx < 0) idx = 0;
+    buckets[idx]!.sumPred += confidence;
     buckets[idx]!.correct += row.was_correct;
     buckets[idx]!.n += 1;
   }
@@ -423,7 +436,8 @@ function computeCohort(
     ? nonEmpty.reduce((acc, b) => acc + (b.n / nTotal) * Math.abs(b.predictedAvg - b.actualRate), 0)
     : null;
 
-  // ECE excluding low_confidence rows (Engineer's secondary stat)
+  // ECE excluding low_confidence rows (Engineer's secondary stat).
+  // Same confidence-in-pick transform as the main loop (Debt #31).
   const highConfRows = rows.filter(r => r.low_confidence === 0);
   let eceHighConfOnly: number | null = null;
   if (highConfRows.length > 0) {
@@ -432,10 +446,15 @@ function computeCohort(
       () => ({ sumPred: 0, correct: 0, n: 0 }),
     );
     for (const row of highConfRows) {
-      let idx = Math.floor((row.predicted_prob - 0.5) / binWidth);
+      const p = row.predicted_prob;
+      if (!Number.isFinite(p) || p < 0 || p > 1) continue;
+      const pickedHome = p >= 0.5;
+      const confidence = pickedHome ? p : 1 - p;
+      if (confidence < 0.5 || confidence > 1.0) continue;
+      let idx = Math.floor((confidence - 0.5) / binWidth);
       if (idx >= binCount) idx = binCount - 1;
-      if (idx < 0) continue;
-      hcBuckets[idx]!.sumPred += row.predicted_prob;
+      if (idx < 0) idx = 0;
+      hcBuckets[idx]!.sumPred += confidence;
       hcBuckets[idx]!.correct += row.was_correct;
       hcBuckets[idx]!.n += 1;
     }

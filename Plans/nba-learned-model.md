@@ -1039,3 +1039,171 @@ Pass-B candidate (N=50). Status: **PASS**.
 - **Debt #35** (TOV scraper-convention) must be resolved at Phase 3 plan-review.
 - **Cron wiring** for the `recheck-recent-box-stats.ts` script remains deferred per addendum v7 §12 (Phase-3 concern).
 - **Pass-A2 informational smoke test** is now moot (Pass-B passed cleanly with the same N=50 sample).
+
+---
+
+## Addendum v10 — 2026-04-26 (debt #35 resolution: TOV scraper-convention, Phase-3 prerequisite)
+
+**Trigger.** Debt #35 was opened by addendum v9 §"Disposition for the 2 raw-count failures" — LAL/IND TOV mismatch (`nba:bdl-8258317`) was diagnosed as a definitional-choice mismatch, not a source disagreement. Path-(i) substitution removed the affected entry from the Pass-B audit sample, but the underlying convention question was deferred to Phase 3 plan-review. This addendum resolves it before any Phase 3 plan-draft work begins, because Phase 3's training tensors cannot be constructed without a pinned convention.
+
+### Fact pattern (verified 2026-04-26)
+
+ESPN's NBA boxscore endpoint exposes three turnover fields per team:
+
+| ESPN key | Convention | LAL/IND example | Fixture 401704627 example |
+|---|---|---|---|
+| `turnovers` | Player-summed (sum of individual stat lines) | 18 | 11 |
+| `teamTurnovers` | Team-attributed (8-sec violations, shot-clock, etc.) | 2 | 1 |
+| `totalTurnovers` | Sum of the above | 20 | 12 |
+
+The arithmetic identity `totalTurnovers = turnovers + teamTurnovers` holds in every fixture inspected (4/4) and is structurally guaranteed by ESPN's data model. The basketball-reference Pace and ORtg formulas (per glossary, verified during addendum v9.1) use the **player-summed** convention. Our current scraper (`src/scrapers/espn-box-schema.ts:173`) maps `totalTurnovers` → `tov`, then `possessionsSingleTeam(row)` consumes that `tov` in the Oliver formula. Net effect: our `nba_game_box_stats.possessions` is biased upward by `(team_tov_home + team_tov_away) / 2` per game — typically 0–2 possessions, ~0.5–1.5% of a 100-possession game.
+
+Live consumer scan: `grep -rn "possessions" src/` finds zero readers outside the storage layer itself (`src/storage/sqlite.ts`) and the offline scripts (`scripts/audit-*`, `scripts/backfill-*`, `scripts/test-*`). No API endpoint, no cron prediction step, no analysis module, no viz reads `nba_game_box_stats.possessions`. The column is currently write-only pending Phase 3.
+
+### Options considered
+
+| Opt | Approach | Convention shipped | Re-backfill needed | Schema change | Forensic team-TOV preserved? |
+|---|---|---|---|---|---|
+| (a) | Switch scraper to `turnovers`; recompute possessions; re-backfill 7,604 rows. | Player-summed | Yes (~63 min at 2 req/s) | No | No (team-TOV signal discarded) |
+| (b) | Keep `totalTurnovers`; document divergence; Phase 3 features explicitly use a non-bbref convention. | Total | No | No | N/A (already in `tov`) |
+| (c) | Add both `tov_player` and `tov_team` columns alongside existing `tov`; Phase 3 picks at training time. | Both | Yes (to populate new cols) | Yes (2 new cols) | Yes |
+| **(d)** | **Switch `tov` semantics to player-summed (option a) AND add `team_tov` NICE-TO-HAVE column to preserve forensic signal. Recompute possessions. Re-backfill.** | **Player-summed** | **Yes (~63 min)** | **Yes (1 NICE col)** | **Yes** |
+
+### Decision: option (d)
+
+**Rationale.**
+- **Convention.** The shipped `tov` column matches the bbref/Oliver convention used in every external reference Phase 3 will need (Pace, ORtg, ratchet diagnostics, Phase-3 calibration comparisons against bbref's published per-team rates). Option (b) would force every downstream Phase 3 feature, every external comparison, and every future debugging session to re-derive "wait, which TOV is this?". The cost of fixing this once now is bounded; the cost of carrying the divergence forward compounds.
+- **Forensic preservation.** Storing `team_tov` separately as NICE-TO-HAVE (a) loses zero information vs the current state, (b) gives Phase 3 the option to engineer a `team_tov_rate` feature later if it turns out predictive (8-sec violations may correlate with weak ball-handling rotations), (c) keeps the `totalTurnovers` consistency check available as a per-game data-quality assertion (`tov + team_tov == totalTurnovers` → schema_error if violated). Option (a) bare loses this; option (c) preserves it but at the cost of two redundant columns.
+- **Backfill cost.** ~63 min single-pass re-scrape against ESPN at the existing 2 req/s policy. Idempotent (re-running on a backfilled row is a no-op for unchanged fields, an UPDATE+audit row for the new `tov` value). No live consumer to coordinate with. No window-of-inconsistency for any user-facing surface.
+- **Schema cost.** One additive NICE-TO-HAVE column. The recipe is identical to addendum v7's NICE-TO-HAVE policy: missing values are NULL, present values are stored, mutations bump `updated_at` but don't emit MUST-HAVE audit rows. Migration is idempotent (`ALTER TABLE … ADD COLUMN team_tov INTEGER` gated on `PRAGMA table_info`).
+
+**Why not (a) bare.** Discards the team-TOV signal permanently; future "is team-TOV predictive?" questions require a re-scrape anyway. The marginal cost of the one NICE-TO-HAVE column over (a) is ~10 lines of code and one schema migration line. Symmetric upside: zero. Asymmetric downside avoided.
+
+**Why not (c).** Two columns serving the same primary feature is a footgun: every consumer must remember which is canonical. The `tov` column has 7,604 rows of installed semantics in the schema, the audit script, the formulas. Renaming/dual-writing increases error surface for no gain.
+
+**Why not (b).** Phase 3 would inherit a permanent off-by-1.5% bias on `possessions`, which propagates into every per-possession rate feature (offensive rating, turnover rate, true-shooting attempts per possession). Calibrating against bbref-published baselines would require a per-game adjustment factor, re-introducing exactly the audit-formula coupling that addendum v9's C′ disposition was designed to remove. We'd be undoing the simplification.
+
+**Convention vs derivation note.** Oliver's possessions estimator term `+TOV` arguably wants every trip-ending turnover, including team-attributed violations (a shot-clock violation does end a possession). Bbref's published convention uses the player-summed value, accepting a small (~team_tov/2 per team-game) systematic under-count in the estimator in exchange for parsimony with the player-stat tabulation. This addendum follows bbref's published convention for downstream-comparability, not because the player-summed value is theoretically more correct. Phase 3 calibration against bbref's published per-team Pace/ORtg requires this convention match; the alternative (rederive bbref's numbers from raw counts) is exactly the audit-only C′ pattern from addendum v9.
+
+**Empirical bbref-convention verification (added during round-1 council iteration).** The Domain agent flagged Sports-Reference's October-2024 blog post on game-level team-turnover corrections as potentially inverting the bbref convention. Direct inspection of the cached bbref HTML for `nba_bdl-8258317` (LAL/IND 2023 Cup final, scraped 2026-04-26) settles the question empirically: the bbref Team Totals row shows `data-stat="tov">18` for the team whose ESPN `turnovers` (player-summed) = 18 and `totalTurnovers` = 20. The bbref advanced-stats row shows `tov_pct = 14.8%`, which algebraically requires TOV=18 in the numerator (`18 / (88 + 0.44·35 + 18) = 14.83%` — matches to displayed precision). bbref's current published TOV column is the player-summed convention; the October-2024 correction did not invert this for current games. Cited bbref pages: `https://www.basketball-reference.com/boxscores/202312090LAL.html` (cached), `https://www.basketball-reference.com/about/glossary.html` (Pace, ORtg).
+
+### Implementation plan
+
+**1. Schema migration (`src/storage/sqlite.ts`).**
+- `ALTER TABLE nba_game_box_stats ADD COLUMN team_tov INTEGER` gated on `PRAGMA table_info(nba_game_box_stats)` not already containing `team_tov` (idempotent on fresh DBs and re-runs).
+- Update `NbaBoxStatsRow` (TS interface) to add `team_tov: number | null`.
+- Update `NICE_TO_HAVE_FIELDS` (and corresponding INSERT/UPDATE column lists, `BoxStatsUpsertResult` change-detection) to include `team_tov`.
+- Pin: `tov` semantics in the schema comment changes from "turnovers" to "turnovers (player-summed; matches bbref/Oliver convention)" and `team_tov` is annotated as "team-attributed turnovers (8-sec violations, shot-clock, etc.); team_tov + tov == ESPN totalTurnovers".
+
+**2. Scraper convention switch (`src/scrapers/espn-box-schema.ts`).**
+- `ESPN_FIELD_MAP['turnovers']`: new entry, `must_have: true`, `targets: ['tov']`. (Was previously in `RECOGNIZED_BUT_UNMAPPED`.)
+- `ESPN_FIELD_MAP['teamTurnovers']`: new entry, `must_have: false`, `targets: ['team_tov']`. (Was previously in `RECOGNIZED_BUT_UNMAPPED`.)
+- `ESPN_FIELD_MAP['totalTurnovers']`: change from `must_have: true, targets: ['tov']` to *consistency-check-only*: kept in the parser for `unknown_field` suppression and used to verify `parsed.tov + parsed.team_tov == parsed.totalTurnovers` (`schema_error` warning if not, ok stays true; the canonical `tov` value is from `turnovers`). Drop the field's mapping target.
+- **Per-component bounds on the consistency check** (Math fix-pack #2). Beyond the sum-identity, also assert `tov ∈ [0, 40]`, `team_tov ∈ [0, 10]`, and `tov ≥ team_tov` per game-team. Bounds-violations emit `schema_error` (not `ok:false`) — same warning class as the sum-identity, same forensic surface, same coverage-gate semantics.
+- **Why warning-only, not hard-fail** (DQ fix-pack #1). If ESPN ships an inconsistent triple (e.g., `turnovers=18, teamTurnovers=2, totalTurnovers=21` from a delayed partial-correction), hard-failing `ok` would orphan the row from `nba_game_box_stats` and silently degrade Phase-2 coverage gates (Rules 1–3) for what is *informational* drift, not data-corrupting drift. The canonical `tov` from `turnovers` is still well-defined; warning-only preserves the row + surfaces the drift in `scrape_warnings` for forensic review. Cross-source bbref consistency remains the audit-script's job (DQ fix-pack #5), not a per-scrape assertion.
+- `RECOGNIZED_BUT_UNMAPPED`: remove `'turnovers'` and `'teamTurnovers'` (now mapped). Add `'totalTurnovers'` (now consistency-check-only, not stored to a column).
+- `possessionsSingleTeam(row)` — bit-identical formula. Now consumes the player-summed `tov` value, so the output matches bbref's published convention.
+- Update doc comment on `possessionsSingleTeam` to reference player-summed convention.
+
+**2a. Team-turnover scope clarification** (Domain fix-pack #3). The `team_tov` NICE-TO-HAVE column captures NBA-scorer team-attributed turnovers: 24-second shot-clock violations, 8-second backcourt violations, 5-second inbound violations, 5-second closely-guarded violations (rare in NBA), offensive lane violations on free throws, illegal-screen calls when no individual is identified on the official scorer's sheet, and delay-of-game-resulting-in-loss-of-possession (very rare). Defensive 3-second calls are technical fouls, not turnovers, and are excluded. Convention is unified across regular season, postseason, NBA Cup, and (historically) preseason — same NBA scoring-rule book. Pre-1993-94 bbref games may use a different aggregation (player-summed only, no team-attributed line); this is out of scope for Phase 3 (which scopes to 2022+ data per addendum v6/v7).
+
+**3. Test fixtures + assertions.**
+- Existing 4 fixtures already include all three TOV fields (verified). No fixture re-recording needed.
+- `test-espn-box-schema.ts`: extend assertions to verify (a) `tov` matches `turnovers` (not `totalTurnovers`), (b) `team_tov` matches `teamTurnovers`, (c) consistency-check (`tov + team_tov == totalTurnovers`) passes silently for clean fixtures.
+- New synthetic-corruption assertion: a fabricated fixture where `totalTurnovers != turnovers + teamTurnovers` produces a `schema_error` warning with `ok` still true.
+- `test-nba-box-upsert.ts`: extend NICE-TO-HAVE coverage to assert `team_tov` participates in change-detection (mutation bumps `updated_at`, no MUST-HAVE audit row). Confirms the addendum v7 policy applies to the new column.
+
+**4. Possessions recompute on re-backfill.**
+- The re-backfill is `scripts/backfill-nba-box-stats.ts` re-run with `--update-existing` semantic. **Pin the flag name + behavior here pre-impl** (DQ fix-pack #4): if `backfill-nba-box-stats.ts` does not currently support `--update-existing` (or equivalent `--force-rescrape`, `--re-upsert`), the implementation step adds it as a blocking pre-req (gating ship Rule 1), with explicit semantics: "for each row in the eligible-games view, re-fetch ESPN box-score, re-validate, run UPSERT path; UPSERT detects MUST-HAVE/NICE mutations per v7 policy and emits audit rows accordingly." The flag is added (or the existing flag is renamed inline) before backfill executes.
+- Each row's UPSERT path naturally recomputes `possessions = possessionsAveraged(home, away)` from the new `tov` values.
+- Audit-row emission policy (per v7 §2): MUST-HAVE field changes emit audit rows. `tov` is MUST-HAVE, so every row that has a non-zero team-TOV (the majority) produces one `tov`-mutation audit row + one `possessions`-mutation audit row. NICE-TO-HAVE `team_tov` change (NULL → integer) bumps `updated_at` only.
+- Rough audit-row count: ~6,500 of the 7,604 rows are expected to mutate (assuming ~15% of games have zero team turnovers on either side); audit table grows by ~13,000 rows. Acceptable.
+- **Expected audit-row distribution** (DQ fix-pack #3, pre-declared). Post-backfill, `SELECT field, COUNT(*) FROM nba_box_stats_audit WHERE created_at > '<backfill-start-ts>' GROUP BY field ORDER BY 2 DESC` is expected to be dominated by `tov` (~6,500), `possessions` (~6,500), and zero or near-zero counts on every other field. Tolerance: any field other than `tov` or `possessions` showing >100 mutation rows triggers root-cause investigation before declaring the backfill clean. Captures finding "ESPN response shape has drifted between original scrape and now" (Risk #2).
+
+**5. Re-run debt #34 audit on substituted N=50.**
+- After backfill, re-run `npx tsx scripts/audit-espn-box-stats.ts --truth data/espn-bbref-audit-truth.json --post-c-prime` on Fly. Pre-declared verdict: still **PASS** (0 raw + 0 rate + 0 missing). The C′ disposition narrowed the audit's possessions formula to bbref's convention computed from raw counts (independent of our schema column), so changing what `tov` means in the schema does not change the audit's pass/fail determination on the substituted sample.
+- The LAL/IND game (path-(i) excluded from N=50) would now PASS if re-included — but per addendum v9 protocol, the substituted sample is locked; re-inclusion is out of scope here.
+
+### Pre-declared ship rules for option (d)
+
+These are the success criteria the implementation must satisfy. Pre-declared per CLAUDE.md ("any A/B, benchmark, or model comparison must pre-declare its ship rules"); pinned here before any code is written.
+
+1. **Schema integrity.** `PRAGMA table_info(nba_game_box_stats)` shows `team_tov INTEGER` (nullable). Migration runs idempotently on fresh DB and on existing 7,604-row DB. Backfill flag (`--update-existing` or equivalent — see Implementation §4) exists with the documented semantics before backfill execution begins.
+2. **Scraper convention.** `tov` field's source value matches ESPN's `turnovers` key (not `totalTurnovers`) for all 4 existing fixtures. `team_tov` matches `teamTurnovers`. Consistency check (`tov + team_tov == totalTurnovers` AND per-component bounds `tov ∈ [0,40]`, `team_tov ∈ [0,10]`, `tov ≥ team_tov`) passes on all clean fixtures and produces `schema_error` on (a) synthetic sum-mismatch fixture, (b) synthetic out-of-bounds fixture (e.g., `tov = 50`), (c) synthetic ordering-violation fixture (`tov < team_tov`).
+3. **Possessions recompute.** After re-backfill (segmented per Rule 6 and gated per Rule 7), `SELECT AVG(possessions) FROM nba_game_box_stats` is *weakly less than* its pre-backfill value (Stats fix-pack #1 — `team_tov ≥ 0` arithmetic identity guarantees weak inequality; strict inequality is observed *iff* at least one game in the backfill set carries a non-zero `team_tov` on either side, which is virtually guaranteed at N=7,604 per addendum v9.2 fixture data showing `team_tov ∈ {1, 2}`). Magnitude of the drop is in the range **[0.2, 2.5]** possessions per team-game on the post-backfill row set (Stats fix-pack #2 + Math fix-pack #1 — widened to accommodate (i) NULL coverage on historical seasons handled by computing the magnitude only over rows with `team_tov IS NOT NULL`, (ii) typical 1–2 team-TOV per team observed in current fixtures translating to ~1.0–2.0 possession-drop, with margin to 2.5 for high-team-TOV games). Anything outside this range triggers root-cause investigation before declaring the backfill clean.
+4. **Pass-B audit holds.** Post-backfill re-run of `scripts/audit-espn-box-stats.ts` on substituted N=50: **0 raw + 0 rate + 0 missing**. Same verdict as Sprint 10.13. **If FAIL**, the rollback in Risk #4 fires *and* every failing entry is diagnosed (root-cause + classification: scraper bug, ESPN-data drift, audit-formula edge case, etc.) before any re-attempt — no silent re-run loop (Stats fix-pack #4).
+5. **No regression — executed, not asserted** (Pred fix-pack #5). All existing v5/v4-spread prediction write-paths and reads remain bit-identical (none consume `possessions`, so this is a triviality, but the verification is run, not asserted). Concrete check: re-execute the existing v5 prediction-replay test (or, if no replay test exists in the repo, add a minimal one as part of v10's ship checklist that snapshots a v5 prediction from a fixed input fixture and compares the post-backfill output byte-for-byte). Pre-existing `npx tsc --noEmit` clean and any `npx tsx scripts/test-*.ts` passing must remain so.
+6. **No early reads of `team_tov`** (DQ fix-pack #2). Between the migration deploy (column added, all rows NULL) and the backfill completion (rows populated for current scraper outputs), no consumer (script, query, view, or downstream model) reads `team_tov` from `nba_game_box_stats`. Backfill completion is logged as an explicit `SESSION_LOG.md` entry with timestamp; only after that entry exists may a consumer read the column. Cheap policy gate; eliminates the 60-min inconsistency window from the failure surface.
+7. **Backfill is gated to ≥72-hour-old games** (Domain fix-pack #4). The `--update-existing` re-run targets only games where the original scrape timestamp is ≥72 hours before the backfill start (NBA stat-correction window closes within ~24h, but 72h is the conservative published-correction window). Live boxscore feeds and end-of-game-corrected feeds can disagree on TOV attribution by 1–2 per team for ~12–24 hours post-game; gating to ≥72h ensures the new `tov` (player-summed) and `team_tov` values are read from corrected rather than provisional ESPN data. Rows scraped <72h ago are skipped during the v10 backfill; they will be repopulated by routine cron-driven re-scrape per addendum v7 §12. *Implementation note*: today's `recheck-recent-box-stats.ts` deferral (per v7 §12) means the routine re-scrape isn't yet wired; the v10 backfill explicitly does NOT depend on that deferred work, but rows scraped within 72h of v10 backfill execution will retain the old convention until the deferred recheck cron lands or v10 is re-run later.
+8. **Pre-backfill segmented snapshot capture** (Pred fix-pack #4). Before backfill starts, capture and persist (to `data/v10-pre-backfill-snapshot.json` or equivalent forensic artifact) the following per `season` segment in `nba_game_box_stats`: `AVG(tov)`, `AVG(possessions)`, P05/P50/P95 of per-game `possessions`, and `COUNT(*)`. Post-backfill, the same query runs and the deltas are recorded. This catches era-skewed coverage drift (e.g., 2022-23 historical games systematically under-reporting `team_tov`) that would otherwise bias Phase 3's rolling-window features non-uniformly across train/val/test season boundaries.
+
+### Risks + mitigations
+
+| # | Risk | Mitigation |
+|---|---|---|
+| 1 | ESPN historical games (especially 2022-23) might not always include `teamTurnovers` despite the field appearing in current fixtures. | NICE-TO-HAVE policy: missing → NULL + `missing_field` warning + ok stays true. Backfill proceeds. Coverage gates (Rules 1–3 of Phase 2) don't read NICE-TO-HAVE. |
+| 2 | The re-backfill loses idempotency if the scraper response shape has drifted between the original scrape and now (e.g., a game's box score has been corrected upstream). | Detection: every changed MUST-HAVE field emits an audit row. Post-backfill, `SELECT field, COUNT(*) FROM nba_box_stats_audit WHERE created_at > '2026-04-26' GROUP BY field` reveals the distribution of changes. Anything beyond `tov`, `possessions`, and the `team_tov` NICE-bump is investigated. |
+| 3 | Audit-row volume during re-backfill (~13k rows) bloats the `nba_box_stats_audit` table for forensic queries. | Acceptable — table is purpose-built for this. Pre-existing rows are unaffected; the new rows are correctly attributable to the addendum-v10 backfill via `created_at`. |
+| 4 | Pass-B verdict shifts from PASS to FAIL due to second-order effect we haven't anticipated. | Pre-declared rollback (mirror of v9 §risk #1): if Pass-B fails after backfill, revert the scraper map change + drop the `team_tov` column + restore from pre-backfill `data/sportsdata.db` snapshot taken immediately before re-backfill. The branch can re-enter council for option (b) or (c). |
+| 5 | Phase 3 ends up wanting `totalTurnovers` (e.g., for a "team-error rate" feature combining both). | `team_tov + tov` reconstructs `totalTurnovers` exactly. No information loss. Phase 3 picks freely. |
+| 6 | Concurrent Phase-3 plan-draft work begins reading addendum v10 before backfill completes, leading to mixed-state confusion. | Hard sequence: addendum v10 is council-CLEAR before scraper edit; scraper edit + schema migration ship to main; backfill runs on Fly; debt #34 audit re-run confirms PASS; *then* Phase 3 plan-draft begins. No overlap. |
+| 7 | Live vs end-of-game stat-correction divergence — ESPN's live and corrected boxscore feeds can disagree on TOV attribution by 1–2 per team for ~12–24 hours post-game. If backfill executes against rows scraped during the live-feed window, the new `tov` / `team_tov` values capture provisional rather than final state, and the consistency check may emit `schema_error` on legitimate-at-the-time scrapes. (Domain fix-pack #4) | Ship Rule 7: backfill targets only games ≥72 hours old (conservative coverage of the NBA stat-correction window). Provisional-window rows retain the old convention until the deferred `recheck-recent-box-stats.ts` cron lands per v7 §12, or v10 is re-executed later. |
+| 8 | Pre-existing scraper/audit FT-coefficient asymmetry — scraper uses 0.44 (Oliver-basic) in `possessionsSingleTeam`; audit uses 0.4 (bbref full Pace) in `bbrefPossessions`. Difference per team-game is ~0.04·FTA ≈ 1.0 possession at FTA=25. (Math fix-pack #4 — pre-existing per addendum v9 C′; not introduced by v10.) | Documented here for surfaces; v10 does not alter either coefficient. The C′ disposition (audit-internal formula independent of schema column) means the two estimates are intentionally allowed to differ. Phase 3 plan-review may revisit which coefficient (0.44 vs 0.4) the schema column should use. |
+
+### Phase-3 plan-review items pinned by v10 (forwarded, not resolved here)
+
+These are items that must surface at the Phase 3 plan-review (not at v10 council); pinned now per Pred fix-pack #1 so Phase 3 plan-draft cannot silently inherit unresolved choices.
+
+- **`team_tov` admissibility in Phase 3 features.** `team_tov` is admissible only as a candidate **predictor** inside the existing feature vector — NOT as an axis of the 9-way feature-form selection grid (rolling-N × EWMA-h per addendum v6 line 244). The 10th candidate slot, if used at Phase 3, is `season-aggregate` per addendum v6, not `team_tov`. Don't conflate.
+- **NULL-handling policy for `team_tov` in training tensors.** Because `team_tov` is NICE-TO-HAVE with possibly non-uniform historical coverage (Risk #1), Phase 3 must declare a NULL-handling policy at plan-review: impute-zero / drop-row / learned-missingness. Silent NULL→0 imputation on historical games injects a synthetic "no team-TOV era" signal that correlates with date and biases season-stratified splits. Phase 3 plan-review must pre-declare which policy applies and on which season-segments.
+- **Cron-ordering invariant unchanged** (Pred fix-pack #3). v7 §12 (box-stats scrape AFTER prediction writes per tick) applies unchanged after v10. `team_tov` and re-derived `possessions` flow through the same post-prediction scrape tick. No new cron-ordering work required.
+- **0.44 vs 0.4 FT-coefficient revisit** (Risk #8). Phase 3 plan-review may revisit whether the schema column's `possessionsSingleTeam` should align with the audit's `bbrefPossessions` (0.4 coefficient, full bbref Pace) or remain on Oliver-basic (0.44 coefficient). Pre-existing; not v10's scope; flagged for visibility.
+
+### Council ask — addendum v10
+
+Five-expert plan-review: DQ, Stats, Pred, Domain, Math. Verdicts: CLEAR / WARN-with-mitigations / FAIL.
+
+**Round 1 (2026-04-26)** — see "Round 1 council results + fix pack" section below for individual verdicts and the resulting plan-body changes folded in this revision. Iterate until 5-CLEAR-or-WARN-with-pre-declared-mitigations before any code is written.
+
+### Round 1 council results + fix pack (2026-04-26)
+
+| Expert | Round-1 verdict | Round-1 grade | Round-2 verdict | Round-2 grade |
+|---|---|---|---|---|
+| DQ | WARN-with-mitigations | 8/10 | CLEAR | 9.5/10 |
+| Stats | WARN-with-mitigations | 7.5/10 | CLEAR | 9/10 |
+| Pred | WARN-with-mitigations | 8/10 | CLEAR | 9.5/10 |
+| Domain | FAIL | 4/10 | CLEAR | 9/10 |
+| Math | WARN-with-mitigations | 7/10 | CLEAR | 9/10 |
+
+**Round-2 aggregate: 5 CLEAR, avg 9.2/10. Plan-review CLOSED. Implementation may proceed.**
+
+**Round-2 non-blocking notes (forwarded, not v10 blockers):**
+- DQ (½-pt reservation): Ship Rule 6 enforcement is policy-gate (grep + reviewer discipline), not tooling-locked. Acceptable per WARN-with-pre-declared-mitigations standard.
+- Stats: [0.2, 2.5] sanity window is ~12× the expected drop's nominal width — soft gate, not tight detection. Phase 3 plan-review should tighten once the Ship Rule 8 snapshot quantifies per-segment `team_tov IS NOT NULL` rates.
+- Pred: Ship Rule 8 should ideally also capture per-segment NULL-rate of `team_tov` post-backfill so Phase 3's NULL-policy decision has empirical coverage data ready. Phase-3 plan-review entry item.
+- Domain (1-pt deduction): one-time spot-check on a pre-2024 game (e.g., 2019-20) to confirm the bbref convention is stable across the Oct-2024 correction window — recommend logging as a single-row sanity assertion in the Pass-B audit script rather than blocking on it.
+- Math: the 0.44 vs 0.4 FT-coefficient asymmetry magnitude (~0.04·FTA ≈ 1.0 possession at FTA=25, ≈ 1.6 at FTA=40) is not a rounding-error footnote. Phase 3 plan-review should treat the coefficient choice as a real decision. Already pinned in "Phase-3 plan-review items pinned by v10" §4.
+
+**Domain FAIL resolved empirically (not via re-argument).** The Domain agent flagged Sports-Reference's October-2024 blog post on game-level team-turnover corrections as potentially inverting the bbref convention (claiming `Tm TOV` post-correction = totalTurnovers). Direct inspection of the cached bbref HTML for `nba_bdl-8258317` (LAL/IND 2023 Cup final, scraped 2026-04-26 during Sprint 10.13's Pass-B audit) settles the question: bbref Team Totals shows `data-stat="tov">18` for the team whose ESPN `turnovers` (player-summed) = 18 and `totalTurnovers` = 20. The bbref advanced row shows `tov_pct = 14.8%`, which algebraically requires TOV=18 in the numerator. bbref's current published TOV column matches ESPN's player-summed `turnovers`, not `totalTurnovers`. Empirical evidence cited inline in the Decision section above. The Domain agent will be re-engaged in Round 2 with this evidence.
+
+**Round-1 fix pack folded into the plan body (this revision):**
+
+- DQ #1 → "Why warning-only, not hard-fail" justification added to Implementation §2.
+- DQ #2 → Ship Rule 6 added (no early reads of `team_tov` until backfill completion logged).
+- DQ #3 → Expected post-backfill audit-row distribution pinned in Implementation §4 (>100 mutations on any field other than `tov` or `possessions` triggers investigation).
+- DQ #4 → `--update-existing` flag pinned by name in Implementation §4 (or added pre-backfill if missing).
+- DQ #5 → Cross-source bbref check confirmed as audit-script's job (one-line clarification in Implementation §2).
+- Stats #1 → Rule 3 re-stated as *weakly less than* (arithmetic identity); strict inequality observed conditional on any non-zero `team_tov` in the backfill set (virtually guaranteed at N=7,604).
+- Stats #2 → Rule 3 magnitude lower bound widened from 0.3 to 0.2; magnitude computed only over rows with `team_tov IS NOT NULL`.
+- Stats #4 → Rule 4 augmented: failed Pass-B → diagnose entries before any re-attempt (no silent re-run loop).
+- Pred #1 → "Phase-3 plan-review items pinned by v10" section added: `team_tov` admissible as predictor only (NOT a feature-form grid axis); Phase 3 must declare NULL-handling policy at plan-review.
+- Pred #2 → Cron-ordering invariant (v7 §12) explicitly affirmed unchanged.
+- Pred #4 → Ship Rule 8 added: pre-backfill segmented snapshot of AVG(tov), AVG(possessions), P05/P50/P95 per season.
+- Pred #5 → Rule 5 reframed as *executed*, not asserted: v5 prediction-replay test must run pre/post backfill.
+- Domain #1 → Empirical bbref-convention verification section added to the Decision rationale (cached HTML inspection + algebraic verification of `tov_pct = 14.8%`).
+- Domain #3 → Implementation §2a added: explicit list of NBA team-attributed turnover types (24-sec, 8-sec, 5-sec, lane violation, etc.); defensive 3-sec excluded as a tech foul; pre-1993-94 out of scope.
+- Domain #4 → Risk #7 added: live vs end-of-game stat-correction window; Ship Rule 7 gates backfill to ≥72-hour-old games.
+- Math #1 → Rule 3 magnitude upper bound widened from 1.5 to 2.5 (LAL/IND-style high-team-TOV games observed at team_tov=2 ⇒ 2.0 possession-drop, plus margin).
+- Math #2 → Per-component bounds added to the consistency check: `tov ∈ [0, 40]`, `team_tov ∈ [0, 10]`, `tov ≥ team_tov`.
+- Math #3 → "Convention vs derivation note" added to the Decision rationale: Oliver's term arguably wants `totalTurnovers`; we follow bbref's published convention for downstream comparability, accepting the small (~team_tov/2 per team-game) systematic under-count.
+- Math #4 → Risk #8 added: 0.44 vs 0.4 FT-coefficient asymmetry between scraper and audit (pre-existing per v9 C′; not introduced by v10; flagged for Phase 3 plan-review revisit).

@@ -654,3 +654,68 @@ Capture for the reviewer when Phase 3 plan review convenes (post-Phase 2 merge):
 ### Council process note
 
 The v5 addendum claimed "No re-council required." Council happened anyway (4-expert panel) at user request, and correctly caught two material overclaims. **Lesson**: even "scope clarifications" that don't change ship rules can embed factual claims worth council-reviewing. For future addenda that introduce *any* empirical or factual assertion (not just ship-rule changes), default to running the council loop.
+
+---
+
+## Phase 2 addendum v7 — 2026-04-25 (implementation-review fix-pack + deferred items)
+
+**Trigger.** PR #40 landed Phase 2 scaffolding (schema + validator + scraper client + upsert) on main at commit `6aae233` without going through the council's implementation-review gate. Implementation review was run post-merge (5-expert panel: DQ/Stats/Pred/Domain/Math) before the backfill caller is written. Four experts returned WARN 7/10; Math returned CLEAR 8/10. Required fixes are landed on branch `claude/nba-phase2-impl-review-fixes`.
+
+### Decisions locked in this addendum
+
+**1. Minutes fallback is OT-aware, not bare-240.**
+- **Motivation**: Math/Domain/Pred/DQ convergent finding. A bare-240 fallback in an OT game silently under-reports team-minutes by ~10% (1-OT) to 18% (2-OT), contaminating any per-minute feature downstream.
+- **Resolution**: `espn-box-schema.ts` parses OT count from `header.competitions[0].status.type.detail` (regex `/(\d*)OT\b/i`, matching existing scoreboard-normalizer convention in `espn.ts:258`). Fallback is `240 + 25·max(0, periods−4)`. A `missing_field` warning is emitted when the fallback path fires, identifying the inferred period count. Exported `extractPeriodsPlayed` and `regulationPlusOtMinutes` for unit-testability.
+- **Ship-rule effect**: None. Rule 1 (≥98% MUST-HAVE coverage) still counts the row. The OT-aware value is genuinely correct for the common "regulation or 1-OT without corruption" failure mode; if a more exotic corruption occurs, the warning surfaces it in `scrape_warnings` for post-hoc audit.
+
+**2. NICE-TO-HAVE change-detection policy: bump `updated_at`, no audit row.**
+- **Motivation**: Stats-expert finding. Prior behavior ("NICE-only changes are no-ops") would silently leave a Phase-3 feature cache keyed on `updated_at` stale if a Phase-3 model ever consumed a NICE field (e.g. `largest_lead` as a garbage-time proxy).
+- **Resolution**: `upsertNbaBoxStats` now detects NICE-TO-HAVE mutations. Any mutation (MUST-HAVE or NICE) runs the UPDATE and bumps `updated_at`. Audit rows are still emitted **only for MUST-HAVE** mutations — the audit table remains the load-bearing surface for coverage-gate semantics. `BoxStatsUpsertResult.status = 'updated'` for NICE-only changes; `mutations = 0` (count of MUST-HAVE fields that triggered audit rows).
+- **Ship-rule effect**: None. Coverage gate denominators unchanged.
+
+**3. `time_of_possession` removed from schema entirely.**
+- **Motivation**: Domain-expert finding. NBA boxscores don't report TOP; the field was a football/hockey holdover from the plan's original field-list sketch. Validator was hardcoding `null` at assembly.
+- **Resolution**: Removed from `NbaBoxStatsRow`, `NICE_TO_HAVE_FIELDS`, `NbaBoxStatsUpsertRow`, `BOX_STATS_NICE_TO_HAVE`, the `CREATE TABLE` statement, INSERT/UPDATE column lists. Migration `ALTER TABLE nba_game_box_stats DROP COLUMN time_of_possession` added, gated on `PRAGMA table_info` (idempotent on fresh DBs; removes the empty column on the Fly DB).
+- **Ship-rule effect**: Rule 4 (schema integrity) satisfied — migration is idempotent and tested.
+
+**4. `first_scraped_at` enforced equal to `now` on INSERT.**
+- **Motivation**: DQ-expert finding. Prior behavior trusted `row.first_scraped_at` from the caller; validator passed `now` there, so in practice the behavior was safe, but the field name promised "first observation time" while the contract was caller-enforced. Future refactors could silently break the invariant.
+- **Resolution**: `upsertNbaBoxStats` INSERT path now binds `now` for both `first_scraped_at` and `updated_at`, ignoring `row.first_scraped_at`. Enforces the invariant at the storage layer.
+
+**5. Single-threaded upsert assumption is documented in code.**
+- **Motivation**: Stats/Math finding. The `SELECT existing` query runs outside the UPDATE transaction; concurrent callers could race on audit-row emission. Backfill is serial (plan §Phase 2 item 4, 2 req/s), so this is currently moot.
+- **Resolution**: Doc-comment on `upsertNbaBoxStats` explicitly states single-threaded assumption and points to the rework required if parallel backfill is ever introduced.
+
+**6. Fixture set extended to one regular-season game per in-scope season.**
+- **Motivation**: DQ-expert finding. Single 2025-26 fixture didn't cover 2022-23, 2023-24, 2024-25 schema-drift risk.
+- **Resolution**: Added `espn-nba-box-{401468016,401584689,401704627}.json` — opening-night regular games from each season. `test-espn-box-schema.ts` iterates over all 4 fixtures. Added OT-aware fallback integration test (synthetic malformed players array on the 1-OT fixture).
+
+### Items flagged to Phase 3 plan-review (NOT resolved in this addendum)
+
+**7. Test-fold exclusion at training time (Pred-expert F1).** Addendum v5/v6 assert "test fold (2025-26) remains UNTOUCHED." This addendum clarifies the operational semantics: **scraping 2025-26 box scores is permitted and expected** (Phase 2 backfill will do so; 2025-26 rows are needed for live inference in Phase 3). **Training on 2025-26 features is prohibited.** Phase 3 feature-export code must filter `season != '2025-26'` at training-tensor construction. A unit test asserting no 2025-26 rows appear in training tensors is a Phase 3 plan-review item.
+
+**8. As-of-snapshot reproducibility semantics (Pred-expert F2).** The "feature caches keyed on `updated_at`" phrasing in §Phase 2 item 3 is too loose for training reproducibility. Phase 3 training should pin a `training_as_of_timestamp` and filter `WHERE updated_at <= training_as_of_timestamp` — not key the cache on per-row `updated_at`. The `nba_box_stats_audit` table is a forensic surface (why did this field change?), NOT the reproducibility mechanism. Phase 3 plan-review item: pin the `as_of` semantics in the plan body before any training code is written.
+
+**9. Coverage-gate "eligible games" denominator (Stats-expert #1).** Ship rules 1–3 say "post-2022 NBA games" without defining whether that includes preseason, cancelled/postponed games, play-in tournament games, or NBA Cup games. This addendum pins the denominator as: **regular-season games + postseason games (playoffs + play-in + NBA Cup knockout rounds) where `game_results.home_score > 0` AND `status = 'final'`**. Preseason excluded (not in `games` table per current scraper). Cancelled/postponed excluded (no `game_results` row). The `box_stats_coverage` view (plan §Phase 2 item 5, not yet written) must implement this definition. Deferred to debt #33 alongside the backfill script.
+
+**10. `box_stats_coverage` view + cross-source audit script are Phase-2-ship-claim blockers, NOT backfill blockers.** Per DQ/Stats: Phase 2 cannot be declared *shipped* against its ship rules until (a) `box_stats_coverage` view exists and (b) `scripts/audit-espn-box-stats.ts` + `docs/espn-bbref-audit.md` exist with passing numbers. Backfill execution doesn't require them; gate evaluation does. Both fold into debt #33.
+
+**11. Cross-source audit target bug-class (Stats-expert #6).** N=50–100 sample size is adequate for catching **field-mapping bugs** (which affect ~100% of games → caught with probability ≈1). It is NOT adequate for catching per-game glitches at low rates (0.5% glitch rate → 22% detection at N=50). The audit's target is explicitly pinned here as **systematic field-mapping errors**. Subtle per-game glitches are out of scope for the audit and are caught (if at all) by the `scrape_warnings` surface during continuous operation.
+
+**12. Backfill cron ordering (Pred-expert F4).** Today, v5/v4-spread don't read `nba_game_box_stats`, so ordering is moot. When Phase 3 lands, nightly cron must run box-stats scrape **after** prediction writes in any given tick, so that predictions log what the model actually saw (not a mid-tick scrape update). Pinned here; enforcement is a Phase 3 cron-config task.
+
+**13. `second_chance_points` / `bench_points` (Domain-expert finding).** Not present in `boxscore.teams[i].statistics[]`; would require extraction from `gameInfo` or `players[]` paths. Deferred: no Phase 3 feature currently needs them. Revisit at Phase 3 plan-review if a feature is proposed.
+
+**14. `minutes_played` retained as MUST-HAVE (Domain-expert finding).** Domain flagged it as possibly vestigial (no Phase 3 feature reads minutes directly). Kept as MUST-HAVE because (a) the OT-aware fallback is cheap, (b) demoting to NICE-TO-HAVE would require coverage-gate rule rewrites, (c) future Phase-3-plus features (pace proxies, garbage-time detection) may need it. If Phase 3's final feature set doesn't consume minutes, revisit at Phase 4.
+
+### Ship-rule status after v7
+
+- **Rule 1 (≥98% aggregate MUST-HAVE coverage)**: still unevaluable until backfill runs + coverage view exists (debt #33).
+- **Rule 2 (≥95% per-season)**: same.
+- **Rule 3 (≥94% per-(team, season))**: same.
+- **Rule 4 (schema integrity)**: now satisfied — migration is tested and idempotent; UPSERT/audit/change-detection verified by integration test (5 scenarios incl. NICE-TO-HAVE semantics under v7 policy).
+- **Rule 5 (no regression + cross-source audit)**: bit-identical baseline ceremonial gate (reframed per Stats-expert: catches unintended table coupling, not input-leakage). Cross-source audit still outstanding (debt #33).
+
+### Council process note (v7)
+
+Implementation review was run on 5 parallel expert panels after the code had already landed on main via PR #40. This is *not* the designed flow (implementation review is supposed to precede merge). The council discipline memory (`feedback_council_discipline.md`) flags this as a CRITICAL process failure. Retrospective: plan was council-CLEAR at round 4, code was written in the same session, and the scaffolding-only nature of the merge obscured the "we're skipping impl review" call. **Correction**: any future multi-phase plan should explicitly pre-declare which merges gate on which council pass, so scaffolding vs. ship-ready code can't be confused.

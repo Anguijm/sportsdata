@@ -130,15 +130,21 @@ async function main(): Promise<void> {
   assertEq(porRow.updated_at, t0, 'POR updated_at unchanged (still t0)');
   console.log();
 
-  console.log('## Scenario 4: NICE-TO-HAVE field change alone does NOT trigger audit or updated_at bump');
+  console.log('## Scenario 4: NICE-TO-HAVE-only change bumps updated_at but writes NO audit row');
+  // Policy set in Phase 2 impl-review (Stats expert recommendation): NICE
+  // mutations invalidate Phase-3 feature caches via updated_at, but audit
+  // table is reserved for MUST-HAVE mutations only (load-bearing for
+  // coverage-gate semantics).
   const t3 = '2026-04-27T12:00:00Z';
-  // Simulate POR's largest_lead being reported differently (NICE-TO-HAVE)
   const awayLargestLead = { ...away, largest_lead: (away.largest_lead ?? 0) + 5 };
   const r4a = upsertNbaBoxStats(awayLargestLead, t3);
-  assertEq(r4a.status, 'unchanged', 'POR: NICE-TO-HAVE-only change → unchanged');
-  assertEq(r4a.mutations, 0, 'POR: no mutations logged');
-  const porRow2 = db.prepare('SELECT updated_at FROM nba_game_box_stats WHERE team_id=?').get('nba:POR') as { updated_at: string };
-  assertEq(porRow2.updated_at, t0, 'POR updated_at STILL unchanged');
+  assertEq(r4a.status, 'updated', 'POR: NICE-TO-HAVE-only change → updated');
+  assertEq(r4a.mutations, 0, 'POR: no MUST-HAVE mutations → mutations=0');
+  const porRow2 = db.prepare('SELECT updated_at, largest_lead FROM nba_game_box_stats WHERE team_id=?').get('nba:POR') as { updated_at: string; largest_lead: number | null };
+  assertEq(porRow2.updated_at, t3, 'POR updated_at BUMPED to t3 (NICE-TO-HAVE change invalidates cache)');
+  assertEq(porRow2.largest_lead, (away.largest_lead ?? 0) + 5, 'POR largest_lead persisted');
+  const auditAfter4 = (db.prepare('SELECT COUNT(*) as c FROM nba_box_stats_audit WHERE team_id=?').get('nba:POR') as { c: number }).c;
+  assertEq(auditAfter4, 0, 'POR audit table STILL empty (NICE-TO-HAVE change does not audit)');
   console.log();
 
   console.log('## Scenario 5: recordScrapeWarnings batch insert');

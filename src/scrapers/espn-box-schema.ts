@@ -19,15 +19,13 @@
  * - `missing_field`: a MUST-HAVE field absent from the response.
  * - `schema_error`: structural mismatch (wrong type, malformed).
  *
- * Phase 2 implementation-review checklist for this file:
- * - [ ] Cross-check MUST-HAVE field list against an actual ESPN
- *   response (e.g. curl the per-game box-score endpoint for one
- *   known game, diff field names).
- * - [ ] Decide NICE-TO-HAVE extraction policy: best-effort-parse
- *   (current plan) vs strict-reject-if-malformed.
- * - [ ] Add test fixtures in `src/scrapers/__tests__/fixtures/`
- *   with real responses, at least one per season to catch schema
- *   drift across seasons.
+ * Phase 2 implementation-review status:
+ * - MUST-HAVE field list cross-checked against real ESPN responses for
+ *   2022-23, 2023-24, 2024-25, 2025-26 fixtures. NICE-TO-HAVE policy:
+ *   best-effort-parse (see `parseOneTeamSide` — unknown/malformed NICE
+ *   fields emit a warning, validation continues).
+ * - Fixtures: `src/scrapers/__tests__/fixtures/espn-nba-box-*.json` —
+ *   one regular-season game per in-scope season + one 1-OT case.
  */
 
 // ---------- Parsed output types (what the scraper emits downstream) ----------
@@ -68,8 +66,8 @@ export interface NbaBoxStatsRow {
   // Derived at scrape time (MUST-HAVE)
   possessions: number;
 
-  // NICE-TO-HAVE (nullable)
-  time_of_possession?: string | null;
+  // NICE-TO-HAVE (nullable). NOTE: time_of_possession removed — NBA boxscores
+  // don't report it (see impl-review, addendum v7).
   points_off_turnovers?: number | null;
   fast_break_points?: number | null;
   points_in_paint?: number | null;
@@ -110,7 +108,7 @@ export const MUST_HAVE_RAW_FIELDS = [
 ] as const;
 
 export const NICE_TO_HAVE_FIELDS = [
-  'time_of_possession', 'points_off_turnovers', 'fast_break_points',
+  'points_off_turnovers', 'fast_break_points',
   'points_in_paint', 'largest_lead', 'technical_fouls', 'flagrant_fouls',
 ] as const;
 
@@ -250,11 +248,45 @@ interface ParsedTeamSide {
   warnings: ScrapeWarning[];
 }
 
+/** Extract period count from ESPN header. Regulation = 4 periods; each OT
+ *  adds a period. Parses `header.competitions[0].status.type.detail`
+ *  (e.g. "Final", "Final/OT", "Final/2OT") — same convention as the
+ *  existing scoreboard normalizer in espn.ts. Returns 4 (regulation) if
+ *  the field is missing/malformed.
+ *
+ *  Exported for direct testability of the fallback path. */
+export function extractPeriodsPlayed(header: unknown): number {
+  if (!isObj(header)) return 4;
+  const comps = header.competitions;
+  if (!isArr(comps) || !isObj(comps[0])) return 4;
+  const status = (comps[0] as Record<string, unknown>).status;
+  if (!isObj(status)) return 4;
+  const type = status.type;
+  if (!isObj(type)) return 4;
+  const detail = typeof type.detail === 'string'
+    ? type.detail
+    : typeof type.description === 'string' ? type.description : '';
+  // "Final/OT" → 1 OT; "Final/2OT" → 2 OT; "Final/3OT" → 3 OT; "Final" → 0.
+  const m = /(\d*)OT\b/i.exec(detail);
+  if (!m) return 4;
+  const otCount = m[1] === '' ? 1 : Number.parseInt(m[1], 10);
+  if (!Number.isFinite(otCount) || otCount < 1) return 4;
+  return 4 + otCount;
+}
+
+/** Regulation minutes per team = 48 min × 5 floor positions = 240.
+ *  Each 5-min OT period adds 25 team-minutes. Exported for testability. */
+export function regulationPlusOtMinutes(periodsPlayed: number): number {
+  const otPeriods = Math.max(0, periodsPlayed - 4);
+  return 240 + 25 * otPeriods;
+}
+
 function parseOneTeamSide(
   boxTeam: unknown,
   playersTeam: unknown,
   scoreStr: string,
   gameId: string,
+  periodsPlayed: number,
 ): { ok: true; side: ParsedTeamSide } | { ok: false; reason: string; warnings: ScrapeWarning[] } {
   const warnings: ScrapeWarning[] = [];
 
@@ -334,10 +366,17 @@ function parseOneTeamSide(
     }
   }
   if (minutesTotal === 0) {
-    warnings.push({ warning_type: 'missing_field', detail: `team ${teamAbbr}: could not derive minutes_played from player totals`, game_id: gameId });
-    // Fall through with 240 as regulation fallback; 265/290 for OT would be better
-    // but is not derivable from the data we have at this point.
-    minutesTotal = 240;
+    // Fallback path: player-summation failed (malformed players array, empty
+    // stats, etc.). Use regulation + OT-period count from header instead of
+    // a bare 240 — a 240 in an OT game would contaminate per-minute features
+    // downstream. Emit a warning so the fallback is detectable post-backfill.
+    const fallback = regulationPlusOtMinutes(periodsPlayed);
+    warnings.push({
+      warning_type: 'missing_field',
+      detail: `team ${teamAbbr}: could not derive minutes_played from player totals; using period-aware fallback ${fallback} (periods=${periodsPlayed})`,
+      game_id: gameId,
+    });
+    minutesTotal = fallback;
   }
 
   return {
@@ -397,6 +436,9 @@ export function validateNbaBoxScore(
     return { ok: false, reason: 'could not extract home/away from competitors', warnings };
   }
 
+  // Extract period count once (header-level), used for minutes fallback.
+  const periodsPlayed = extractPeriodsPlayed(header);
+
   // Parse both teams
   const sides: ParsedTeamSide[] = [];
   for (let i = 0; i < 2; i++) {
@@ -409,7 +451,7 @@ export function validateNbaBoxScore(
     if (!meta) {
       return { ok: false, reason: `team ${abbr} absent from header competitors`, warnings };
     }
-    const parsed = parseOneTeamSide(boxTeam, boxPlayers[i], meta.score, gameId);
+    const parsed = parseOneTeamSide(boxTeam, boxPlayers[i], meta.score, gameId, periodsPlayed);
     if (!parsed.ok) {
       warnings.push(...parsed.warnings);
       return { ok: false, reason: parsed.reason, warnings };
@@ -469,7 +511,6 @@ export function validateNbaBoxScore(
     largest_lead: side.stats.largest_lead ?? null,
     technical_fouls: side.stats.technical_fouls ?? null,
     flagrant_fouls: side.stats.flagrant_fouls ?? null,
-    time_of_possession: null, // not in team boxscore response
   });
 
   return {

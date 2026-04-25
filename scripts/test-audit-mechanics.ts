@@ -65,11 +65,38 @@ const awayRow = {
 upsertNbaBoxStats(homeRow, now);
 upsertNbaBoxStats(awayRow, now);
 
-// Compute expected rates per audit script's formulas
+// Compute expected rates per audit script's formulas. Per Phase 2 addendum v9
+// (decision C′), ortg and pace are computed from bbref's averaged game-level
+// possessions, not from the per-team `possessions` column.
 function expectedEfg(r: typeof homeRow) { return (r.fgm + 0.5 * r.fg3m) / r.fga; }
 function expectedTov(r: typeof homeRow) { return r.tov / (r.fga + 0.44 * r.fta + r.tov); }
-function expectedOrtg(r: typeof homeRow) { return (100 * r.pts) / r.possessions; }
-function expectedPace(r: typeof homeRow) { return (48 * r.possessions) / (r.minutes_played / 5); }
+function bbrefContrib(tm: typeof homeRow, oppDreb: number): number {
+  const orebDenom = tm.oreb + oppDreb;
+  const orebRate = orebDenom > 0 ? tm.oreb / orebDenom : 0;
+  const missed = Math.max(0, tm.fga - tm.fgm);
+  if (tm.fga === 0) return 0.4 * tm.fta + tm.tov;
+  return tm.fga + 0.4 * tm.fta - 1.07 * orebRate * missed + tm.tov;
+}
+function expectedGamePoss(home: typeof homeRow, away: typeof homeRow): number {
+  return 0.5 * (bbrefContrib(home, away.dreb) + bbrefContrib(away, home.dreb));
+}
+function expectedOrtg(r: typeof homeRow, gamePoss: number) { return (100 * r.pts) / gamePoss; }
+function expectedPace(r: typeof homeRow, gamePoss: number) { return (48 * gamePoss) / (r.minutes_played / 5); }
+
+// Hand-checked formula lock per addendum v9 risk #1: with this synthetic
+// input, gamePoss must equal the value derived from bbref's published formula.
+// homeContrib = 100 + 0.4·20 − 1.07·(10/38)·50 + 12 = 100 + 8 − 14.0789... + 12 = 105.9210...
+// awayContrib =  95 + 0.4·18 − 1.07·(11/41)·50 + 14 =  95 + 7.2 − 14.3537... + 14 = 101.8463...
+// gamePoss    = 0.5·(105.9210 + 101.8463) = 103.8836...
+const expectedHandCheckedPoss = 103.8836;
+const computedPoss = expectedGamePoss(homeRow, awayRow);
+if (Math.abs(computedPoss - expectedHandCheckedPoss) > 1e-3) {
+  console.error(`FAIL hand-checked bbrefPossessions: expected ~${expectedHandCheckedPoss}, got ${computedPoss}`);
+  failures++;
+} else {
+  console.log(`PASS hand-checked bbrefPossessions = ${computedPoss.toFixed(4)} (within 1e-3 of ${expectedHandCheckedPoss})`);
+}
+const GAME_POSS = computedPoss;
 
 // Scenario 1: ground-truth matches exactly (raw + rates)
 const truthAllPass = [{
@@ -79,8 +106,8 @@ const truthAllPass = [{
   home_team_id: 'nba:HOME', away_team_id: 'nba:AWAY',
   home_raw_counts: { fgm: 50, fga: 100, fg3m: 10, fg3a: 30, ftm: 15, fta: 20, oreb: 10, dreb: 30, reb: 40, ast: 25, stl: 8, blk: 5, tov: 12, pf: 20, pts: 125 },
   away_raw_counts: { fgm: 45, fga: 95, fg3m: 12, fg3a: 35, ftm: 14, fta: 18, oreb: 11, dreb: 28, reb: 39, ast: 24, stl: 7, blk: 4, tov: 14, pf: 22, pts: 116 },
-  home_published_rates: { efg_pct: expectedEfg(homeRow), tov_pct: expectedTov(homeRow), ortg: expectedOrtg(homeRow), pace: expectedPace(homeRow) },
-  away_published_rates: { efg_pct: expectedEfg(awayRow), tov_pct: expectedTov(awayRow), ortg: expectedOrtg(awayRow), pace: expectedPace(awayRow) },
+  home_published_rates: { efg_pct: expectedEfg(homeRow), tov_pct: expectedTov(homeRow), ortg: expectedOrtg(homeRow, GAME_POSS), pace: expectedPace(homeRow, GAME_POSS) },
+  away_published_rates: { efg_pct: expectedEfg(awayRow), tov_pct: expectedTov(awayRow), ortg: expectedOrtg(awayRow, GAME_POSS), pace: expectedPace(awayRow, GAME_POSS) },
 }];
 const truthFile = join(tmpDir, 'truth.json');
 const reportFile = join(tmpDir, 'report.md');

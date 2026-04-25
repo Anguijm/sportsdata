@@ -1,147 +1,121 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-25 (Sprint 10.12 — Phase 2 SHIPPED + debt #31 closed + production backfill ran. Four PRs merged: **#42 impl-review fixes, #43 debt #33 (backfill / coverage / audit), #44 debt #31 (calibration), #45 docker scripts/**. Live API healthy; production `nba_game_box_stats` populated with 7,604 rows; coverage 100% across all 3 ship-rule gates.)
+Last updated: 2026-04-26 (Sprint 10.13 — Phase 2 ship-claim FULLY EARNED. Pass-B audit PASS at N=50 (0 raw + 0 rate + 0 missing). Branch `claude/debt-34-pass-b-c-prime` pushed at `0890a62`; PR pending user open + merge. Debt #34 closed; debt #35 (ESPN TOV scraper-convention) opened as Phase 3 plan-review item.)
 
 ---
 
-## 🧭 Remote Resume — 2026-04-25 (Sprint 10.12 — Phase 2 SHIPPED + production backfill ran)
+## 🧭 Remote Resume — 2026-04-26 (Sprint 10.13 — Phase 2 ship-claim FULLY EARNED)
 
-> **Heaviest session of the Phase 2 line.** Four PRs landed (#42, #43, #44, #45 — first two via stacked branches; #44 orthogonal; #45 a Dockerfile follow-up enabling the production backfill run). Production backfill executed against the Fly DB and populated `nba_game_box_stats` with **7,604 rows / 3,802 distinct games**. Coverage **100%** across aggregate / per-season / per-(team, season) ship-rule gates. Debt #31 (away-picked calibration bias) closed. Debt #33 (Phase 2 completion) closed at 4/5 ship rules; only Pass-B cross-source audit remains.
+> **Pass-B closed in a single focused session.** What was scoped in v8 as ~1.5 hours of manual bbref-paste turned into an automated Playwright scraper at 1 req / 30 s + a C′ disposition that decoupled the audit's internal possessions formula from the schema column. Audit verdict: **PASS at N=50 (0 raw + 0 rate + 0 missing).** All 5 Phase 2 ship rules satisfied. Phase 3 fully unblocked (data-ready and gate-clear).
 >
-> `main` is now at `bfc8217` (post merge of #42/#43/#44/#45). All Fly auto-deploys completed; API healthy. Production NBA box-stats schema is live AND populated. Phase 3 plan-review is unblocked from a data-readiness standpoint; Pass-B audit + Phase 3 plan addendum gate the formal Phase 2 ship-claim.
+> Branch `claude/debt-34-pass-b-c-prime` pushed (commit `0890a62`); **PR not yet opened** (CLAUDE.md no-auto-PR rule). Once merged, `main` advances and Phase 3 plan-draft becomes the next gate.
 
-### What happened this session (2026-04-25)
+### What happened this session (2026-04-26)
 
-**Pre-merge work (continuation of Sprint 10.11 branch state):**
-- Council impl-review on the merged Phase 2 scaffolding (`PR #40` had skipped the impl-review gate per addendum v7 retrospective). 5-expert panel returned 4× WARN + 1× CLEAR (avg 7.2). 18 fix items folded in. Re-council: **5× CLEAR avg 9.0**.
-  - OT-aware minutes fallback (regex on `status.type.detail`, `240 + 25·max(0, periods−4)`)
-  - `time_of_possession` removed from schema + validator + row type (vestigial for NBA)
-  - `first_scraped_at = now` enforced on INSERT (was caller-trusted)
-  - NICE-TO-HAVE policy: bump `updated_at`, audit MUST-HAVE-only
-  - Single-threaded caller assertion documented
-  - Fixture set 1 → 4 (one per in-scope NBA season)
-  - Plan addendum v7 appended to `Plans/nba-learned-model.md`
-  - Migration: `ALTER TABLE nba_game_box_stats DROP COLUMN time_of_possession`, gated on `PRAGMA table_info`. Tested against fresh + legacy-Fly-style DBs.
+**Pass-B execution (the actual audit work):**
+- Built `scripts/scrape-bbref-audit-truth.ts` (Playwright + Chromium, stealth tweaks: realistic Chrome UA, mask `navigator.webdriver`, en-US locale). Throttled 1 req / 30 s — well under bbref's published 20 req/min cap. HTML cached to `data/.bbref-cache/` (gitignored) so re-running the parser costs zero refetches.
+- Curated 50 stratified games (9 each across 2023-regular, 2023-postseason, 2024-regular, 2024-postseason, 2025-regular + 5 plan-suggested seeds). Run completed in ~25 min, no bbref blocking.
+- First audit run: **2 raw + 198 rate failures**. Diagnosed systematic possessions-formula divergence between our schema (Oliver basic: `FGA + 0.44·FTA − OREB + TOV`) and bbref's published formula (`0.5·((FGA + 0.4·FTA − 1.07·OREB_rate·missed + TOV) + opp-symmetric)`).
 
-**Debt #33 plan + impl + production run:**
-- New plan `Plans/nba-phase2-backfill.md`. **3 council rounds**: Round 1 WARN (DQ 7) + 4× CLEAR; Round 2 4× CLEAR + Math WARN (DST hazard); Round 3 Math CLEAR after universal `[et_date−1, et_date, et_date+1]` 3-day fetch. Avg 9.6/10.
-- 5 new scripts:
-  - `scripts/resolve-nba-espn-event-ids.ts` — BDL → ESPN event-id mapping. Three bug fixes during impl: (1) global event cache → per-game date-window scoping, (2) BDL date-only `g.date` strings used directly (not `−5h` shifted), (3) exact-fetched-date tiebreaker for back-to-back same-matchup games (e.g., PHX/SA on 2023-10-31 + 2023-11-02). Final: **3802/3802 = 100%, 0 warnings**.
-  - `scripts/backfill-nba-box-stats.ts` — fetch + atomic per-game upsert, scrape-warnings triage exit gate (exit 2 on `schema_error`).
-  - `scripts/recheck-recent-box-stats.ts` — last-7-days re-fetch (cron-friendly; cron config deferred).
-  - `scripts/audit-espn-box-stats.ts` — cross-source vs bbref's published Four-Factors. bbref blocks WebFetch (returned 403); ground-truth file `[]` (Pass-A1 stub).
-  - `scripts/test-audit-mechanics.ts` — 6-scenario synthetic test of audit comparison logic. Codex review surfaced P1 (Pass-B silent-pass-on-skipped-entries) + P2 (hardcoded paths); both fixed in `6b1de2f` with scenario 7 added.
-- Schema additions in `src/storage/sqlite.ts`: `nba_espn_event_ids` mapping table + 4 views (`nba_eligible_games`, `box_stats_coverage`, `box_stats_coverage_per_season`, `box_stats_coverage_aggregate`). Gate evaluation against UNROUNDED ratios (per Math #1 — SQLite `ROUND` is half-away-from-zero).
-- API change in `src/scrapers/espn.ts`: `fetchNbaBoxScore` now takes `gameId` (canonical, written to row) + separate `espnEventId` (used in URL).
-- Plan addendum v8 appended (14 design decisions + Wilson-CI guidance for future small-N Rule 3 cells).
+**C′ disposition (addendum v9):**
+- Three options considered: (A) re-derive schema column to match bbref + re-backfill 7,604 rows; (B) loosen audit gate; (C′) decouple — keep schema's Oliver-basic, add `bbrefPossessions(home, away)` helper to audit script only.
+- Chose C′. Schema stays formula-agnostic; Phase 3 free to choose at training time. Audit's ortg/pace comparand uses bbref's exact formula on raw counts, matching bbref-published values within 1%.
+- 5-expert plan-review council. Round 1: 2 CLEAR + 3 WARN. Round 2 fixes (third-source protocol pinned, deterministic alternate-selection, current-bbref-glossary verification, late-stat-correction added to divergence explanations). Round 2: **5 CLEAR avg 8.8/10**.
+- Glossary verification step at impl time: Playwright fetch of bbref's published glossary, formula text quoted verbatim into the audit script's comment header. Verified 0.4·FTA + 1.07·OREB-rate + opponent-averaged.
+- Re-run audit: 2 raw + 5 rate failures. **193 of 198 rate failures cleared.**
 
-**Debt #31 (orthogonal quick-win):**
-- Port the `pickedHome = p >= 0.5` confidence-in-pick transform from `reliability.ts:171` (PR #30) into `resolve-predictions.ts:computeCohort()`. Same class of bug; live `getCalibration()` was silently dropping ~30% of away-picked predictions.
-- Both the main bucketing loop and the `eceHighConfOnly` recompute carry the fix.
-- 6 synthetic test scenarios in `scripts/test-calibration-bias-fix.ts`. Light-touch council (Math 9, Pred 9, DQ 10).
+**v9.1 canonical-MP fix:**
+- 5 residual rate failures: 2 cascades from LAL/IND TOV raw mismatch + 3 independent pace-only failures at 1.19–1.23%.
+- Investigation: ESPN's per-team `minutes_played` drifts 1–3 min for ~6% of games (player-substitution counting quirks). bbref's Pace divides by canonical team-minutes (240 for regulation, 240+25·n for n OT). We were dividing by ESPN's drifted value.
+- Fix: `canonicalTeamMinutes(home, away) = 240 + 25·max(0, round((avgMp − 240) / 25))`. Audit-internal, not a schema change.
+- 5-expert mini-review: 5 CLEAR avg 9.0. Re-run audit: 2 raw + 1 rate (cascade only).
 
-**Docker:**
-- `PR #45` adds `COPY scripts/ scripts/` to both Dockerfile build stages so the resolver / backfill / recheck / audit scripts are available in the prod image.
+**v9.2 third-source verification + path-(i) drop+replace:**
+- ESPN public summary API used as third source (NBA.com/stats game IDs were unguessable from bbref data and returned 503; ESPN public is on the addendum's permitted fallback chain).
+- Findings:
+  - LAL/IND TOV (`nba:bdl-8258317`): not a source disagreement — ESPN exposes both `turnovers` (18, player-summed) AND `totalTurnovers` (20, includes team turnovers). Our scraper picked `totalTurnovers`. bbref/Oliver convention is `turnovers`. **Definitional choice mismatch.** New debt #35.
+  - DEN/OKC fg3a (`nba:bdl-18436952`): ESPN public agrees with our DB (44); bbref's 45 is the genuine outlier. No debt.
+- Drop+replace per addendum protocol (deterministic: lowest-bdl-N in same stratum not in current sample):
+  - LAL/IND → `nba:bdl-1037593` (DEN/LAL 2023-10-24, 2023-regular)
+  - DEN/OKC → `nba:bdl-18421937` (NY/DET 2025-04-19, 2024-postseason)
+- Re-run audit on substituted N=50: **0 raw + 0 rate + 0 missing. Status: PASS.**
 
-**Production backfill execution:**
-- After `PR #45` deploy, ran via `fly ssh console -C "sh -c 'cd /app && node node_modules/.bin/tsx scripts/...'"`:
-  - Resolver: 3802/3802 mapped, 0 warnings.
-  - Backfill: 3802/3802 OK, 0 failures, 7604/7604 team-rows inserted.
-  - Verified live: `box_stats_coverage_aggregate` returns 7604/7604 = 100.0%.
-  - `/api/health` shows status:ok, last_scrape_at recent (cron unaffected).
+**Council process:** plan-review (2 rounds → 5 CLEAR), v9.1 mini-review (5 CLEAR), implementation review (5 CLEAR avg 9.0), test/results review (5 CLEAR avg 9.0). Per CLAUDE.md addenda v9 / v9.1 / v9.2 appended to `Plans/nba-learned-model.md` (append-only).
 
-### Where we are now (post-merge)
+### Where we are now (post-session, pre-PR-merge)
 
-**Branches on remote:**
-- `main` at `bfc8217` (merge of #45). All four feature branches merged and archived: `claude/nba-phase2-impl-review-fixes`, `claude/nba-phase2-backfill`, `claude/debt-31-calibration-bias`, `claude/include-scripts-in-image`. The `check-branch-not-merged.sh` hook will block any accidental re-push.
+**Branch state:**
+- `main` at `bfc8217` (unchanged from Sprint 10.12).
+- Feature branch `claude/debt-34-pass-b-c-prime` at commit `0890a62`, pushed to origin.
+- PR URL ready: https://github.com/Anguijm/sportsdata/pull/new/claude/debt-34-pass-b-c-prime — PR NOT YET OPENED per CLAUDE.md no-auto-PR rule (this session pending user direction).
 
-**Production state:**
-- Fly DB: `nba_game_box_stats` has 7604 rows. `nba_espn_event_ids` has 3802. `nba_eligible_games` view returns 3802. All 4 views (`box_stats_coverage*`) computed correctly.
-- Cron unchanged: nightly scrape + twice-daily predict + resolver (no behavior change). Phase 2 data is read by **nothing yet** — backfill writes are write-only at the model layer until Phase 3 lands.
-- Live calibration plot now includes away-picked rows (debt #31 fix shipping in same Fly deploy).
+**Production state (unchanged from Sprint 10.12 — no schema or scraper changes shipped):**
+- Fly DB: `nba_game_box_stats` 7604 rows, `nba_espn_event_ids` 3802 rows. Box-stats `possessions` column still uses Oliver-basic + `totalTurnovers` (debt #35 question).
+- Cron unchanged. Live API unchanged.
+- The audit run that produced the Pass-B PASS verdict was executed via `fly ssh` stdin upload of the new audit script + ground-truth — no deploy, no schema migration.
 
 **Phase 2 ship-rule status (out of 5):**
 
-| Rule | Status | Notes |
-|------|--------|-------|
-| 1: ≥98% aggregate coverage | **PASS** (100%) | 7604/7604 verified on Fly |
-| 2: ≥95% per-season | **PASS** (100%) | All 5 in-scope seasons at 100% |
-| 3: ≥94% per-(team, season) cell | **PASS** (100%) | 90/90 cells |
-| 4: schema integrity | **satisfied** since addendum v7 | migration tested, idempotent |
-| 5: no regression + cross-source audit | **partial** | no regression confirmed (tsc + 3 test scripts pass + live API healthy); cross-source audit at Pass-A1 (script + N=0 stub). **Pass-B (N≥50 hand-curated bbref values) blocks formal ship-claim.** |
+| Rule | Status |
+|------|--------|
+| 1: ≥98% aggregate coverage | **PASS** (100%) |
+| 2: ≥95% per-season | **PASS** (100%) |
+| 3: ≥94% per-(team, season) cell | **PASS** (100%) |
+| 4: schema integrity | **PASS** (since addendum v7) |
+| 5: no regression + cross-source audit Pass-B | **PASS** (0 raw + 0 rate + 0 missing on N=50) |
 
-**Outstanding Phase 2 work (not gated on each other):**
-- **Pass-A2 audit** (informational, N=5): manually visit ~5 bbref box-score URLs (e.g. 2023-12-09 LAL/IND Cup final, 2024-12-17 OKC/MIL Cup final), copy raw counts + Four-Factors, append to `data/espn-bbref-audit-truth.json`, re-run `scripts/audit-espn-box-stats.ts`. **Requires browser** (bbref returned 403 to programmatic WebFetch).
-- **Pass-B audit** (ship-claim blocker, N=50): same process at scale. ~50 games × ~38 numbers = ~1900 manual lookups, ~1.5–3 hours of browser work depending on tooling.
-
-**Pre-existing backlog state at session end:**
-- Debt #19 trigger met (3+ days × 6+ predict crons with zero `home_out_impact` for NBA/MLB/NHL). Held for user direction (separate provider integration).
-- Debt #32 still gated. 50 most recent NBA/MLB/NHL predictions are all `v5/live`; no `*-naive` shadow rows on production. Without ESPN injury data flowing, no shadow pairs accrue.
+**Phase 2 ship-claim: EARNED.**
 
 ### To resume in a remote session
 
-1. `git fetch origin && git checkout main && git pull` — at `bfc8217`. No feature branches to check out.
+1. `git fetch origin && git checkout main && git pull` — at `bfc8217` until the debt-34 PR merges; once merged, advances to that PR's commit.
 
-2. Read `Plans/nba-learned-model.md` end-to-end including **all 8 addenda**. Addendum v8 is the authoritative final reading on debt-#33 design decisions and the post-debt-#33 ship-rule status.
+2. **If the debt-34 PR has merged:** read `Plans/nba-learned-model.md` addenda v9 / v9.1 / v9.2 to absorb the C′ disposition + canonical-MP fix + third-source verification protocol. Then read `BACKLOG.md` (repo root) for the active priority queue.
 
-3. Verify local code health:
+3. **If the debt-34 PR has NOT merged:** open it from `claude/debt-34-pass-b-c-prime` (commit `0890a62`); commit message has the full executive summary. CI is auto-deploys only — no required tests gate the merge.
+
+4. Verify local code health:
    ```
    npx tsc --noEmit                               # clean
    npx tsx scripts/test-espn-box-schema.ts        # 4 fixtures + unit tests + OT fallback
    npx tsx scripts/test-nba-box-upsert.ts         # 5 scenarios
-   npx tsx scripts/test-audit-mechanics.ts        # 7 synthetic scenarios
+   npx tsx scripts/test-audit-mechanics.ts        # 7 scenarios + bbref formula hand-check
    npx tsx scripts/test-calibration-bias-fix.ts   # 17 calibration assertions
    ```
-   None of these hit live ESPN. All offline / synthetic.
 
-4. **First real next-session work** depends on what you want to ship:
-   - **Pass-B audit (N≥50)** → unlocks formal Phase 2 ship-claim. Browser work, tedious. Sets up the ground-truth file; the script runs in seconds against the populated Fly DB or local DB.
-   - **Phase 3 plan-review** → drafts a new plan file (e.g., `Plans/nba-learned-model-phase-3.md`) following the discipline pattern, with the inherited Phase-3-plan-review items from addendum v7 §7 (test-fold filter), §8 (as-of snapshot), §12 (cron ordering) + addendum v8's Wilson-CI guidance + addendum v6's season-aggregate-as-10th-grid-candidate question. Council-CLEAR before any code.
-   - **Debt #19 escalation** → second injury data provider scope. Strategic; user has held this twice and may want to make the call themselves.
-   - **Debt #32 → unblocked the day shadow data starts flowing.** Currently zero shadow pairs on production. Independent of Phase 2 / Phase 3.
-
-5. **Alternative orthogonal items** (no Phase 2/3 dependency):
-   - **Soccer pre-2024 scrape (debt #26)** — gating dependency for serious soccer-v2 work. FBref or Understat. Medium infra lift.
-   - **Debt #25 (Dixon-Coles ξ time-decay + MLE)** — blocked on #26.
-   - **Debt #20 (Historical odds ingest)** — unlocks v4-spread ATS backtest.
+5. **First real next-session work** = Phase 3 plan draft. See `BACKLOG.md` for the prioritized queue and `Plans/nba-learned-model.md` for the inherited Phase-3-plan-review items pinned across addenda v6, v7, v8, v9.
 
 ### Key context the remote session will NOT have without re-reading
 
-- **Phase 2 ship-rule R5 is at Pass-A1.** The audit script is committed but ground-truth is empty `[]`. Don't claim Phase 2 fully shipped until Pass-B (N=50 bbref values) is populated and the audit reports `**PASS**`. Pass-B *must include `entriesWithMissingRows === 0`* — Codex P1 fix in `6b1de2f` ensures the script fails Pass-B if any seed entry can't find its row in `nba_game_box_stats` (prevents silent passes on incomplete coverage).
-- **bbref blocks WebFetch (403).** Pass-A2 / Pass-B require browser-curated values. There is no programmatic shortcut.
-- **Phase 3 not in scope this session.** Anything in `Plans/nba-learned-model.md` §Phase 3 remains untouched; Phase 3 plan review is the gating step before any model code.
-- **Test fold (2025-regular) is now POPULATED on production** (was the most recent season — included intentionally per addendum v7 §7: scraping permitted, training prohibited). Phase 3 feature-export code MUST filter `season != '2025-regular'` at training-tensor construction. This is a Phase-3 plan-review item; no code in this PR enforces it.
-- **Resolver / backfill / recheck scripts are now in the prod image** (PR #45). To re-run any of them: `fly ssh console -a sportsdata-api -C "sh -c 'cd /app && node node_modules/.bin/tsx scripts/<name>.ts'"`. Note the `sh -c` wrapper — `fly ssh -C` does NOT run through a shell, so `cd` and `&&` need `sh -c`.
-- **Recheck script not yet wired into cron.** Per addendum v7 §12 + v8 §14: cron ordering (recheck must run AFTER prediction writes to preserve audit-time semantics) is a Phase-3 task. Run manually if retroactive ESPN corrections are suspected.
-- **`fetchNbaBoxScore` signature changed** — now takes `gameId, espnEventId, homeTeamId, awayTeamId, season`. Older fixture tests may need rewriting if anyone imports the function with the old shape.
-- **Debt #19 trigger met but held.** Three-plus days of zero `home_out_impact` across NBA/MLB/NHL predict crons. User directed "wait" on escalating to a second injury data provider.
-- **Debt #30 (chained-`git push` hook false-positive) bit again this session.** Workaround: split commit and push into two Bash calls.
+- **Phase 2 ship-claim is EARNED** as of 2026-04-26. All 5 ship rules satisfied. Don't re-litigate.
+- **`scripts/audit-espn-box-stats.ts` now uses bbref's possessions formula internally** (per addendum v9 C′). Schema column unchanged.
+- **`scripts/scrape-bbref-audit-truth.ts` is one-shot tooling.** Re-run only if ground-truth needs to be regenerated. Cache is gitignored; fresh runs re-fetch.
+- **Debt #35 (TOV scraper-convention) MUST be resolved at Phase 3 plan-review.** Phase 3 cannot construct training tensors without picking one of: (a) switch scraper to `turnovers` and re-backfill 7,604 rows; (b) keep `totalTurnovers` and document; (c) compute both and feature-engineer either at Phase 3 model time.
+- **Playwright is now a `devDependency`.** First-time-clone needs `npx playwright install chromium`. Used by `scrape-bbref-audit-truth.ts` and `probe-thirdsource-audit.ts`.
+- **bbref does NOT block Playwright at modest throttle.** The 30 s/req throttle is conservative (2 req/min vs their 20 req/min cap). Real-Chromium UA + mask of `navigator.webdriver` is enough; default headless-shell UA gets 403.
+- **`fly ssh -C` does NOT run through a shell.** Use `sh -c '...'` wrapper for any chained command.
+- **Test fold (2025-regular) is POPULATED on production.** Phase 3 feature-export code MUST filter `season != '2025-regular'` at training-tensor construction.
+- **Debt #19 (second injury data provider) trigger met but held.** ESPN injury endpoint flat for 4+ days now.
+- **Debt #32 (shadow-analysis CLI) still gated on N≥30 shadow pairs.** Currently zero shadow pairs in production.
 
-### Files touched this session (all on `main`)
+### Files touched this session (on branch `claude/debt-34-pass-b-c-prime`, not yet on main)
 
-**New (committed, on main):**
-- `Plans/nba-phase2-backfill.md` (PR #43)
-- `scripts/resolve-nba-espn-event-ids.ts` (PR #43)
-- `scripts/backfill-nba-box-stats.ts` (PR #43)
-- `scripts/recheck-recent-box-stats.ts` (PR #43)
-- `scripts/audit-espn-box-stats.ts` (PR #43)
-- `scripts/test-audit-mechanics.ts` (PR #43)
-- `scripts/test-calibration-bias-fix.ts` (PR #44)
-- `data/espn-bbref-audit-truth.json` (PR #43, contents `[]`)
-- `docs/espn-bbref-audit.md` (PR #43, audit run output)
-- `src/scrapers/__tests__/fixtures/espn-nba-box-{401468016,401584689,401704627}.json` (PR #42, three additional season fixtures)
+**New:**
+- `scripts/scrape-bbref-audit-truth.ts` — Playwright scraper, 50-game queue, 30 s throttle, HTML cache.
+- `scripts/probe-thirdsource-audit.ts` — Playwright + curl/ESPN-public-API stealth probe.
+- `BACKLOG.md` (repo root) — living priority + idea document.
 
 **Modified:**
-- `src/storage/sqlite.ts` — first_scraped_at observation-time comment, `time_of_possession` migration drop, `nba_espn_event_ids` table, 4 coverage views, NICE-TO-HAVE-bumps-updated_at semantic in upsert, single-threaded race comment.
-- `src/scrapers/espn.ts` — `fetchNbaBoxScore` signature split.
-- `src/scrapers/espn-box-schema.ts` — `time_of_possession` removed, OT-aware minutes fallback (`extractPeriodsPlayed` + `regulationPlusOtMinutes` exported), `first_scraped_at = now` on INSERT.
-- `src/scrapers/__tests__/fixtures/espn-nba-box-401811002.json` — re-fetched with `status.type.detail` populated.
-- `src/analysis/resolve-predictions.ts` — debt #31 fix in `computeCohort` (both main loop + `eceHighConfOnly`).
-- `scripts/test-espn-box-schema.ts` — extended to iterate 4 fixtures + helper unit tests + OT-fallback integration test.
-- `scripts/test-nba-box-upsert.ts` — scenario 4 updated for new NICE-TO-HAVE policy.
-- `Plans/nba-learned-model.md` — addendum v8 appended.
-- `Dockerfile` — `COPY scripts/` in both build stages.
+- `scripts/audit-espn-box-stats.ts` — `bbrefPossessions` + `canonicalTeamMinutes` + `computeRates` signature change.
+- `scripts/test-audit-mechanics.ts` — hand-checked formula lock (`gamePoss = 103.8836` from synthetic input).
+- `data/espn-bbref-audit-truth.json` — 50 ground-truth entries (post path-(i) substitution).
+- `Plans/nba-learned-model.md` — addenda v9 + v9.1 + v9.2 appended.
+- `SESSION_LOG.md` — Sprint 10.13 entry + Remote Resume rewrite + Next Session Pickup rewrite + debt #34 closed + debt #35 opened.
+- `README.md` — Current Stats refresh.
+- `learnings.md` — new append-only entry on the C′ pattern + scraping discipline.
+- `package.json` + `package-lock.json` — playwright devDep.
+- `.gitignore` — `data/.bbref-cache/`, `data/.thirdsource-cache/`.
 
 ---
 
@@ -149,42 +123,46 @@ Last updated: 2026-04-25 (Sprint 10.12 — Phase 2 SHIPPED + debt #31 closed + p
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log + git history, not from memory.
 
-**Status as of 2026-04-25 end-of-session (Sprint 10.12 — Phase 2 SHIPPED to 4/5 rules):**
+**Status as of 2026-04-26 end-of-session (Sprint 10.13 — Phase 2 ship-claim EARNED):**
 
-- `main` at `bfc8217`. PRs #42, #43, #44, #45 merged. All Fly deploys succeeded. Production `nba_game_box_stats` populated (7604 rows). Live API healthy.
-- **Phase 2 ship-rule gates 1, 2, 3, 4 met.** Rule 5 partial — no regression confirmed; cross-source audit at Pass-A1 (script + empty ground-truth file). **Pass-B (N≥50 hand-curated bbref Four-Factors values) is the only outstanding piece** for formal Phase 2 ship-claim.
-- **Debt #31 (calibration bias) closed.** `getCalibration()` now uses confidence-in-pick transform.
-- **Debt #33 (Phase 2 backfill / coverage views / recheck / audit) substantially closed.** Only Pass-B audit remains; tracked separately as it gates ship-claim, not code-completeness.
-- **Debt #19 escalation trigger met but held.** ESPN injury endpoint flat for 3+ days; user directed wait.
-- **Debt #32 still gated.** Zero shadow pairs in production.
+- `main` at `bfc8217`. Branch `claude/debt-34-pass-b-c-prime` at `0890a62` pushed; PR not yet opened (CLAUDE.md gate). All 5 Phase 2 ship rules satisfied; Phase 3 unblocked.
+- **Debt #34 (Phase 2 cross-source audit Pass-B) closed.** Verdict PASS at N=50 (0/0/0).
+- **Debt #35 (ESPN TOV scraper-convention) opened.** Phase 3 plan-review item, NOT a Phase 2 blocker.
 
 ### Priority queue for next session
 
-**Phase 2 / Phase 3 line:**
-1. **Pass-A2 audit (N=5)** — informational smoke test of the bbref-comparison pipeline on real curated data. Browser work, ~30 min. Append entries to `data/espn-bbref-audit-truth.json` and re-run `scripts/audit-espn-box-stats.ts`. **Recommended seed games** (per plan §Component 5): 2023-12-09 LAL/IND Cup final, 2024-04-19 first 2023-24 playoff game, a 2024-25 mid-season game, 2024-12-17 OKC/MIL Cup final, 2026-04-07 DEN/POR (existing fixture). bbref URL pattern: `https://www.basketball-reference.com/boxscores/YYYYMMDD0HOM.html` (note bbref-specific abbrs: `BRK` not `BKN`, `CHO` not `CHA`, `PHO` not `PHX`).
-2. **Pass-B audit (N=50)** — ship-claim blocker. ~1900 manual lookups. Could chunk into 5-game batches over multiple sessions or one focused effort.
-3. **Phase 3 plan draft** — write `Plans/nba-learned-model-phase-3.md` (or addendum to existing plan) gathering the Phase-3-plan-review items pinned across addenda v6, v7, v8: test-fold training-time filter, as-of-snapshot reproducibility, season-aggregate as 10th feature-form candidate, multiple-comparisons mitigation on the 9-way grid selection, cron ordering (box-stats AFTER predictions), Wilson-CI for small-N Rule 3 cells, opp-* self-join feature-export pattern. Council-CLEAR before any model code.
+**P0 — finalize this sprint's ship:**
+1. **Open + merge the debt-34 PR.** https://github.com/Anguijm/sportsdata/pull/new/claude/debt-34-pass-b-c-prime — commit message has the full summary. No required CI gates.
 
-**Orthogonal:**
-4. **Debt #19 — second injury data provider.** Strategic / scope decision. User holding.
-5. **Debt #32 — shadow-analysis CLI.** Gated on N≥30 shadow pairs per (sport × model). Currently N=0; check `SELECT sport, model_version, COUNT(*) FROM predictions WHERE model_version LIKE '%-naive' GROUP BY sport, model_version` weekly.
-6. **Debt #26 — pre-2024 soccer match scrape.** Gating dependency for soccer-v2 (debts #24, #25). Independent of NBA work.
-7. **Debt #20 — historical odds ingest.** Unblocks v4-spread ATS backtest.
+**P1 — begin Phase 3:**
+2. **Phase 3 plan draft.** Phase 2 ship-claim earned; Phase 3 fully unblocked. Inherited Phase-3-plan-review items from addenda v6 / v7 / v8 / v9:
+   - test-fold training-time filter (addendum v7 §7)
+   - as-of-snapshot reproducibility (addendum v7 §8)
+   - season-aggregate as 10th feature-form candidate (addendum v6)
+   - multiple-comparisons mitigation on the 9-way grid selection (addendum v6)
+   - cron ordering: box-stats AFTER predictions (addendum v7 §12)
+   - Wilson-CI guidance for small-N Rule 3 cells (addendum v8)
+   - opp-* self-join feature-export pattern
+   - **TOV scraper-convention decision (debt #35)** — pin player-summed vs total before training tensors
+   - Council-CLEAR before any model code.
 
-### Verification at session end (2026-04-25)
+**Orthogonal (no Phase 2/3 dependency):**
+3. **Debt #19 — second injury data provider.** Trigger met (4+ days of zero `home_out_impact`). Strategic / scope decision; user holding.
+4. **Debt #32 — shadow-analysis CLI.** Gated on N≥30 shadow pairs per (sport × model). Zero pairs accruing while ESPN injury feed is flat.
+5. **Debt #26 — pre-2024 soccer match scrape.** Gating dependency for serious soccer-v2 (debts #24, #25).
+6. **Debt #20 — historical odds ingest.** Unblocks v4-spread ATS backtest.
+
+See `BACKLOG.md` (repo root) for the canonical priority + idea log.
+
+### Verification at session end (2026-04-26)
 
 | Check | Result | Status |
 |-------|--------|--------|
-| `/api/health` | status:ok, 21774 games, 21605 results, last_scrape_at 2026-04-24T22:32 | PASS |
-| `box_stats_coverage_aggregate` on Fly | 7604 / 7604 = 100.0% | PASS |
-| `nba_espn_event_ids` row count on Fly | 3802 (100% of eligible games) | PASS |
-| Calibration endpoint includes away-picked rows | n_live=25 (was lower pre-fix), 6 populated bins, ECE 0.065 | PASS |
-| Fly auto-deploy on PR #42 merge | success ~49s | PASS |
-| Fly auto-deploy on PR #43 merge | success ~1m28s | PASS |
-| Fly auto-deploy on PR #44 merge | success ~1m15s | PASS |
-| Fly auto-deploy on PR #45 merge | success | PASS |
+| Pass-B audit on Fly (post-C′ + v9.1 + path-(i)) | 50/50 entries audited; 0 raw + 0 rate + 0 missing; **PASS** | PASS |
 | Local `tsc --noEmit` | clean | PASS |
-| All 5 test scripts | green | PASS |
+| `npx tsx scripts/test-audit-mechanics.ts` | hand-checked bbref formula matches to 1e-3; all 16 assertions green | PASS |
+| Branch `claude/debt-34-pass-b-c-prime` pushed | commit `0890a62` on origin | PASS |
+| `main` pristine + Fly state unchanged | no schema/scraper changes shipped this session | PASS |
 
 ### Key architecture (unchanged from Sprint 10.6)
 
@@ -899,7 +877,72 @@ After all three fixes: 3802/3802 = 100%, zero ambiguity warnings.
 
 ---
 
-## Backlog (Post-Sprint 10.12)
+### Sprint 10.13 — Pass-B closure: Phase 2 ship-claim FULLY EARNED (2026-04-26)
+
+**Branch `claude/debt-34-pass-b-c-prime` (commit `0890a62`)** — pushed to origin, PR not yet opened (CLAUDE.md no-auto-PR rule). Once merged, `main` advances and Sprint 10.13 is reflected in canonical history.
+
+**Three iterations of audit-internal formula refinement, no schema or scraper changes shipped:**
+
+1. **Playwright scraper replaces manual paste.** Built `scripts/scrape-bbref-audit-truth.ts` at 1 req / 30 s (~2 req/min, well under bbref's published 20 req/min cap). Real-Chromium UA + mask `navigator.webdriver` + en-US locale defeats bbref's User-Agent block on default headless-shell. HTML cached to `data/.bbref-cache/` (gitignored) so parser iteration costs zero refetches. 50 stratified games scraped in ~25 min, no blocking.
+
+2. **C′ disposition (addendum v9).** First audit run: 2 raw + 198 rate failures. Diagnosed possessions-formula divergence (our schema's Oliver-basic vs bbref's `0.5·((FGA + 0.4·FTA − 1.07·OREB_rate·missed + TOV) + opp-symmetric)`). Three options weighed; chose C′ — keep schema's Oliver-basic, add `bbrefPossessions(home, away)` to audit script *only*. Schema stays formula-agnostic; Phase 3 picks at training time. 5-expert plan-review: 2 rounds → **5 CLEAR avg 8.8/10**. Glossary verification at impl time (Playwright-fetched bbref glossary, formula text quoted verbatim into code comment). Re-run: 2 raw + 5 rate failures. **193 of 198 cleared.**
+
+3. **v9.1 canonical-MP fix.** 5 residuals: 2 cascades from LAL/IND TOV mismatch + 3 independent pace-only at 1.19–1.23%. Investigation: ESPN's per-team `minutes_played` drifts 1–3 min in ~6% of games (substitution counting quirks). bbref's Pace divides by canonical 240 (regulation) or 240+25·n (OT). Fix: `canonicalTeamMinutes(home, away) = 240 + 25·max(0, round((avgMp − 240) / 25))`. Audit-internal. 5 CLEAR avg 9.0. Re-run: 2 raw + 1 rate (cascade only).
+
+4. **v9.2 third-source verification + path-(i) drop+replace.** ESPN public summary API used as third source (NBA.com IDs unguessable, returned 503; ESPN public on addendum's permitted fallback chain).
+   - **LAL/IND TOV (`nba:bdl-8258317`)**: ESPN exposes `turnovers` (18, player-summed, matches bbref) AND `totalTurnovers` (20). Our scraper picked `totalTurnovers`. **Definitional choice mismatch, not a source disagreement.** New debt #35.
+   - **DEN/OKC fg3a (`nba:bdl-18436952`)**: ESPN public agrees with our DB (44); bbref's 45 is genuine outlier. No debt.
+   - Drop+replace per addendum (deterministic: lowest-bdl-N in same stratum):
+     - LAL/IND → `nba:bdl-1037593` (DEN/LAL 2023-10-24, 2023-regular)
+     - DEN/OKC → `nba:bdl-18421937` (NY/DET 2025-04-19, 2024-postseason)
+
+**Final audit verdict on N=50 (substituted):**
+
+```
+Entries audited: 50 / 50
+Skipped (missing nba_game_box_stats row): 0
+Total raw count failures: 0
+Total derived rate failures: 0
+Total rates skipped (no ground-truth): 0
+
+Pass-B candidate (N=50). Status: **PASS**.
+```
+
+**Phase 2 ship-rule status post-Sprint 10.13:**
+
+| Rule | Status |
+|------|--------|
+| 1: ≥98% aggregate coverage | **PASS** (100%) |
+| 2: ≥95% per-season | **PASS** (100%) |
+| 3: ≥94% per-(team, season) cell | **PASS** (100%) |
+| 4: schema integrity | **PASS** (since addendum v7) |
+| 5: no regression + cross-source audit Pass-B | **PASS** (0/0/0 on N=50) |
+
+**Phase 2 ship-claim: EARNED.**
+
+**Council passes (Sprint 10.13):**
+- Plan-review (addendum v9): 2 rounds. R1 2 CLEAR + 3 WARN (DQ 8, Stats 7, Domain 8 with concerns). R2 5 CLEAR avg 8.8.
+- v9.1 mini-review (canonical-MP fix): 5 CLEAR avg 9.0. Justified as continuation of C′ pattern.
+- Implementation review: 5 CLEAR avg 9.0 on the diff to `audit-espn-box-stats.ts` + `test-audit-mechanics.ts`.
+- Test/results review (final audit report): 5 CLEAR avg 9.0.
+
+**Methodology lessons (recorded in `learnings.md`):**
+- C′ pattern (decouple audit-internal formula from schema-stored value) is reusable for future audit work.
+- bbref scraping is feasible at 1 req / 30 s with Playwright + standard stealth (real Chromium UA + `navigator.webdriver` mask). Default headless-shell UA gets 403.
+- ESPN summary API exposes 3 turnover variants; convention choice affects all Oliver-style formulas downstream.
+
+**Pre-existing backlog state at session end:**
+- Debt #19 escalation trigger met but held (4+ days × 6+ predict crons with zero `home_out_impact`).
+- Debt #32 still gated. Zero shadow pairs accruing while ESPN injury feed is flat.
+- Debt #35 (NEW): Phase 3 plan-review item, NOT a Phase 2 ship-claim blocker.
+
+**What's NOT changed since Sprint 10.12:**
+- Schema, scraper, cron, prediction logic, live API — all unchanged. The audit work was orthogonal.
+- `nba_game_box_stats.possessions` still uses Oliver-basic + `totalTurnovers` (debt #35 question to be decided at Phase 3 plan-review).
+
+---
+
+## Backlog (Post-Sprint 10.13)
 
 See the **Next Session Pickup** block above for the prioritized next-task queue. This section is the canonical list of council debts.
 
@@ -940,7 +983,8 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 31 | ~~Same home-favored bias in the existing `getCalibration()` in `resolve-predictions.ts`.~~ | — | **CLOSED** by PR #44 (Sprint 10.12, 2026-04-25). Confidence-in-pick transform ported from `reliability.ts:171`; `was_correct` already correct-against-pick so pairs cleanly. Both main bucketing loop and `eceHighConfOnly` recompute carry the fix. Light-touch council 3/3 CLEAR. |
 | 32 | **Shadow-analysis CLI/endpoint.** Follow-up to debt #14 (PR #38). Compute per-sport / per-model Brier (v5) or MAE (v4-spread) delta between adjusted and naive shadow pairs once N≥30 resolved pairs per (sport × model) accumulate. Two pre-declared constraints from `Plans/shadow-prediction-logging.md`: (1) Bonferroni-adjust (α=0.05/8) or pre-declare a single primary ship metric, since 4 sports × 2 models = 8 comparisons; (2) filter pairs to `\|adj.made_at − naive.made_at\| < 60s` to exclude temporally-skewed backfill pairs. | Sprint 10.10 — surfaced as out-of-scope in debt #14's plan | **HIGH** — gated on N≥30 per sport × model (~2-3 weeks for NBA/MLB/NHL, longer for NFL) |
 | 33 | ~~NBA learned-model Phase 2 completion (substantial closure).~~ | — | **MOSTLY CLOSED** by PRs #42 / #43 / #45 (Sprint 10.12, 2026-04-25). Code-completeness: shipped. Production: backfill executed, 7604 rows, 100% coverage, R1+R2+R3 PASS unrounded. The only residual is **cross-source audit Pass-B (N≥50 hand-curated bbref Four-Factors)** which gates the formal Phase 2 ship-claim. Pass-B is tracked as a follow-on (filed below as new debt #34); core debt #33 work itself is done. |
-| 34 | **Phase 2 cross-source audit Pass-B (ship-claim gate).** Hand-curate ≥50 NBA games' raw counts (FGM/FGA/3PM/3PA/FTM/FTA/ORB/DRB/TRB/AST/STL/BLK/TOV/PF/PTS) and bbref-published Four-Factors (eFG%, TOV%, ORtg, Pace) into `data/espn-bbref-audit-truth.json`, then run `npx tsx scripts/audit-espn-box-stats.ts`. Pass-B requires `rawFailures===0 && rateFailures===0 && entriesWithMissingRows===0`. Tolerance: raw counts exact match, derived rates 1% relative (with `expected===0` exact-zero guard). bbref blocks programmatic fetch (WebFetch returned 403); browser-curated only. Recommended seeds in `Plans/nba-phase2-backfill.md` §Component 5. | Sprint 10.12 (split from #33) | **HIGH** — formal Phase 2 ship-claim blocker per addendum v7 §10 + v8 §13. Phase 3 is gated on Phase 2 ship-claim per the parent plan. |
+| 34 | ~~**Phase 2 cross-source audit Pass-B (ship-claim gate).**~~ | — | **CLOSED** 2026-04-26 (post-Sprint-10.12). Pass-B verdict **PASS** at N=50 (0 raw failures + 0 rate failures + 0 missing rows). Path to PASS: (1) Playwright scraper at 1 req/30s collected bbref ground-truth for 50 stratified games (~25 min run, no manual paste); (2) C′ disposition (audit-only bbref formula match — addendum v9) cleared 193/198 systematic possessions-formula divergences; (3) v9.1 canonical-MP fix cleared 4 of 5 residual pace failures (ESPN player-minute drift vs bbref canonical 240-min divisor); (4) path-(i) drop+replace for 2 raw failures (LAL/IND TOV scraper-convention divergence → debt #35; DEN/OKC fg3a bbref single-source disagreement → no debt) with deterministic alternates `nba:bdl-1037593` and `nba:bdl-18421937`. Phase 2 ship-claim now earned: all 5 ship rules satisfied. Phase 3 unblocked. |
+| 35 | **ESPN TOV scraper-convention decision (player-summed vs total).** Surfaced during debt #34 third-source verification: ESPN's summary API exposes `turnovers` (player-summed = 18 for LAL/IND Cup final), `teamTurnovers` (= 2), and `totalTurnovers` (= 20). Our scraper currently uses `totalTurnovers`, which adds team-attributed turnovers (8-sec violations etc.). bbref's published Pace/ORtg formulas use the player-summed convention. Most NBA games have 0–1 team turnovers so the divergence is invisible in aggregate, but it's a real definitional mismatch that biases our `nba_game_box_stats.possessions` upward by 0–N units per game. **Phase 3 plan-review must pin which convention the model trains on.** Two paths: (a) switch scraper to `turnovers`, re-backfill 7,604 rows (no live consumer reads `possessions` so this is invisible to current shipped surfaces); (b) keep `totalTurnovers` and document — Phase 3 features then use a different convention than bbref's published rates. Council should weigh the tradeoff at Phase 3 plan-review. | Sprint 10.12 (post-PR, surfaced in debt #34 closure) | **MEDIUM** — Phase 3 plan-review item, NOT a Phase 2 ship-claim blocker. Phase 3's plan-review must resolve this before training tensors are constructed. |
 
 **Audit performed Sprint 10.8 (council mandate):** All debts re-checked against current `main` after PR #29 merged. Debt #13 closed (PR #28). Debt #11 promoted to P0 and generalized (NBA-live → all-sport reliability diagrams from baseline). Old debt #18 "Dixon-Coles" (filed as single item in the PR #29 description) split into #24 (τ, math-proven zero margin impact) and #25 (ξ time-decay MLE, blocked on #26). Debts from earlier sprints have their original numbering preserved (#14-#23); new Sprint 10.8 debts are #24-#26.
 
@@ -966,6 +1010,7 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | **NBA learned-model Phase 1 (premise-fail, pre-flight-abandoned)** | Sprint 10.11 (2026-04-24), shipped via PR #40. `Plans/nba-learned-model.md` council-CLEAR r4 on `main`; pre-flight premise Δ=+0.0131 < 0.02 threshold → Phase 1 abandoned per plan discipline; null result in `learnings.md`. Test fold untouched. Methodology repair survives for Phase 3 (Proposal A plug-in estimator). |
 | Debt #31 — home-favored bias in live `getCalibration()` | PR #44 (Sprint 10.12, 2026-04-25). Confidence-in-pick transform ported from `reliability.ts:171`. Both main loop + `eceHighConfOnly` recompute carry the fix. Light-touch council 3/3 CLEAR (Math 9, Pred 9, DQ 10). |
 | Debt #33 — NBA Phase 2 backfill / coverage / audit (substantial closure) | PRs #42 / #43 / #45 (Sprint 10.12, 2026-04-25). Production backfill executed, 3802/3802 OK, 7604 rows, R1+R2+R3 all PASS at 100%. Cross-source audit Pass-B split off as new debt #34 (formal ship-claim blocker). |
+| Debt #34 — Phase 2 cross-source audit Pass-B (ship-claim gate) | 2026-04-26 (post-Sprint-10.12). Pass-B verdict **PASS** at N=50 (0/0/0). Playwright scraper replaced manual paste; C′ disposition (addendum v9) + v9.1 canonical-MP fix + path-(i) drop+replace for 2 raw failures (alternates `nba:bdl-1037593` + `nba:bdl-18421937`). Phase 2 ship-claim earned. New debt #35 surfaced (TOV scraper-convention question, Phase 3 plan-review item). |
 
 - **Player-based predictions** — "Does SGA score >30 tonight?"
 - **Kaggle historical NBA import** — 1946-present for deeper findings

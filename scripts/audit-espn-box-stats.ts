@@ -88,14 +88,62 @@ function compareRate(field: RateField, team: 'home' | 'away', expected: number |
   };
 }
 
-function computeRates(row: BoxStatsRow): Record<RateField, number> {
+// bbref glossary verified 2026-04-26 per
+// https://www.basketball-reference.com/about/glossary.html
+//
+//   Pace = 48 * ((Tm Poss + Opp Poss) / (2 * (Tm MP / 5)))
+//   Poss = 0.5 * ((Tm FGA + 0.4 * Tm FTA
+//                 - 1.07 * (Tm ORB / (Tm ORB + Opp DRB)) * (Tm FGA - Tm FG)
+//                 + Tm TOV)
+//                + (Opp FGA + 0.4 * Opp FTA
+//                 - 1.07 * (Opp ORB / (Opp ORB + Tm DRB)) * (Opp FGA - Opp FGM)
+//                 + Opp TOV))
+//
+// We pin this formula in the audit (not in our schema's possessions column) so
+// the audit's ortg/pace comparison matches bbref's published rates without
+// coupling our schema to bbref's idiosyncratic estimator. Per Phase 2 plan
+// addendum v9 (decision C′).
+function bbrefTeamPossContribution(tm: BoxStatsRow, oppDreb: number): number {
+  // Edge-case guards per addendum: zero-OREB+DREB → drop the rebound term;
+  // zero-FGA → fall back to FT and TOV terms only.
+  const orebDenom = tm.oreb + oppDreb;
+  const orebRate = orebDenom > 0 ? tm.oreb / orebDenom : 0;
+  const missedShots = Math.max(0, tm.fga - tm.fgm);
+  if (tm.fga === 0) return 0.4 * tm.fta + tm.tov;
+  return tm.fga + 0.4 * tm.fta - 1.07 * orebRate * missedShots + tm.tov;
+}
+
+function bbrefPossessions(home: BoxStatsRow, away: BoxStatsRow): number {
+  const homeContrib = bbrefTeamPossContribution(home, away.dreb);
+  const awayContrib = bbrefTeamPossContribution(away, home.dreb);
+  return 0.5 * (homeContrib + awayContrib);
+}
+
+// bbref's Pace divisor is canonical team-minutes (5 × game-length: 240 for
+// regulation, 240+25·n for n OT periods). ESPN's per-team minutes_played sums
+// player minutes from boxscore.statistics and occasionally drifts 1-3 minutes
+// for substitution/ejection edge cases. Round avg(home_mp, away_mp) to the
+// nearest valid game length so pace matches bbref's convention. Per Phase 2
+// addendum v9.1.
+function canonicalTeamMinutes(home: BoxStatsRow, away: BoxStatsRow): number {
+  const avgMp = (home.minutes_played + away.minutes_played) / 2;
+  const otCount = Math.max(0, Math.round((avgMp - 240) / 25));
+  const canonical = 240 + 25 * otCount;
+  if (canonical < 240 || canonical > 340) return avgMp;
+  return canonical;
+}
+
+function computeRates(row: BoxStatsRow, gamePoss: number, canonicalMp: number): Record<RateField, number> {
+  // eFG% and TOV% use formulas our code shares with bbref; computed from raw
+  // counts only, no possessions dependency.
   const efg = row.fga > 0 ? (row.fgm + 0.5 * row.fg3m) / row.fga : 0;
   const denomTov = row.fga + 0.44 * row.fta + row.tov;
   const tovPct = denomTov > 0 ? row.tov / denomTov : 0;
-  const ortg = row.possessions > 0 ? (100 * row.pts) / row.possessions : 0;
-  // Pace = 48 minutes × team-possessions per minute. team-minutes_played / 5 = minutes-on-floor.
-  const minOnFloor = row.minutes_played / 5;
-  const pace = minOnFloor > 0 ? (48 * row.possessions) / minOnFloor : 0;
+  // ORtg + Pace use bbref's averaged game-level possessions and canonical
+  // team-minutes. This matches what bbref publishes for both teams in a game.
+  const ortg = gamePoss > 0 ? (100 * row.pts) / gamePoss : 0;
+  const minOnFloor = canonicalMp / 5;
+  const pace = minOnFloor > 0 ? (48 * gamePoss) / minOnFloor : 0;
   return { efg_pct: efg, tov_pct: tovPct, ortg, pace };
 }
 
@@ -118,6 +166,10 @@ function pickSide(rows: { home: BoxStatsRow; away: BoxStatsRow }, teamId: string
 
 function audit(entry: GroundTruthEntry, rows: { home: BoxStatsRow; away: BoxStatsRow }): { diffs: FieldDiff[]; rawFailures: number; rateFailures: number; rateSkipped: number } {
   const diffs: FieldDiff[] = [];
+  // Game-level possessions + canonical team-minutes per bbref convention —
+  // one value shared by both teams.
+  const gamePoss = bbrefPossessions(rows.home, rows.away);
+  const canonicalMp = canonicalTeamMinutes(rows.home, rows.away);
   for (const sideName of ['home', 'away'] as const) {
     const teamId = sideName === 'home' ? entry.home_team_id : entry.away_team_id;
     const expectedRaw = sideName === 'home' ? entry.home_raw_counts : entry.away_raw_counts;
@@ -132,7 +184,7 @@ function audit(entry: GroundTruthEntry, rows: { home: BoxStatsRow; away: BoxStat
       const act = actualRow[f as keyof BoxStatsRow] as number;
       diffs.push(compareRaw(f, sideName, exp, act));
     }
-    const actualRates = computeRates(actualRow);
+    const actualRates = computeRates(actualRow, gamePoss, canonicalMp);
     for (const f of RATE_FIELDS) {
       const exp = expectedRates?.[f];
       diffs.push(compareRate(f, sideName, exp, actualRates[f]));

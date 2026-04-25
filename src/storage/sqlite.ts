@@ -260,8 +260,12 @@ function initTables(db: Database.Database): void {
       game_id TEXT NOT NULL,
       team_id TEXT NOT NULL,
       season TEXT NOT NULL,
-      first_scraped_at TEXT NOT NULL,  -- immutable scrape-time stamp
-      updated_at TEXT NOT NULL,        -- bumped on any MUST-HAVE change (change-detection guard)
+      -- Both timestamps are *observation-time* (when we first saw / last
+      -- saw this row), NOT game-time. Do NOT use these as proxies for
+      -- the game date (use games.date instead). Phase-3 reproducibility
+      -- filters on updated_at, not first_scraped_at — see addendum v7 §8.
+      first_scraped_at TEXT NOT NULL,  -- immutable scrape-observation timestamp
+      updated_at TEXT NOT NULL,        -- bumped on any MUST-HAVE or NICE-TO-HAVE change
 
       -- Shooting (MUST-HAVE)
       fga INTEGER NOT NULL,            -- field goal attempts
@@ -338,6 +342,88 @@ function initTables(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_scrape_warnings_source ON scrape_warnings(source, scraped_at);
+
+    -- ============================================================
+    -- Debt #33: BDL→ESPN event-id mapping.
+    -- NBA games in 'games' use BDL IDs (nba:bdl-N) for historical data.
+    -- ESPN's per-game box-score endpoint requires the pure ESPN event ID
+    -- (e.g. 401811002). Resolver script populates this table by date+abbr
+    -- matching against ESPN's scoreboard endpoint.
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS nba_espn_event_ids (
+      game_id TEXT PRIMARY KEY,           -- canonical: nba:bdl-N or nba:4018N
+      espn_event_id TEXT NOT NULL,        -- ESPN event id, no prefix (e.g. "401811002")
+      resolved_at TEXT NOT NULL,
+      match_method TEXT NOT NULL          -- 'date+abbrs' | 'native' | 'manual'
+    );
+    CREATE INDEX IF NOT EXISTS idx_nba_espn_event_ids_method ON nba_espn_event_ids(match_method);
+
+    -- ============================================================
+    -- Debt #33: views for Phase-2 ship-rule evaluation.
+    -- Eligibility: 'final' status, hardcoded post-2022 NBA seasons
+    -- (see Plans/nba-phase2-backfill.md §Component 2).
+    -- Coverage gates evaluated against UNROUNDED ratios.
+    -- ============================================================
+    CREATE VIEW IF NOT EXISTS nba_eligible_games AS
+    SELECT
+      g.id            AS game_id,
+      g.season,
+      g.home_team_id,
+      g.away_team_id,
+      g.date
+    FROM games g
+    WHERE g.sport = 'nba'
+      AND g.status = 'final'
+      AND g.season IN ('2023-regular', '2023-postseason',
+                       '2024-regular', '2024-postseason',
+                       '2025-regular', '2025-postseason');
+
+    -- Per-(team, season) cell coverage (Rule 3 source).
+    CREATE VIEW IF NOT EXISTS box_stats_coverage AS
+    WITH games_per_cell AS (
+      SELECT season, home_team_id AS team_id FROM nba_eligible_games
+      UNION ALL
+      SELECT season, away_team_id AS team_id FROM nba_eligible_games
+    ),
+    grouped AS (
+      SELECT season, team_id, COUNT(*) AS eligible_games FROM games_per_cell GROUP BY season, team_id
+    ),
+    covered AS (
+      SELECT eg.season, bs.team_id, COUNT(*) AS covered_games
+      FROM nba_eligible_games eg
+      JOIN nba_game_box_stats bs ON bs.game_id = eg.game_id
+      WHERE bs.team_id = eg.home_team_id OR bs.team_id = eg.away_team_id
+      GROUP BY eg.season, bs.team_id
+    )
+    SELECT
+      g.season,
+      g.team_id,
+      g.eligible_games,
+      COALESCE(c.covered_games, 0)                            AS games_with_full_must_have,
+      g.eligible_games - COALESCE(c.covered_games, 0)         AS games_missing_must_have,
+      ROUND(100.0 * COALESCE(c.covered_games, 0) / g.eligible_games, 2) AS coverage_pct
+    FROM grouped g
+    LEFT JOIN covered c USING (season, team_id);
+
+    -- Per-season aggregation (Rule 2 source). Note: each game contributes
+    -- 2 row-units (home + away cells), symmetric in numerator and denominator.
+    -- This is the "team-game coverage rate" — the stricter measure.
+    CREATE VIEW IF NOT EXISTS box_stats_coverage_per_season AS
+    SELECT
+      season,
+      SUM(eligible_games)               AS eligible_games,
+      SUM(games_with_full_must_have)    AS covered,
+      ROUND(100.0 * SUM(games_with_full_must_have) / SUM(eligible_games), 2) AS coverage_pct
+    FROM box_stats_coverage
+    GROUP BY season;
+
+    -- Aggregate (Rule 1 source).
+    CREATE VIEW IF NOT EXISTS box_stats_coverage_aggregate AS
+    SELECT
+      SUM(eligible_games)               AS eligible_games,
+      SUM(games_with_full_must_have)    AS covered,
+      ROUND(100.0 * SUM(games_with_full_must_have) / SUM(eligible_games), 2) AS coverage_pct
+    FROM box_stats_coverage;
   `);
 }
 

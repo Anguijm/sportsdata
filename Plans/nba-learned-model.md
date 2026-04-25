@@ -719,3 +719,73 @@ The v5 addendum claimed "No re-council required." Council happened anyway (4-exp
 ### Council process note (v7)
 
 Implementation review was run on 5 parallel expert panels after the code had already landed on main via PR #40. This is *not* the designed flow (implementation review is supposed to precede merge). The council discipline memory (`feedback_council_discipline.md`) flags this as a CRITICAL process failure. Retrospective: plan was council-CLEAR at round 4, code was written in the same session, and the scaffolding-only nature of the merge obscured the "we're skipping impl review" call. **Correction**: any future multi-phase plan should explicitly pre-declare which merges gate on which council pass, so scaffolding vs. ship-ready code can't be confused.
+
+---
+
+## Phase 2 addendum v8 — 2026-04-25 (debt #33: backfill / coverage / audit)
+
+**Trigger.** Implementation of debt #33 (Phase 2 backfill, coverage views, recheck script, cross-source audit). Plan-review ran on `Plans/nba-phase2-backfill.md` over 3 council rounds, all 5 experts CLEAR (DQ 9, Stats 10, Pred 10, Domain 10, Math 9). Implementation followed the council-CLEAR plan.
+
+### Decisions locked in this addendum
+
+**1. BDL→ESPN event-id resolution layer.** Discovered during planning: NBA games in `games` use BDL IDs (`nba:bdl-N`), not ESPN. `fetchNbaBoxScore()` requires ESPN event IDs. New `nba_espn_event_ids` mapping table + `scripts/resolve-nba-espn-event-ids.ts` resolver script. Match by `(et_date, home_abbr, away_abbr)` against ESPN scoreboard, fail-closed on 0 or ≥2 matches.
+
+**2. `fetchNbaBoxScore` signature change.** Took `gameId` and stripped `nba:` to derive ESPN event ID (worked for ESPN-native IDs only). New signature splits the canonical id (written to `nba_game_box_stats.game_id`) from the ESPN event id (used in URL):
+```ts
+fetchNbaBoxScore(gameId, espnEventId, homeTeamId, awayTeamId, season)
+```
+Existing test scripts unaffected (no callers prior to this PR).
+
+**3. `season` field convention is `<start-year>-{regular,postseason}`.** Probe-verified at backfill plan-review: `2023-regular` = 2023-24 season (started Oct 23). Backfill stores `season = g.season` (e.g., `'2024-regular'`) for join consistency. Existing fixture tests still use the human label `'2025-26'` — independent test path; doesn't affect production data.
+
+**4. Coverage views.** Three SQL views in `src/storage/sqlite.ts`:
+- `nba_eligible_games`: `g.sport='nba' AND g.status='final' AND g.season IN (...)`. Per addendum v7 §9 + DQ #1 round-2 (drop `home_score>0` filter; probe shows 0 such rows; trust `status='final'` alone).
+- `box_stats_coverage`: per-(team, season) cell coverage (Rule 3 source).
+- `box_stats_coverage_per_season`: per-season aggregate (Rule 2 source).
+- `box_stats_coverage_aggregate`: full aggregate (Rule 1 source).
+
+**5. Coverage gate evaluation against UNROUNDED ratios.** Per Math #1 round-2: SQLite `ROUND` is half-away-from-zero; `97.995` rounds to `98.00` and would falsely pass Rule 1. The `coverage_pct` column on the views is for human display only. Gate logic uses `(1.0 * SUM(...) / SUM(...)) >= 0.98` etc.
+
+**6. Coverage interpretation: "team-game coverage rate."** Per Math #3 + Stats F4: each game contributes 2 row-units (home + away cells), symmetric in numerator and denominator. This is the stricter measure — a partial game (one side missing) shows as 50% per-(team, season) which loudly fails Rule 3. **Per-cell N≈41–82** has Wilson 95% CI ≈ ±7pp at 94% gate; informational, not a ship-rule change.
+
+**6a. Rule 3 small-N treatment** (per impl-review Stats NOTE): the per-(team, season) gate is a point-estimate threshold. The current backfill landed at 100%/100%/100% (zero CI ambiguity), so this guidance is forward-looking only. **If a future backfill or recheck run produces a per-cell coverage in the 90–94% range with N<20 (e.g., short postseason cells)**, compute the Wilson 95% lower bound on that cell before declaring Rule 3 violated. A point estimate of 92% with N=8 has Wilson lower ≈ 67% — consistent with a true population rate of 99% under bad luck. Don't withdraw a ship-claim on a small-N cell without the lower-bound check.
+
+**7. ESPN scoreboard date convention is Eastern Time.** Per Domain F2 + DQ #2 (round-1 BLOCK): `?dates=YYYYMMDD` keys events by ET tipoff calendar day, not UTC. Probe-verified 2026-04-25: a 02:00Z game appears under `?dates=` of the prior UTC day. Resolver computes `et_date = strftime('%Y%m%d', g.date, '-5 hours')`. **DST-robust by construction** (per Math #1 round-2): fetches `[et_date−1, et_date, et_date+1]` for every date in the batch, dedupes by `event.id`, with URL-caching to avoid redundant requests. The `-5h` offset is EST-only but the 3-day window absorbs any 1-hour DST drift; the only window where `-5h` would misfile is 00:00–01:00 ET, which contains no NBA scheduled tipoffs.
+
+**8. NICE-TO-HAVE change-detection: `updated_at` bumps on any mutation, audit rows MUST-HAVE-only.** Locked in addendum v7; restated here because the recheck script depends on this contract.
+
+**9. `first_scraped_at` is observation-time, not game-time.** Per Pred #3 round-1 nit: schema comment now clarifies. Phase 3 reproducibility filters on `updated_at` (per addendum v7 §8), NOT `first_scraped_at`. Audit table is forensic, not the reproducibility mechanism.
+
+**10. Backfill scrape-warnings triage exit gate.** Per DQ #7: backfill prints aggregate of warnings by `(source, warning_type)` at end of run, exits code 2 if any `schema_error` warnings emitted. Forces human review before declaring backfill complete.
+
+**11. Per-game upsert atomicity.** Per DQ #9: backfill wraps both team upserts in a single transaction. Mid-game crash leaves both sides absent (next-run picks up cleanly) instead of half-completed.
+
+**12. Audit comparand against bbref-published rates, not self-derivation.** Per Pred #1: ground-truth schema includes `home_published_rates` and `away_published_rates` (eFG%, TOV%, ORtg, Pace) sourced from bbref's "Four Factors" section. Catches Oliver-formula bugs in our derivation that would slip through if we only compared raw counts.
+
+**13. Audit Pass-A1 / A2 / B split.** bbref blocks programmatic fetch (verified: WebFetch returned 403). Manual browser curation required.
+- **Pass-A1 (this PR):** script mechanics + 6-scenario synthetic test (`scripts/test-audit-mechanics.ts`). Ground-truth file `data/espn-bbref-audit-truth.json` is empty `[]`.
+- **Pass-A2 (follow-up):** 5 hand-curated seed entries from bbref browser visits.
+- **Pass-B (ship-claim blocker per addendum v7 §10):** N≥50 entries.
+
+**14. Cron wiring for recheck deferred.** Per addendum v7 §12: script committed (`scripts/recheck-recent-box-stats.ts`), cron config is a Phase 3 task to pin nightly ordering after prediction writes.
+
+### Ship-rule status post-debt-#33
+
+After full backfill execution + audit Pass-A1:
+- **Rule 1** (≥98% aggregate MUST-HAVE coverage): **TBD** — backfill must run + coverage view must report.
+- **Rule 2** (≥95% per-season): **TBD** — same.
+- **Rule 3** (≥94% per-(team, season) cell): **TBD** — same.
+- **Rule 4** (schema integrity): satisfied since addendum v7. New views are additive; tested.
+- **Rule 5** (no regression + cross-source audit):
+  - **No regression**: tsc clean; existing test scripts (`test-espn-box-schema`, `test-nba-box-upsert`) still pass; new `test-audit-mechanics` passes.
+  - **Cross-source audit Pass-A1**: script committed, ground-truth empty. **Pass-A2 (informational, N=5) + Pass-B (N≥50, ship-claim) are follow-ups.**
+
+**Phase 2 ship-claim status: not yet earned.** Requires Pass-B audit to complete cleanly *and* all 3 coverage gates to pass post-backfill. Post-debt-#33 expected status: 4/5 rules confirmed; Rule 5 awaiting Pass-B.
+
+### Council process for debt #33
+
+- Plan-review: 3 council rounds. All 5 experts CLEAR (avg 9.6/10).
+- Implementation review: pending after this commit.
+- Test review: pending after backfill execution.
+
+Per the v7 retrospective: this debt's plan was councilled BEFORE any code was written, addressing the v7 process gap directly.

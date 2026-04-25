@@ -182,6 +182,13 @@ export interface BoxScoreFetchResult {
  * into a NbaBoxStatsGame. Rate-limit-aware, retry-on-network-error,
  * fail-closed on schema drift.
  *
+ * `gameId` is the canonical id stored on `nba_game_box_stats.game_id`
+ * (e.g. `nba:bdl-N` for BDL-sourced historical games or `nba:401811002`
+ * for native ESPN-sourced games). `espnEventId` is the pure ESPN event
+ * id used for the URL. The split lets us preserve the canonical-id ↔
+ * games table join while still calling ESPN's per-game endpoint.
+ * (See Plans/nba-phase2-backfill.md §Component 3.)
+ *
  * The caller provides team IDs in our `nba:ABBR` namespace; the validator
  * verifies ESPN's abbreviations match.
  *
@@ -189,14 +196,13 @@ export interface BoxScoreFetchResult {
  * recordScrapeWarnings in the DB layer), not silently swallowed.
  */
 export async function fetchNbaBoxScore(
-  gameId: string,          // namespaced: "nba:401811002"
+  gameId: string,          // canonical: "nba:bdl-N" or "nba:401811002" — written to row.game_id
+  espnEventId: string,     // pure ESPN event id, no prefix: "401811002"
   homeTeamId: string,      // namespaced: "nba:DEN"
   awayTeamId: string,      // namespaced: "nba:POR"
-  season: string,          // e.g. "2025-26"
+  season: string,          // e.g. "2025-regular" (DB-canonical) or "2025-26" (legacy fixture)
 ): Promise<BoxScoreFetchResult> {
-  // Strip "nba:" prefix for ESPN event ID
-  const eventId = gameId.replace(/^nba:/, '');
-  const url = `${ESPN_BASE}/${SPORT_PATHS.nba}/summary?event=${eventId}`;
+  const url = `${ESPN_BASE}/${SPORT_PATHS.nba}/summary?event=${espnEventId}`;
   const scrapedAt = new Date().toISOString();
 
   let lastError = 'unknown';

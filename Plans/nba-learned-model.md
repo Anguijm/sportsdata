@@ -1528,7 +1528,7 @@ Compact table of every item pinned by prior addenda. **Disposition column**: `IN
 
 Mitigation: before declaring the winner moves to test-fold evaluation, the inner-CV per-game-pooled Brier of the winner must beat the median candidate's per-game-pooled Brier by ≥`(σ_inner · √(2·ln(K))/√n)` where:
 - `K = 10` candidates
-- `σ_inner` = pooled per-game Brier std across all inner-CV held-out games (pinned per Stats R1 fix-pack #2: computed at training-script start as `bootstrap.std(per_game_brier, B=2000)` across the union of held-out slices; committed to the run config at `ml/nba/configs/<run-id>.json` before any candidate is fit. Plug-in alternative: if bootstrap is too expensive, use empirical per-game-Brier std on v5 baseline residuals as a conservative upper bound.)
+- `σ_inner` = pooled per-game Brier std across all inner-CV held-out games (pinned per Stats R1 fix-pack #2: computed at training-script start as `bootstrap.std(per_game_brier, B=2000)` across the union of held-out slices; committed to the run config at `ml/nba/configs/<run-id>.json` before any candidate is fit. **Provenance pin (per Math R2 NF1):** the run config records both (i) which estimator path was used (`bootstrap` vs `v5_residual_upper_bound`) and (ii) the realized numeric value, so post-hoc audit can verify the threshold wasn't tightened ex-post. Plug-in alternative: if bootstrap is too expensive, use empirical per-game-Brier std on v5 baseline residuals as a conservative upper bound.)
 - `n` = pooled held-out games across the 4 forward-chaining inner-fold holdouts (folds 2..5; per plan body §Training protocol L243 forward-chaining starts from fold 2). Approximate sizes: 1160+1740+2320+2900 = 8120 games. **Pin** (per Math R1 fix-pack #2): `n = 8120` (or whatever the actual pooled-held-out count is at training time; the run config logs both the pinned value and the realized value). Math: σ_inner ≈ 0.095 → threshold = 0.095 · √(4.6)/√8120 ≈ 0.095 · 2.146 / 90.1 ≈ **0.00226 Brier**.
 
 **Cross-reference to Rule 1 floor (per Math R1 fix-pack #5):** the inner-CV gate (~0.0023 Brier) is **non-binding** relative to the test-fold Rule 1 gate (≥0.010 absolute Brier beat over incumbent). The inner-CV gate's real role is **selection-bias mitigation on the winning candidate's point estimate**, NOT Type-I error control. A candidate that fails the inner-CV gate is rejected as "winner's curse not deflated"; the season-aggregate fallback (below) ships to test-fold for the actual ship-rule evaluation.
@@ -1592,7 +1592,7 @@ The plan body §Features uses `possessions_per_team` (computed at scrape time vi
 
 Per debt #35 post-mortem learnings + R1 fix-pack additions, the following pre-flight tooling lands as a **gating commit** before any Phase 3 model code is written. Council impl-review for each artifact below before the next one starts (BUT per Pred R1 fix-pack #1: scripts #1+#2 may share a single council impl-review since #2 is mechanical execution of fixture capture).
 
-**1. `scripts/validate-bbref-convention.ts` (pm.4 — expanded per Domain R1 fix-pack #3).** Stratified-bbref-validation regression harness. **≥20 games × 10 strata** (regular / postseason / Cup-pool / Cup-knockout / Play-In / marquee national-broadcast / rescheduled-2022-23 / OT / **NBA Finals** / **Conference Finals**). NBA Finals + Conference Finals added per Domain R1: ABC/ESPN exclusive single-game-per-night production may use a separate stat-consolidation pipeline. For each game: pull bbref Tm TOV via Playwright (cached), compare to `(ESPN.turnovers, ESPN.totalTurnovers)`, report convention match per stratum. **Sentinel-row re-probe (per DQ R1 fix-pack #4):** explicitly include the 5 ESPN-sentinel game_ids (CHI/LAC nba:bdl-18447432, GS nba:bdl-15907929, BOS nba:bdl-18446826, DEN nba:bdl-15907808, GS nba:bdl-15907929) as a separate `--sentinel-game-ids` flag; output a "sentinel resolved (ESPN now reports valid teamTurnovers)" / "sentinel still active" flag per row. Output: `data/bbref-convention-report.json` and markdown summary at `docs/bbref-convention-report.md`. **Run before any Phase 3 model-affecting backfill OR feature change.**
+**1. `scripts/validate-bbref-convention.ts` (pm.4 — expanded per Domain R1 fix-pack #3).** Stratified-bbref-validation regression harness. **≥20 games × 10 strata** (regular / postseason / Cup-pool / Cup-knockout / Play-In / marquee national-broadcast / rescheduled-2022-23 / OT / **NBA Finals** / **Conference Finals**). NBA Finals + Conference Finals added per Domain R1: ABC/ESPN exclusive single-game-per-night production may use a separate stat-consolidation pipeline. For each game: pull bbref Tm TOV via Playwright (cached), compare to `(ESPN.turnovers, ESPN.totalTurnovers)`, report convention match per stratum. **Sentinel-row re-probe (per DQ R1 fix-pack #4):** explicitly include the **4 unique sentinel game_ids** (which span 5 sentinel rows because nba:bdl-18447432 affects both CHI and LAC) as a separate `--sentinel-game-ids` flag: `nba:bdl-18447432` (CHI + LAC), `nba:bdl-15907929` (GS), `nba:bdl-18446826` (BOS), `nba:bdl-15907808` (DEN). Output per (game_id, team_id) row: "sentinel resolved (ESPN now reports valid teamTurnovers)" / "sentinel still active" flag. Output: `data/bbref-convention-report.json` and markdown summary at `docs/bbref-convention-report.md`. **Run before any Phase 3 model-affecting backfill OR feature change.**
 
 **2. `scripts/v5-prediction-replay.ts` (Pred carry-forward from v10 impl-review).** v5 prediction-replay regression harness. Reads a fixed test-fixture set of v5-input rows (committed at `data/v5-replay-fixtures.json`), invokes the v5 prediction code path, asserts byte-for-byte output match against committed `data/v5-replay-expected.json`. **Byte-for-byte tolerance is intentional (per Pred R1 fix-pack #5):** v5 is a deterministic sigmoid in TS; numerical-tolerance allowances are the slippery slope to "well, the model changed but it's within tolerance." Any non-zero diff triggers root-cause investigation, not threshold-relaxation. Pre-Phase-3 baseline: capture v5 outputs for all fixtures and commit. Phase 3 model-affecting commits run this harness as a pre-merge gate.
 
@@ -1714,8 +1714,8 @@ Per Pred R1 fix-pack #3 + plan body Rule 5's existing load-management partition:
 | 4 | Game-type backfill (#3 above) requires its own stratified-bbref-validation pre-flight, recursing the gating sequence | Acceptable — game-type backfill IS a model-affecting backfill; the recursion terminates at "validate before each backfill" |
 | 5 | Phase 3 ships and Cup-knockout drop-from-training turns out to materially hurt Brier on the test fold (we lose ~14 high-leverage early-season games) | Pre-flight power check (plan body Rule 1 power check) accounts for this; if expected SE >0.0033, abandon the phase per Rule 1 power-check failure mode |
 | 6 | Pred fix-pack default (impute-sentinels-from-team-season-avg) is wrong for the 5 sentinel rows (ESPN's currently-incorrect data may get corrected in the future, making our imputation a documented divergence) | Document the imputation in the row-level training-data manifest; re-evaluate at next quarterly bbref-validation re-run |
-| 7 | Multiple-testing mitigation is too strict (Bonferroni-adjusted threshold rejects all 10 candidates including season-aggregate, leaving Phase 3 with no winner to ship) | Pre-declared fallback: ship the **incumbent (v6 or v5)** with no Phase 3 swap; document null result; re-council on whether to widen the threshold or accept that Phase 3 didn't beat incumbent |
-| 8 | `team_tov` ablation (added per v10.1) doesn't improve val-fold Brier by ≥0.001 → feature is retired → schema column was wasted | Acceptable. NICE-TO-HAVE column has near-zero ongoing storage cost; keep for future re-evaluation |
+| 7 | Selection-bias-corrected threshold (Cramér order-statistic, K=10) rejects all 10 candidates including season-aggregate, leaving Phase 3 with no winner to ship | Pre-declared fallback: ship the **incumbent (v6 or v5)** with no Phase 3 swap; document null result; re-council on whether to widen the threshold or accept that Phase 3 didn't beat incumbent |
+| 8 | `team_tov` ablation (added per v10.1) doesn't improve val-fold Brier by ≥0.002 with paired-CI excluding zero → feature is retired → schema column was wasted | Acceptable. NICE-TO-HAVE column has near-zero ongoing storage cost; keep for future re-evaluation |
 
 ### Council ask — Addendum v11 plan-review (R1 → R2 fix-pack)
 
@@ -1756,4 +1756,25 @@ Per Pred R1 fix-pack #3 + plan body Rule 5's existing load-management partition:
 
 **Round 2 ask:** verify each fix-pack item adequately addressed your R1 finding. Iterate to 5-CLEAR or escalate.
 
-**Phase 3 implementation may NOT begin until this addendum is council-CLEAR (R2 verdicts ≥4 CLEAR with WARNs all having pre-declared mitigations).**
+**Round 2 verdicts (2026-04-26):**
+
+| Expert | R1 verdict | R1 grade | R2 verdict | R2 grade |
+|---|---|---|---|---|
+| DQ | WARN-with-mitigations | 8.5/10 | **CLEAR** | **9.5/10** |
+| Stats | WARN-with-mitigations | 8/10 | **CLEAR** | **9.5/10** |
+| Pred | WARN-with-mitigations | 8/10 | **CLEAR** | **9.5/10** |
+| Domain | WARN-with-mitigations | 7.5/10 | **CLEAR** | **9.5/10** |
+| Math | WARN-with-mitigations | 7.5/10 | **CLEAR** | **9/10** |
+
+**R2 aggregate: 5 CLEAR, avg 9.4/10. Plan-review CLOSED.**
+
+R2 cosmetic doc-hygiene fixes folded (this same revision):
+- DQ NF1: sentinel-row list de-duplicated (4 unique game_ids spanning 5 rows; nba:bdl-18447432 affects both CHI and LAC)
+- Stats NF1 + Math NF2: Risk #7 phrasing updated from "Bonferroni-adjusted threshold" to "selection-bias-corrected threshold (Cramér order-statistic, K=10)"
+- Pred NF1: Risk #8 ≥0.001 → ≥0.002 with paired-CI (synced to v10.1 §)
+- Math NF1: σ_inner provenance pinned in run config (estimator path + realized numeric value)
+
+R2 non-blocking notes (informational; no further iteration):
+- Domain "vindication note": "The R2 fix-pack is exemplary on F1 — not only was the disposition reversed from 'pin (b)' to 'TBD pending the named test,' but the default fallback was correctly set to the most-conservative reversible state (a)... This is the pm.5 rule working as designed: a dissenter's named test was load-bearing, the proponent ran the rule, and the plan now cannot ship the contested disposition without the evidence. Round-tripping through pm.5 within the same addendum's R1→R2 cycle validates the council-process codification itself."
+
+**Phase 3 implementation may now begin** following the 10-step sequence pinned in §"Phase 3 implementation sequence (gating plan)." Step 1 (pre-flight tooling lands) is the first work item.

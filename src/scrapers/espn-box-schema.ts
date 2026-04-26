@@ -56,6 +56,12 @@ export interface NbaBoxStatsRow {
   ast: number;
   stl: number;
   blk: number;
+  // tov sources from ESPN's totalTurnovers field (player + team-attributed).
+  // Matches bbref's published Tm TOV convention for regular-season + postseason
+  // games (post Oct-2024 Sports-Reference correction; see v10 post-mortem
+  // addendum). NBA Cup games are an asymmetry — bbref's TOV column for Cup
+  // games still appears to use the player-summed convention; <0.2% of training
+  // data, accepted as documented bias.
   tov: number;
   pf: number;
 
@@ -74,6 +80,10 @@ export interface NbaBoxStatsRow {
   largest_lead?: number | null;
   technical_fouls?: number | null;
   flagrant_fouls?: number | null;
+  // team-attributed turnovers (added addendum v10). team_tov + tov ==
+  // ESPN totalTurnovers as a structural identity; the consistency check
+  // surfaces parse-level drift in scrape_warnings.
+  team_tov?: number | null;
 }
 
 /** Box-score for both teams of a single game. */
@@ -110,6 +120,7 @@ export const MUST_HAVE_RAW_FIELDS = [
 export const NICE_TO_HAVE_FIELDS = [
   'points_off_turnovers', 'fast_break_points',
   'points_in_paint', 'largest_lead', 'technical_fouls', 'flagrant_fouls',
+  'team_tov',
 ] as const;
 
 // ---------- Possessions formula (basketball-reference / Dean Oliver) ----------
@@ -117,9 +128,12 @@ export const NICE_TO_HAVE_FIELDS = [
 /**
  * Pinned possession estimator per plan §Phase 2 (MUST-HAVE derived column).
  * Formula: FGA + 0.44·FTA − OREB + TOV
- * Both teams are averaged and the averaged value is stored per-team per the
- * basketball-reference convention. Averaging happens in the caller, not here
- * (this function returns the single-team estimate).
+ * `tov` sources from ESPN's totalTurnovers field. Matches bbref's published
+ * Pace/ORtg convention for regular-season + postseason games (post Oct-2024
+ * Sports-Reference correction; see v10 post-mortem addendum). Both teams
+ * are averaged and the averaged value is stored per-team per the
+ * basketball-reference convention. Averaging happens in the caller, not
+ * here (this function returns the single-team estimate).
  */
 export function possessionsSingleTeam(row: {
   fga: number; fta: number; oreb: number; tov: number;
@@ -168,12 +182,23 @@ const ESPN_FIELD_MAP: FieldMap = {
   'assists': { kind: 'int', must_have: true, targets: ['ast'] },
   'steals': { kind: 'int', must_have: true, targets: ['stl'] },
   'blocks': { kind: 'int', must_have: true, targets: ['blk'] },
-  // `totalTurnovers` = player TOs + team TOs; matches basketball-reference
-  // convention and is what possessionsSingleTeam() expects.
+  // `totalTurnovers` = player TOs + team TOs. Matches basketball-reference's
+  // Tm TOV convention for regular-season + postseason games (post Oct-2024
+  // Sports-Reference correction). NBA Cup games are an asymmetry — bbref's
+  // Cup-game TOV column appears unchanged from pre-correction (player-summed
+  // only). v10 originally switched to player-summed across the board on a
+  // single-game empirical check (LAL/IND 2023 Cup final) which was
+  // non-representative; reverted post-rescrape. See v10 post-mortem addendum.
   'totalTurnovers': { kind: 'int', must_have: true, targets: ['tov'] },
   'fouls': { kind: 'int', must_have: true, targets: ['pf'] },
 
   // NICE-TO-HAVE
+  // team-attributed turnovers (24-sec, 8-sec, 5-sec inbound, lane violations,
+  // illegal-screens not charged to an individual, etc.). NICE-TO-HAVE: NULL
+  // if absent in the ESPN response (older fixtures may omit). Schema column
+  // added in addendum v10 and retained for forensic value + Phase-3 optionality
+  // even after the v10 convention rollback.
+  'teamTurnovers': { kind: 'int', must_have: false, targets: ['team_tov'] },
   'turnoverPoints': { kind: 'int', must_have: false, targets: ['points_off_turnovers'] },
   'fastBreakPoints': { kind: 'int', must_have: false, targets: ['fast_break_points'] },
   'pointsInPaint': { kind: 'int', must_have: false, targets: ['points_in_paint'] },
@@ -188,7 +213,7 @@ const ESPN_FIELD_MAP: FieldMap = {
  *  already know about and have decided not to persist). */
 const RECOGNIZED_BUT_UNMAPPED = new Set<string>([
   'fieldGoalPct', 'threePointFieldGoalPct', 'freeThrowPct', // we derive rates downstream
-  'turnovers', 'teamTurnovers', // individual + team; we use totalTurnovers
+  'turnovers', // player-summed; we store totalTurnovers instead (post-v10 rollback)
   'technicalFouls', // we use totalTechnicalFouls
   'leadChanges', 'leadPercentage', // informational, not features
 ]);
@@ -338,6 +363,32 @@ function parseOneTeamSide(
     if (!seenNames.has(espnName)) {
       warnings.push({ warning_type: 'missing_field', detail: `team ${teamAbbr}: MUST-HAVE field "${espnName}" absent`, game_id: gameId });
       return { ok: false, reason: `team ${teamAbbr}: MUST-HAVE field "${espnName}" absent`, warnings };
+    }
+  }
+
+  // Bounds checks (addendum v10, retained post-rollback).
+  // - tov ∈ [0, 40], team_tov ∈ [0, 10] (per-component bounds).
+  // - Sum-identity check (tov + team_tov == totalTurnovers) was REMOVED on
+  //   v10 rollback because tov now sources from totalTurnovers directly,
+  //   making the identity tautological (or nonsensical when teamTurnovers > 0).
+  // - tov ≥ team_tov ordering check was REMOVED — under the totalTurnovers
+  //   convention, tov ≥ team_tov is structurally guaranteed (totalTurnovers =
+  //   turnovers + teamTurnovers ≥ teamTurnovers since turnovers ≥ 0).
+  // Bounds violations emit `schema_error` warnings but do not flip ok:false:
+  // the row data is preserved for coverage gates; the warning surfaces ESPN
+  // data drift in scrape_warnings for forensic review. (Including ESPN's
+  // teamTurnovers=-N sentinel pattern observed during v10 backfill — see
+  // post-mortem; sentinel rows produce a warning but don't block the row.)
+  const tov = stats.tov;
+  const teamTov = stats.team_tov;
+  if (typeof tov === 'number') {
+    if (tov < 0 || tov > 40) {
+      warnings.push({ warning_type: 'schema_error', detail: `team ${teamAbbr}: tov out of bounds [0,40]: ${tov}`, game_id: gameId });
+    }
+  }
+  if (typeof teamTov === 'number') {
+    if (teamTov < 0 || teamTov > 10) {
+      warnings.push({ warning_type: 'schema_error', detail: `team ${teamAbbr}: team_tov out of bounds [0,10]: ${teamTov}`, game_id: gameId });
     }
   }
 
@@ -511,6 +562,7 @@ export function validateNbaBoxScore(
     largest_lead: side.stats.largest_lead ?? null,
     technical_fouls: side.stats.technical_fouls ?? null,
     flagrant_fouls: side.stats.flagrant_fouls ?? null,
+    team_tov: side.stats.team_tov ?? null,
   });
 
   return {

@@ -147,6 +147,25 @@ async function main(): Promise<void> {
   assertEq(auditAfter4, 0, 'POR audit table STILL empty (NICE-TO-HAVE change does not audit)');
   console.log();
 
+  console.log('## Scenario 4b: team_tov NICE-TO-HAVE (addendum v10) participates in change-detection');
+  // team_tov is a NICE-TO-HAVE column added in addendum v10. Mutating it
+  // alone must bump updated_at (Phase-3 cache invalidation) but emit NO
+  // audit row (audit reserved for MUST-HAVE per v7 §2). Behavior must
+  // mirror Scenario 4 (largest_lead) for the new column.
+  const t3b = '2026-04-27T13:00:00Z';
+  const denTeamTovBumped = { ...home, fgm: home.fgm + 1, ast: home.ast + 1, team_tov: ((home as { team_tov?: number | null }).team_tov ?? 0) + 1 };
+  const r4b = upsertNbaBoxStats(denTeamTovBumped, t3b);
+  assertEq(r4b.status, 'updated', 'DEN: team_tov-only change after MUST-HAVE no-op → updated');
+  // The fgm/ast were already updated in Scenario 3, so this re-issues the same
+  // values (0 mutations) but team_tov differs (NICE bump). Verify the audit
+  // count for DEN didn't increase from team_tov mutation alone.
+  const auditAfter4b = (db.prepare('SELECT COUNT(*) as c FROM nba_box_stats_audit WHERE team_id=?').get('nba:DEN') as { c: number }).c;
+  assertEq(auditAfter4b, 2, 'DEN: audit table count unchanged after team_tov-only NICE mutation (still 2 from scenario 3)');
+  const denRow3 = db.prepare('SELECT updated_at, team_tov FROM nba_game_box_stats WHERE team_id=?').get('nba:DEN') as { updated_at: string; team_tov: number | null };
+  assertEq(denRow3.updated_at, t3b, 'DEN updated_at BUMPED to t3b on team_tov-only NICE mutation');
+  assertTrue(denRow3.team_tov === ((home as { team_tov?: number | null }).team_tov ?? 0) + 1, `DEN team_tov persisted to v10 column (got ${denRow3.team_tov})`);
+  console.log();
+
   console.log('## Scenario 5: recordScrapeWarnings batch insert');
   const warnCount = recordScrapeWarnings([
     { sport: 'nba', source: 'espn-box-stats', game_id: 'nba:401811002', warning_type: 'unknown_field', detail: 'test-unknown-field', scraped_at: t0 },

@@ -1,0 +1,61 @@
+[backfill] mode=RE-SCRAPE (--update-existing) (≥72h old): 3802 games queued
+[backfill] 100/3802  ok=100 fail=0  last=2023-regular nba:bdl-1037690
+[backfill] 200/3802  ok=200 fail=0  last=2023-regular nba:bdl-1037792
+[backfill] 300/3802  ok=300 fail=0  last=2023-regular nba:bdl-7049314
+[backfill] 400/3802  ok=400 fail=0  last=2023-regular nba:bdl-1037957
+[backfill] 500/3802  ok=500 fail=0  last=2023-regular nba:bdl-1038058
+[backfill] 600/3802  ok=600 fail=0  last=2023-regular nba:bdl-1038162
+[backfill] 700/3802  ok=700 fail=0  last=2023-regular nba:bdl-1038264
+[backfill] 800/3802  ok=800 fail=0  last=2023-regular nba:bdl-1038363
+[backfill] 900/3802  ok=900 fail=0  last=2023-regular nba:bdl-1038462
+[backfill] 1000/3802  ok=1000 fail=0  last=2023-regular nba:bdl-1038565
+[backfill] 1100/3802  ok=1100 fail=0  last=2023-regular nba:bdl-1038662
+[backfill] 1200/3802  ok=1200 fail=0  last=2023-regular nba:bdl-1038762
+[backfill] 1300/3802  ok=1300 fail=0  last=2023-postseason nba:bdl-15896743
+[backfill] 1400/3802  ok=1400 fail=0  last=2024-regular nba:bdl-15907518
+[backfill] 1500/3802  ok=1500 fail=0  last=2024-regular nba:bdl-15907614
+[backfill] 1600/3802  ok=1600 fail=0  last=2024-regular nba:bdl-15907716
+[backfill] 1700/3802  ok=1700 fail=0  last=2024-regular nba:bdl-16968288
+[backfill] 1800/3802  ok=1800 fail=0  last=2024-regular nba:bdl-15907887
+[backfill] 1900/3802  ok=1900 fail=0  last=2024-regular nba:bdl-15907993
+[backfill] 2000/3802  ok=2000 fail=0  last=2024-regular nba:bdl-15908093
+[backfill] 2100/3802  ok=2100 fail=0  last=2024-regular nba:bdl-15908485
+[backfill] 2200/3802  ok=2200 fail=0  last=2024-regular nba:bdl-15908583
+[backfill] 2300/3802  ok=2300 fail=0  last=2024-regular nba:bdl-15908682
+[backfill] 2400/3802  ok=2400 fail=0  last=2024-regular nba:bdl-15908783
+[backfill] 2500/3802  ok=2500 fail=0  last=2024-regular nba:bdl-15908886
+[backfill] 2600/3802  ok=2600 fail=0  last=2024-postseason nba:bdl-18422325
+[backfill] 2700/3802  ok=2700 fail=0  last=2025-regular nba:bdl-18446877
+[backfill] 2800/3802  ok=2800 fail=0  last=2025-regular nba:bdl-18446977
+[backfill] 2900/3802  ok=2900 fail=0  last=2025-regular nba:bdl-18447070
+[backfill] 3000/3802  ok=3000 fail=0  last=2025-regular nba:bdl-20054036
+[backfill] 3100/3802  ok=3100 fail=0  last=2025-regular nba:bdl-18447251
+[backfill] 3200/3802  ok=3200 fail=0  last=2025-regular nba:bdl-18447351
+[backfill] 3300/3802  ok=3300 fail=0  last=2025-regular nba:bdl-18447445
+[backfill] 3400/3802  ok=3400 fail=0  last=2025-regular nba:bdl-18447549
+[backfill] 3500/3802  ok=3500 fail=0  last=2025-regular nba:bdl-18447650
+[backfill] 3600/3802  ok=3600 fail=0  last=2025-regular nba:bdl-18447750
+[backfill] 3700/3802  ok=3700 fail=0  last=2025-regular nba:bdl-18447848
+[backfill] 3800/3802  ok=3800 fail=0  last=2025-regular nba:bdl-18447948
+[backfill] 3802/3802  ok=3802 fail=0  last=2025-regular nba:bdl-18447949
+
+[backfill] coverage summary:
+  aggregate (Rule 1, ≥98%): 7604 / 7604 = 100%
+  per-season (Rule 2, ≥95%): 2023-postseason 164/164 = 100%
+  per-season (Rule 2, ≥95%): 2023-regular 2474/2474 = 100%
+  per-season (Rule 2, ≥95%): 2024-postseason 168/168 = 100%
+  per-season (Rule 2, ≥95%): 2024-regular 2474/2474 = 100%
+  per-season (Rule 2, ≥95%): 2025-regular 2324/2324 = 100%
+  worst per-(team, season) cells (Rule 3, ≥94%):
+    2023-postseason nba:BOS 19/19 = 100%
+    2023-postseason nba:CLE 12/12 = 100%
+    2023-postseason nba:DAL 22/22 = 100%
+    2023-postseason nba:DEN 12/12 = 100%
+    2023-postseason nba:IND 17/17 = 100%
+
+[backfill] ship-rule gates (unrounded): R1=PASS R2=PASS R3=PASS
+
+[backfill] warnings this run by source × type:
+  espn-box-stats schema_error: 5
+
+[backfill] REVIEW REQUIRED: 5 schema-error warnings present, investigate before declaring backfill complete.

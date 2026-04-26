@@ -151,6 +151,20 @@ function initTables(db: Database.Database): void {
     // Table doesn't exist yet (fresh install) — CREATE TABLE above omits the column.
   }
 
+  // Addendum v10 migration: add team_tov NICE-TO-HAVE column. Idempotent —
+  // fresh DBs already have the column from CREATE TABLE; this no-ops.
+  // NULL on existing rows until the v10 backfill repopulates them.
+  // Per Ship Rule 6: no consumer reads team_tov until backfill completion is
+  // logged in SESSION_LOG.md.
+  try {
+    const cols = db.pragma('table_info(nba_game_box_stats)') as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'team_tov')) {
+      db.exec('ALTER TABLE nba_game_box_stats ADD COLUMN team_tov INTEGER');
+    }
+  } catch {
+    // Table doesn't exist yet (fresh install) — CREATE TABLE above includes the column.
+  }
+
   // P1-3 migration: migrate predictions UNIQUE constraint from 2-column
   // (game_id, model_version) to 3-column (game_id, model_version, prediction_source).
   // Fresh DBs already have the 3-column constraint from CREATE TABLE, but
@@ -305,6 +319,11 @@ function initTables(db: Database.Database): void {
       largest_lead INTEGER,
       technical_fouls INTEGER,
       flagrant_fouls INTEGER,
+      -- team-attributed turnovers (24-sec, 8-sec, 5-sec inbound, lane
+      -- violations, illegal-screens not charged to an individual, etc.).
+      -- Added addendum v10. tov + team_tov == ESPN totalTurnovers as a
+      -- structural identity verified at scrape time.
+      team_tov INTEGER,
 
       PRIMARY KEY (game_id, team_id)
     );
@@ -955,6 +974,7 @@ interface NbaBoxStatsUpsertRow {
   largest_lead?: number | null;
   technical_fouls?: number | null;
   flagrant_fouls?: number | null;
+  team_tov?: number | null;
 }
 
 /** MUST-HAVE fields for change detection. Mutations of these fields fire
@@ -974,6 +994,7 @@ const BOX_STATS_MUST_HAVE_NUMERIC: ReadonlyArray<keyof NbaBoxStatsUpsertRow> = [
 const BOX_STATS_NICE_TO_HAVE: ReadonlyArray<keyof NbaBoxStatsUpsertRow> = [
   'points_off_turnovers', 'fast_break_points', 'points_in_paint',
   'largest_lead', 'technical_fouls', 'flagrant_fouls',
+  'team_tov',
 ];
 
 export interface BoxStatsUpsertResult {
@@ -1027,14 +1048,16 @@ export function upsertNbaBoxStats(
         ast, stl, blk, tov, pf,
         pts, minutes_played, possessions,
         points_off_turnovers, fast_break_points,
-        points_in_paint, largest_lead, technical_fouls, flagrant_fouls
+        points_in_paint, largest_lead, technical_fouls, flagrant_fouls,
+        team_tov
       ) VALUES (
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?,
+        ?
       )
     `).run(
       row.game_id, row.team_id, row.season, now, now,
@@ -1048,6 +1071,7 @@ export function upsertNbaBoxStats(
       row.largest_lead ?? null,
       row.technical_fouls ?? null,
       row.flagrant_fouls ?? null,
+      row.team_tov ?? null,
     );
     return { status: 'inserted', mutations: 0 };
   }
@@ -1088,7 +1112,8 @@ export function upsertNbaBoxStats(
         ast = ?, stl = ?, blk = ?, tov = ?, pf = ?,
         pts = ?, minutes_played = ?, possessions = ?,
         points_off_turnovers = ?, fast_break_points = ?,
-        points_in_paint = ?, largest_lead = ?, technical_fouls = ?, flagrant_fouls = ?
+        points_in_paint = ?, largest_lead = ?, technical_fouls = ?, flagrant_fouls = ?,
+        team_tov = ?
       WHERE game_id = ? AND team_id = ?
     `).run(
       row.season, now,
@@ -1102,6 +1127,7 @@ export function upsertNbaBoxStats(
       row.largest_lead ?? null,
       row.technical_fouls ?? null,
       row.flagrant_fouls ?? null,
+      row.team_tov ?? null,
       row.game_id, row.team_id,
     );
     if (changes.length > 0) {

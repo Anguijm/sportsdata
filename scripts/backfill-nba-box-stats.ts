@@ -7,11 +7,25 @@
  * both team-rows in a single transaction, persist scrape warnings.
  *
  * Plan: `Plans/nba-phase2-backfill.md` §Component 3.
+ * Addendum v10 added --update-existing (re-scrape rows that already exist;
+ * required for the v10 TOV-convention re-backfill) and --min-age-hours
+ * (Ship Rule 7: gate the re-scrape to ≥72-hour-old games to avoid the
+ * NBA stat-correction window).
  *
  * Run:
- *   npx tsx scripts/backfill-nba-box-stats.ts [--season SEASON] [--limit N] [--dry-run]
+ *   npx tsx scripts/backfill-nba-box-stats.ts [--season SEASON] [--limit N]
+ *                                              [--dry-run] [--update-existing]
+ *                                              [--min-age-hours N]
  *
- * Idempotent: re-running picks up where it left off.
+ * Without --update-existing: backfills only games missing one or both team
+ * rows (original behavior).
+ * With --update-existing: re-scrapes ALL eligible games (subject to optional
+ * --season / --limit / --min-age-hours filters) and re-upserts; the upsert
+ * path detects MUST-HAVE/NICE mutations and emits audit rows per addendum
+ * v7 policy.
+ *
+ * Idempotent: re-running picks up where it left off (without --update-existing)
+ * or re-processes everything (with --update-existing; UPSERT detects no-ops).
  *
  * Exits 2 if any `schema_error` warnings emitted (per DQ #7 triage gate).
  */
@@ -26,14 +40,23 @@ interface Args {
   season: string | null;
   limit: number | null;
   dryRun: boolean;
+  updateExisting: boolean;
+  minAgeHours: number | null;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { season: null, limit: null, dryRun: false };
+  const args: Args = { season: null, limit: null, dryRun: false, updateExisting: false, minAgeHours: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--season') args.season = argv[++i];
     else if (argv[i] === '--limit') args.limit = Number.parseInt(argv[++i], 10);
     else if (argv[i] === '--dry-run') args.dryRun = true;
+    else if (argv[i] === '--update-existing') args.updateExisting = true;
+    else if (argv[i] === '--min-age-hours') args.minAgeHours = Number.parseInt(argv[++i], 10);
+  }
+  // Default: when --update-existing is set, gate to ≥72-hour-old games per
+  // addendum v10 Ship Rule 7 unless the caller explicitly overrides.
+  if (args.updateExisting && args.minAgeHours == null) {
+    args.minAgeHours = 72;
   }
   return args;
 }
@@ -51,22 +74,38 @@ async function main(): Promise<void> {
   const db = getDb();
   const runStartedAt = new Date().toISOString();
 
-  // Load eligible-and-unresolved games joined with mapping
+  // Load eligible games joined with mapping. Default mode: only games
+  // missing one or both team rows. With --update-existing: ALL eligible games
+  // (subject to --season / --limit / --min-age-hours filters), so the v10
+  // TOV-convention re-scrape can re-upsert and trigger UPDATE-path audit rows.
   const seasonClause = args.season ? `AND eg.season = '${args.season.replace(/'/g, "''")}'` : '';
   const limitClause = args.limit ? `LIMIT ${args.limit}` : '';
+  // Ship Rule 7 (addendum v10): when re-scraping, exclude games whose date
+  // is more recent than min-age-hours ago, to avoid the NBA stat-correction
+  // window where ESPN's live and corrected feeds may disagree.
+  const minAgeClause = args.minAgeHours
+    ? `AND eg.date <= datetime('now', '-${args.minAgeHours} hours')`
+    : '';
+  const missingClause = args.updateExisting
+    ? '' // re-scrape all eligible games regardless of existing rows
+    : 'AND (h.game_id IS NULL OR a.game_id IS NULL)';
   const pending = db.prepare(`
     SELECT eg.game_id, eg.season, eg.home_team_id, eg.away_team_id, m.espn_event_id
     FROM nba_eligible_games eg
     JOIN nba_espn_event_ids m ON m.game_id = eg.game_id
     LEFT JOIN nba_game_box_stats h ON h.game_id = eg.game_id AND h.team_id = eg.home_team_id
     LEFT JOIN nba_game_box_stats a ON a.game_id = eg.game_id AND a.team_id = eg.away_team_id
-    WHERE (h.game_id IS NULL OR a.game_id IS NULL)
+    WHERE 1=1
+    ${missingClause}
     ${seasonClause}
+    ${minAgeClause}
     ORDER BY eg.date
     ${limitClause}
   `).all() as PendingGame[];
 
-  console.log(`[backfill] ${pending.length} games pending box-stats backfill`);
+  const mode = args.updateExisting ? 'RE-SCRAPE (--update-existing)' : 'fill-missing';
+  const ageNote = args.minAgeHours ? ` (≥${args.minAgeHours}h old)` : '';
+  console.log(`[backfill] mode=${mode}${ageNote}: ${pending.length} games queued`);
   if (pending.length === 0) {
     console.log('[backfill] nothing to do');
     closeDb();

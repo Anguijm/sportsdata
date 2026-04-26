@@ -1,0 +1,89 @@
+{
+  "captured_at": "2026-04-26T06:25:55.699Z",
+  "label": "pre-rollback-fly",
+  "overall": {
+    "count": 7604,
+    "avg_tov": 13.338506049447659,
+    "avg_possessions": 101.03976854287218,
+    "team_tov_count": 7604,
+    "team_tov_null_count": 0,
+    "avg_team_tov_nonnull": 0.7365860073645449,
+    "avg_tov_team_tov_nonnull": 13.338506049447659,
+    "avg_possessions_team_tov_nonnull": 101.03976854287218,
+    "p05": 92.84,
+    "p50": 100.72,
+    "p95": 110.46000000000001
+  },
+  "segments": [
+    {
+      "season": "2023-postseason",
+      "count": 164,
+      "avg_tov": 11.365853658536585,
+      "avg_possessions": 94.61146341463414,
+      "team_tov_count": 164,
+      "team_tov_null_count": 0,
+      "avg_team_tov_nonnull": 0.8292682926829268,
+      "avg_tov_team_tov_nonnull": 11.365853658536585,
+      "avg_possessions_team_tov_nonnull": 94.61146341463414,
+      "p05": 88.62,
+      "p50": 94.42,
+      "p95": 99.18
+    },
+    {
+      "season": "2023-regular",
+      "count": 2474,
+      "avg_tov": 12.896928051738076,
+      "avg_possessions": 100.80151980598221,
+      "team_tov_count": 2474,
+      "team_tov_null_count": 0,
+      "avg_team_tov_nonnull": 0.7097817299919159,
+      "avg_tov_team_tov_nonnull": 12.896928051738076,
+      "avg_possessions_team_tov_nonnull": 100.80151980598221,
+      "p05": 93.03999999999999,
+      "p50": 100.34,
+      "p95": 109.94
+    },
+    {
+      "season": "2024-postseason",
+      "count": 168,
+      "avg_tov": 13.119047619047619,
+      "avg_possessions": 98.14095238095238,
+      "team_tov_count": 168,
+      "team_tov_null_count": 0,
+      "avg_team_tov_nonnull": 0.9285714285714286,
+      "avg_tov_team_tov_nonnull": 13.119047619047619,
+      "avg_possessions_team_tov_nonnull": 98.14095238095238,
+      "p05": 89.4,
+      "p50": 98.86,
+      "p95": 106.96000000000001
+    },
+    {
+      "season": "2024-regular",
+      "count": 2474,
+      "avg_tov": 13.497978981406629,
+      "avg_possessions": 101.13890056588521,
+      "team_tov_count": 2474,
+      "team_tov_null_count": 0,
+      "avg_team_tov_nonnull": 0.7833468067906225,
+      "avg_tov_team_tov_nonnull": 13.497978981406629,
+      "avg_possessions_team_tov_nonnull": 101.13890056588521,
+      "p05": 92.94,
+      "p50": 100.92,
+      "p95": 110.92
+    },
+    {
+      "season": "2025-regular",
+      "count": 2324,
+      "avg_tov": 13.793889845094665,
+      "avg_possessions": 101.85104991394148,
+      "team_tov_count": 2324,
+      "team_tov_null_count": 0,
+      "avg_team_tov_nonnull": 0.6949225473321858,
+      "avg_tov_team_tov_nonnull": 13.793889845094665,
+      "avg_possessions_team_tov_nonnull": 101.85104991394148,
+      "p05": 93.6,
+      "p50": 101.54,
+      "p95": 111.1
+    }
+  ]
+}

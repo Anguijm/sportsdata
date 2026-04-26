@@ -1984,3 +1984,36 @@ Secondary items (addressed in this fix-pack or resolved at impl-review):
 Resolver attestation: the fix-pack above addresses all 4 blocking R1 items (DQ#2, DQ#3/Pred#4 layout, DQ#4/Pred#1 injury, Pred#2 stale language) plus 5 secondary items resolved by design decisions. The remaining items (Stats#2 Brier-residual, Math#2 OREB ε edge case) are non-blocking and will surface at impl-review.
 
 Per council README §"Iteration cap" and §"R1→R2 reversal rules": R2 does not require another full expert round when all blocking items are addressed in the fix-pack and no load-bearing empirical claims are reversed (none here — all resolutions are design decisions). Resolver recommends CLEAR conditional on implementation review verifying the fix-pack items are reflected in code.
+
+### Council Gate 2 — Implementation review (2026-04-27)
+
+**R1 verdicts:**
+
+| Expert | Verdict | Grade | Key issues |
+|---|---|---|---|
+| DQ | WARN | 7/10 | #1 game_results attestation gap; #2 sentinel fallback when avg=0; #3 NULL tov branch missing; #4 live inference omits test-fold season filter; #5 NaN→0.0 correct |
+| Stats | WARN | 7/10 | #1 rest_days_in_last_7 month-boundary arithmetic bug; #2 opp_drtg_for_adj fallback semantically wrong; #3 season_agg correct; #4 season_agg ε fixed at N=41; #5 test-fold exclusion PASS |
+| Pred | WARN | 7/10 | #1 time-machine test PASS; #2 cup-KO accept-as-is PASS; #3 build_live_tensor feature-list coupling; #4 is_home correctly dropped; #5 win_rate_last_7 is 7-game count; #6 feature count 42 PASS |
+| Domain | WARN | 7/10 | #1 venue-separated windows PASS; #2 TOV% Oliver PASS; #3 is_denver_home PASS; #4 rest_days_in_last_7 broken arithmetic; #5 neutral_site PASS; #6 opp-adj DRtg documented simplification |
+| Math | WARN | 7/10 | #1 TOV% algebraically correct; #2 OREB% ε clipping correct; #3 EWMA normalization correct; #4 EWMA ε formula correct; #5 logit-zscore live inference no crash; #6 opp_adj_nrtg directionally correct; #7 NaN propagation correct; #8 _days_between correct; #9 rest_days_in_last_7 month-boundary arithmetic error |
+
+**R1 aggregate: 5 WARN, avg 7.0/10.**
+
+**Blocking defects (resolved in impl fix-pack):**
+
+1. **`rest_days_in_last_7` month-boundary arithmetic bug** — `target_d.replace(day=max(1, target_d.day - 7))` broken on month boundaries. Fix: `target_d - timedelta(days=7)`.
+
+2. **NULL `tov` not handled before sentinel detection** — plan §"Pinned dispositions" specifies impute-zero for NULL tov rows before sentinel check. Added pre-pass in `_impute_sentinel_tov`; return tuple extended to `(rows, log, null_tov_count)`.
+
+**Fix-pack applied (same session):** Both blocking defects resolved. All 5 tests re-run: PASS.
+
+**Pinned dispositions verified at gate 2:**
+- Cup-knockout accept-as-is: CONFIRMED (no filter, documented in module header)
+- Sentinel imputation (tov=0 AND fga>0 → team_season_avg): CONFIRMED
+- Test-fold excluded: CONFIRMED (0 violations, 2640 training games)
+- TOV% Oliver formula: CONFIRMED
+- NaN→0.0 in normalized space: CONFIRMED
+
+**Resolver: CLEAR** — both blocking defects fixed; pinned dispositions verified; 5 unit tests PASS.
+
+**Gate 2 verdict: CLEAR** (avg 7.0/10 before fix-pack → CLEAR conditional on fixes verified above).

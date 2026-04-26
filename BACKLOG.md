@@ -26,17 +26,16 @@ treat the priority queue below as canonical only when its date is recent.
 ### P0 — In flight
 
 - **Open + merge debt-35 PR.** Branch `claude/debt-35-tov-convention`
-  pushed to origin (HEAD has R2 verdict + Pred-nit fix folded post-this-commit).
-  Spans v10 forward (player-summed) → backfill → audit FAIL → rollback
-  (totalTurnovers restored) → post-mortem council (5/5 CLEAR avg 9.6/10) →
-  debt #35 closure as option-b. Once merged, `main` advances and the
-  rollback artifacts + post-mortem learnings land in canonical history.
+  pushed to origin at `964f80a`. Spans v10 forward (player-summed) →
+  backfill → audit FAIL → rollback (totalTurnovers restored) →
+  post-mortem council (5/5 CLEAR avg 9.6/10) → debt #35 closure as
+  option-b. Once merged, `main` advances and the rollback artifacts +
+  post-mortem learnings land in canonical history.
   https://github.com/Anguijm/sportsdata/pull/new/claude/debt-35-tov-convention
-- **Open + merge debt-34 PR.** Branch `claude/debt-34-pass-b-c-prime` at
-  commit `0890a62` is also still pending (Sprint 10.13 work). Should be
-  merged BEFORE the debt-35 PR (debt-35 branches off the same lineage but
-  the debt-34 ship-claim narrative belongs in main first).
-  https://github.com/Anguijm/sportsdata/pull/new/claude/debt-34-pass-b-c-prime
+
+  *Note: debt-34 PR (#47) was already merged at `ce13e31` on 2026-04-25
+  and is in main; my earlier BACKLOG edit listing it as still-pending
+  was based on stale context — corrected here.*
 
 ### P1 — Up next
 

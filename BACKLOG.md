@@ -5,7 +5,7 @@
 > snapshot, and idea bank. Update at session start (regenerate from
 > `SESSION_LOG.md` + `git log` if stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-26 (post Sprint 10.13 — Phase 2 ship-claim earned).
+Last regenerated: 2026-04-26 (post Sprint 10.14 — debt #35 CLOSED as option-b after v10 forward-and-rollback).
 
 ## Where to start
 
@@ -25,16 +25,24 @@ treat the priority queue below as canonical only when its date is recent.
 
 ### P0 — In flight
 
+- **Open + merge debt-35 PR.** Branch `claude/debt-35-tov-convention`
+  pushed to origin (HEAD has R2 verdict + Pred-nit fix folded post-this-commit).
+  Spans v10 forward (player-summed) → backfill → audit FAIL → rollback
+  (totalTurnovers restored) → post-mortem council (5/5 CLEAR avg 9.6/10) →
+  debt #35 closure as option-b. Once merged, `main` advances and the
+  rollback artifacts + post-mortem learnings land in canonical history.
+  https://github.com/Anguijm/sportsdata/pull/new/claude/debt-35-tov-convention
 - **Open + merge debt-34 PR.** Branch `claude/debt-34-pass-b-c-prime` at
-  commit `0890a62` is pushed to origin. Once merged, `main` advances and
-  the Phase 2 ship-claim is reflected in canonical history.
+  commit `0890a62` is also still pending (Sprint 10.13 work). Should be
+  merged BEFORE the debt-35 PR (debt-35 branches off the same lineage but
+  the debt-34 ship-claim narrative belongs in main first).
   https://github.com/Anguijm/sportsdata/pull/new/claude/debt-34-pass-b-c-prime
 
 ### P1 — Up next
 
 - **Phase 3 NBA learned-model plan draft.** Phase 2 is shipped; data is
   ready. Inherited Phase-3-plan-review items pinned across
-  `Plans/nba-learned-model.md` addenda v6 / v7 / v8 / v9:
+  `Plans/nba-learned-model.md` addenda v6 / v7 / v8 / v9 / v10 + post-mortem:
   - test-fold training-time filter (addendum v7 §7)
   - as-of-snapshot reproducibility (addendum v7 §8)
   - season-aggregate as 10th feature-form candidate (addendum v6)
@@ -42,17 +50,16 @@ treat the priority queue below as canonical only when its date is recent.
   - cron ordering: box-stats AFTER predictions (addendum v7 §12)
   - Wilson-CI guidance for small-N Rule 3 cells (addendum v8)
   - opp-* self-join feature-export pattern
-  - **TOV scraper-convention decision (debt #35)** — pin player-summed
-    vs total before training tensors are constructed
+  - **8 items added by v10 + post-mortem:**
+    - Cup-knockout game handling (~14 games at <0.18% bias; pick (a)/(b)/(c)/(d))
+    - 5 ESPN-sentinel rows row-level handling (default: impute from team-season avg)
+    - Other game-type asymmetry pre-screens (Play-In, marquee, rescheduled, OT)
+    - Stratified-bbref-validation regression harness (`scripts/validate-bbref-convention.ts`, ≥16 games × 8 strata)
+    - `team_tov` admissible only as predictor (NOT feature-form grid axis); NULL-handling policy required
+    - Council process: dissenter-named falsification test + ≥2/stratum + ≥5 total + adversarial selection bar for R2 reversals
+    - Pre-backfill DB snapshot mandatory for any production-data irreversible operation
+    - 0.44 vs 0.4 FT-coefficient asymmetry between scraper and audit (pre-existing; revisit)
   - Council-CLEAR before any model code.
-- **Debt #35 — ESPN TOV scraper-convention decision.** Hard prerequisite
-  for Phase 3 (must pin convention before training tensors). Three paths:
-  - (a) Switch scraper to `turnovers` (player-summed), re-backfill 7,604
-    rows. Invisible to current shipped surfaces (no live consumer reads
-    `possessions`).
-  - (b) Keep `totalTurnovers` and document the divergence — Phase 3
-    features then use a different convention than bbref's published rates.
-  - (c) Compute both and let Phase 3's feature-engineering layer pick.
 
 ### P2 — Strategic / unblocked but lower urgency
 
@@ -103,10 +110,10 @@ and source-sprint context. This is a quick scan only.
 | 29 | Ternary reliability for soccer Poisson | Low | gated on 1X2 |
 | 30 | check-branch-not-merged false positive on chained commit+push | Low | workaround exists |
 | 32 | Shadow-analysis CLI / endpoint | HIGH | gated on N≥30 pairs |
-| 35 | ESPN TOV scraper-convention decision | MEDIUM | Phase 3 prerequisite |
 
 Closed (recent): #11 (Sprint 10.8), #13 (PR #28), #14 (PR #38), #27 (PR #34),
-#28 (PR #36), #31 (PR #44), #33 (PRs #42/#43/#45), **#34 (Sprint 10.13)**.
+#28 (PR #36), #31 (PR #44), #33 (PRs #42/#43/#45), #34 (Sprint 10.13),
+**#35 (Sprint 10.14, option-b after v10 forward-and-rollback)**.
 
 ## Plans (active)
 

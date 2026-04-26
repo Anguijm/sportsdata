@@ -1393,7 +1393,33 @@ The schema **does not reject** negative `team_tov` at write time — ESPN's valu
 
 **Round 2 ask:** verify each fix-pack item adequately addressed your R1 finding. Iterate to 5-CLEAR or escalate.
 
-**Debt #35 closes as option-b after R2 council clears.**
+**Round 2 verdicts (2026-04-26):**
+
+| Expert | R1 verdict | R1 grade | R2 verdict | R2 grade |
+|---|---|---|---|---|
+| DQ | CLEAR | 9/10 | **CLEAR** | **9.5/10** |
+| Stats | CLEAR | 8.5/10 | **CLEAR** | **9.5/10** |
+| Pred | WARN-with-mitigations | 8/10 | **CLEAR** | **9.5/10** |
+| Domain | WARN-with-mitigations | 8/10 | **CLEAR** | **9.5/10** |
+| Math | CLEAR | 9.5/10 | **CLEAR** | **10/10** |
+
+**R2 aggregate: 5 CLEAR, avg 9.6/10. Post-mortem council CLOSED.**
+
+R2 non-blocking notes (informational; no further iteration):
+- Pred: arithmetic nit on harness sample size (≥16 not ≥10) — folded above.
+- Stats: adversarial-selection rule binds only when R1 dissenter exists; if R1 is unanimous-WARN, proponent picks but publishes selection criterion ex-ante. Worth pinning in council-process docs at some point; not v10 scope.
+- Domain: Cup-knockout count of ~14 grows by ~7/year as new Cup seasons enter Phase-3 scope. Forward-looking footnote.
+- DQ: re-find query at §"Sentinel-row enumeration" could be promoted to a `scripts/` artifact for executable reuse. Optional cosmetic.
+- Math: full CLEAR; no further notes.
+
+**Debt #35 CLOSED as option-b — 2026-04-26 (post-mortem council CLEAR).**
+
+Final state:
+- Convention: `tov` sources from ESPN's `totalTurnovers` (player + team-attributed). Matches bbref Tm TOV for ~99.8% of training data (regular-season + postseason + Cup pool-play). Cup-knockout games (~14 per Phase-3 in-scope window) use bbref player-summed convention — documented bias forwarded to Phase 3 plan-review.
+- Schema: `team_tov` NICE-TO-HAVE column added (idempotent migration applied to Fly DB; populated for 7,604 rows post-rollback rescrape, 5 rows hold ESPN-sentinel out-of-bounds values).
+- Tooling: `scripts/snapshot-box-stats-segmented.ts` + `scripts/backfill-nba-box-stats.ts --update-existing` + `--min-age-hours` flag retained as general-purpose forensic + backfill enhancements (not v10-specific).
+- Audit: PASS at 0/0/0 on substituted N=50 (Sprint 10.13 verdict held post-rollback).
+- Phase-3 forwarding: 8 items pinned (Cup-knockout handling, 5-sentinel rows, 7 game-type pre-screens, stratified-bbref-validation harness, dissenter-named-falsification council rule, ≥2/stratum + ≥5 total + adversarial selection bar, pre-backfill DB snapshot mandatory).
 
 ### Updated Phase-3 plan-review items pinned by v10 + post-mortem
 
@@ -1415,7 +1441,7 @@ Added by post-mortem (with R2 fix-pack refinements):
 
 - **5 ESPN-sentinel rows row-level handling (per Pred R2 fix-pack).** 5 rows enumerated above currently have `tov=0` because ESPN reports `totalTurnovers=0` (with `teamTurnovers=-N` sentinel pattern). These are guaranteed-incorrect labels; `tov=0` is an extreme tail (P05 ≈ 9). Phase 3 plan-review must pre-declare default handling; **Pred-recommended default: (b) impute from team-season average for `tov`**, with **(a) drop-row** as fallback if impute can't be done before tensor materialization. **(c) accept `tov=0` as noise is NOT acceptable** — outsized leverage on per-possession rate features at training time.
 
-- **Stratified-bbref-validation regression harness (per Pred R2 fix-pack).** Add `scripts/validate-bbref-convention.ts` (or equivalent) **BEFORE any future model-affecting backfill**. Inputs: a stratified sample (≥2 games per game-type stratum, ≥10 games total: regular / postseason / Cup-pool / Cup-knockout / Play-In / marquee / rescheduled / OT). For each: pull bbref Tm TOV via cached scrape, compare to (`ESPN.turnovers`, `ESPN.totalTurnovers`); report convention match per stratum. Output: a pre-flight report that any future TOV-related plan addendum must cite as evidence. v5 prediction-replay regression harness (Pred carry-forward from v10 impl-review) catches code regressions; this catches data-correctness drift. Both are needed — they detect different failure modes.
+- **Stratified-bbref-validation regression harness (per Pred R2 fix-pack).** Add `scripts/validate-bbref-convention.ts` (or equivalent) **BEFORE any future model-affecting backfill**. Inputs: a stratified sample of **≥2 games per game-type stratum × 8 strata = ≥16 games total** (per Pred R2 arithmetic nit). Strata: regular / postseason / Cup-pool / Cup-knockout / Play-In / marquee national-broadcast / rescheduled-2022-23 / OT. For each: pull bbref Tm TOV via cached scrape, compare to (`ESPN.turnovers`, `ESPN.totalTurnovers`); report convention match per stratum. Output: a pre-flight report that any future TOV-related plan addendum must cite as evidence. v5 prediction-replay regression harness (Pred carry-forward from v10 impl-review) catches code regressions; this catches data-correctness drift. Both are needed — they detect different failure modes.
 
 - **Council process: dissenter-named falsification test (per Domain R2 fix-pack).** When a council R1 surfaces a load-bearing convention disagreement and R2 entertains a reversal driven by an empirical claim, the falsification test named by the dissenting expert in R1 becomes blocking on R2 reversal. The proponent must run the test before the reversal can stand. This is in addition to (not in lieu of) the ≥2/stratum + ≥5 total + adversarial-selection bar.
 

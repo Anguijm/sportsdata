@@ -1,7 +1,63 @@
 # Sportsdata Session Log
 
 Chronological record of all sprints, decisions, council verdicts, and deferred work.
-Last updated: 2026-04-26 (Sprint 10.13 — Phase 2 ship-claim FULLY EARNED. Pass-B audit PASS at N=50 (0 raw + 0 rate + 0 missing). Branch `claude/debt-34-pass-b-c-prime` pushed at `0890a62`; PR pending user open + merge. Debt #34 closed; debt #35 (ESPN TOV scraper-convention) opened as Phase 3 plan-review item.)
+Last updated: 2026-04-26 (Sprint 10.14 — Debt #35 CLOSED as option-b after v10 forward-and-rollback cycle. v10 backfill on Fly was wrong (single-game empirical check non-representative); rolled back via re-scrape; post-rollback audit PASS at 0/0/0; per-season AVG(tov) bit-identical to pre-v10 (15-sig-fig match). Post-mortem council 2 rounds, R2 5/5 CLEAR avg 9.6/10. Branch `claude/debt-35-tov-convention` ready for PR.)
+
+---
+
+## 🧭 Remote Resume — 2026-04-26 (Sprint 10.14 — Debt #35 CLOSED via v10 rollback + post-mortem)
+
+> **Significant failure-and-recovery sprint.** v10 plan was council-CLEAR at 9.2/10 (plan) + 9.1/10 (impl), but the central empirical claim that drove R2 reversal of the Domain expert's R1 FAIL turned out to be non-representative. The LAL/IND 2023 NBA Cup final showed bbref tov=18=ESPN.turnovers (player-summed), but this was the outlier. Regular-season + postseason + Cup pool-play games all use bbref tov=ESPN.totalTurnovers (post Oct-2024 SR correction); only Cup KNOCKOUT games (~14 per Phase-3 in-scope window) use player-summed. Backfill ran cleanly (3,802 / 3,802 ok), Ship Rule 3 PASS at Δposs=0.73, but Ship Rule 4 audit FAIL with 57 raw + 139 rate failures.
+>
+> Per Risk #4, rollback fired. Rescraped with reverted FIELD_MAP; post-rollback audit PASS at 0/0/0 on substituted N=50; per-season AVG(tov) bit-identical to pre-v10 across all 5 segments at 15-sig-fig precision. Post-mortem council 2 rounds, R2 5 CLEAR avg 9.6/10. Debt #35 closes as **option-b** (keep `totalTurnovers` → `tov`, retain `team_tov` NICE-TO-HAVE column for forensic value, document Cup-knockout asymmetry as <0.18% bias forwarded to Phase 3).
+>
+> Branch `claude/debt-35-tov-convention` at `8d27f5c` (pre R2 fix-pack at HEAD); R2 verdicts table folded post-council; PR not yet opened (CLAUDE.md no-auto-PR rule).
+
+### Sprint 10.14 timeline (2026-04-26)
+
+| Commit | Step | Outcome |
+|---|---|---|
+| `f364fbb` | v10 plan addendum council-CLEAR (5/5 avg 9.2/10, 2 rounds) | option-d (player-summed convention switch); 8 ship rules; Domain R1 FAIL inverted by single-game LAL/IND empirical check |
+| `ff29300` | v10 implementation council-CLEAR (5/5 avg 9.1/10, 1 round) | scraper FIELD_MAP swap + team_tov NICE-TO-HAVE column + bounds + sum-identity checks; backfill `--update-existing` flag; snapshot script |
+| `b05d166` | Stats fix-pack #1 fold (snapshot enhancement) | self-contained Rule-3 magnitude check |
+| Fly deploy | v10 deploy (immediate strategy) | machine v55 → v56; team_tov column added on Fly |
+| Fly snapshot | pre-backfill state captured | AVG(tov)=14.075, all team_tov NULL |
+| Fly backfill | `--update-existing` rescrape (~32 min) | 3,802/3,802 ok; 6 schema_errors (5 ESPN-sentinel team_tov<0 + 1 LAL/DEN tov<team_tov ordering); R1/R2/R3 PASS; AVG(tov) → 13.339 |
+| Fly snapshot | post-backfill state captured | per-season Δposs ∈ [0.69, 0.92], magnitude check PASS at [0.2, 2.5] |
+| Fly audit | re-run debt #34 audit on substituted N=50 | **FAIL** at 57 raw + 139 rate failures (all tov-related; bbref values ≥ ESPN.turnovers by 1-3 per team-game) |
+| Diagnosis | Cup vs regular-season bbref-convention asymmetry | LAL/IND Cup final = player-summed; DEN/LAL 2023-regular = totalTurnovers; LAL/MIA Cup pool-play = totalTurnovers (correction applied). Hypothesis: SR Oct-2024 correction skipped trophy-game pipeline only |
+| User direction | option-b (revert to totalTurnovers, keep team_tov column) | engineering cost vs <0.18% bias trade favors revert |
+| `07367fc` | revert: scraper FIELD_MAP back to totalTurnovers; remove sum-identity + ordering checks; keep bounds checks | 8 corruption tests reduced to 3 (sum-mismatch + ordering removed; ESPN-sentinel test added) |
+| `5284416` | rollback artifacts (4 forensic files) + post-mortem addendum | end-to-end traceable failure record |
+| Fly deploy | rollback deploy (immediate) | machine v56 → v57 |
+| Fly rescrape | `--update-existing` against all 7,604 rows (~32 min) | 3,802/3,802 ok; 5 schema_errors (ESPN-sentinel only; ordering check removed); R1/R2/R3 PASS |
+| Fly snapshot | post-rollback state captured | AVG(tov)=14.075092056812204 — bit-identical to pre-v10 across all 5 segments (15 sig-figs) |
+| Fly audit | re-run audit | **PASS at 0/0/0** ✓ |
+| `8d27f5c` | post-mortem R1 fix-pack: address all 5 council R1 findings | Cup-game scope corrected (~14 not ~134), 5 sentinel IDs enumerated, drift bound corrected, council-process refinement |
+| Council R2 | 5/5 CLEAR avg 9.6/10 | post-mortem closed |
+| (this commit) | R2 verdicts folded + Pred R2 nit (≥16 not ≥10) | debt #35 CLOSED as option-b |
+
+### Where we are now
+
+**Branch state:**
+- `main` at `ce13e31` (unchanged from Sprint 10.13).
+- Feature branch `claude/debt-35-tov-convention` ahead of main by 6 commits (f364fbb plan + ff29300 impl + b05d166 stats fold + 07367fc revert + 5284416 rollback artifacts + 8d27f5c R1 fix-pack + this R2 verdict + Pred-nit fix).
+- PR NOT yet opened per CLAUDE.md no-auto-PR rule.
+
+**Production state (Fly):**
+- App `sportsdata-api` at v57 (deployed twice this sprint: v56 = v10 forward, v57 = v10 rollback).
+- DB schema: `nba_game_box_stats.team_tov INTEGER` column added (idempotent migration); 7,604 rows have `team_tov` populated post-rollback rescrape (5 rows hold ESPN-sentinel out-of-bounds values: -22, -16, -12, -11, -2).
+- Convention: `tov = totalTurnovers` (restored to pre-v10 state; bit-identical to 15 sig-figs).
+- Audit: PASS at 0/0/0 (debt-#34 substituted N=50 verdict held).
+
+**Phase-3 forwarding (8 items pinned by v10 + post-mortem):** see `Plans/nba-learned-model.md` "Updated Phase-3 plan-review items pinned by v10 + post-mortem" for the full list.
+
+### Council process learnings (Sprint 10.14)
+
+1. **Single-game empirical checks must not be load-bearing on R2 reversals of council expert priors.** New bar: dissenter names the falsification test; that test is blocking + ≥2/stratum + ≥5 total + adversarial selection.
+2. **Pre-backfill DB snapshot is mandatory** for any production-data irreversible operation. Risk-mitigation pre-states the rollback recipe; without the snapshot, the recipe is incomplete.
+3. **Stratified-bbref-validation regression harness** (`scripts/validate-bbref-convention.ts`, ≥16 games across 8 strata) should land BEFORE any future TOV-related model-affecting backfill. Catches data-correctness drift that prediction-replay tests don't.
+4. **`--update-existing` + `--min-age-hours` flags + segmented-snapshot script are general-purpose tooling** retained beyond v10 scope.
 
 ---
 
@@ -984,7 +1040,7 @@ See the **Next Session Pickup** block above for the prioritized next-task queue.
 | 32 | **Shadow-analysis CLI/endpoint.** Follow-up to debt #14 (PR #38). Compute per-sport / per-model Brier (v5) or MAE (v4-spread) delta between adjusted and naive shadow pairs once N≥30 resolved pairs per (sport × model) accumulate. Two pre-declared constraints from `Plans/shadow-prediction-logging.md`: (1) Bonferroni-adjust (α=0.05/8) or pre-declare a single primary ship metric, since 4 sports × 2 models = 8 comparisons; (2) filter pairs to `\|adj.made_at − naive.made_at\| < 60s` to exclude temporally-skewed backfill pairs. | Sprint 10.10 — surfaced as out-of-scope in debt #14's plan | **HIGH** — gated on N≥30 per sport × model (~2-3 weeks for NBA/MLB/NHL, longer for NFL) |
 | 33 | ~~NBA learned-model Phase 2 completion (substantial closure).~~ | — | **MOSTLY CLOSED** by PRs #42 / #43 / #45 (Sprint 10.12, 2026-04-25). Code-completeness: shipped. Production: backfill executed, 7604 rows, 100% coverage, R1+R2+R3 PASS unrounded. The only residual is **cross-source audit Pass-B (N≥50 hand-curated bbref Four-Factors)** which gates the formal Phase 2 ship-claim. Pass-B is tracked as a follow-on (filed below as new debt #34); core debt #33 work itself is done. |
 | 34 | ~~**Phase 2 cross-source audit Pass-B (ship-claim gate).**~~ | — | **CLOSED** 2026-04-26 (post-Sprint-10.12). Pass-B verdict **PASS** at N=50 (0 raw failures + 0 rate failures + 0 missing rows). Path to PASS: (1) Playwright scraper at 1 req/30s collected bbref ground-truth for 50 stratified games (~25 min run, no manual paste); (2) C′ disposition (audit-only bbref formula match — addendum v9) cleared 193/198 systematic possessions-formula divergences; (3) v9.1 canonical-MP fix cleared 4 of 5 residual pace failures (ESPN player-minute drift vs bbref canonical 240-min divisor); (4) path-(i) drop+replace for 2 raw failures (LAL/IND TOV scraper-convention divergence → debt #35; DEN/OKC fg3a bbref single-source disagreement → no debt) with deterministic alternates `nba:bdl-1037593` and `nba:bdl-18421937`. Phase 2 ship-claim now earned: all 5 ship rules satisfied. Phase 3 unblocked. |
-| 35 | **ESPN TOV scraper-convention decision (player-summed vs total).** Surfaced during debt #34 third-source verification: ESPN's summary API exposes `turnovers` (player-summed = 18 for LAL/IND Cup final), `teamTurnovers` (= 2), and `totalTurnovers` (= 20). Our scraper currently uses `totalTurnovers`, which adds team-attributed turnovers (8-sec violations etc.). bbref's published Pace/ORtg formulas use the player-summed convention. Most NBA games have 0–1 team turnovers so the divergence is invisible in aggregate, but it's a real definitional mismatch that biases our `nba_game_box_stats.possessions` upward by 0–N units per game. **Phase 3 plan-review must pin which convention the model trains on.** Two paths: (a) switch scraper to `turnovers`, re-backfill 7,604 rows (no live consumer reads `possessions` so this is invisible to current shipped surfaces); (b) keep `totalTurnovers` and document — Phase 3 features then use a different convention than bbref's published rates. Council should weigh the tradeoff at Phase 3 plan-review. | Sprint 10.12 (post-PR, surfaced in debt #34 closure) | **MEDIUM** — Phase 3 plan-review item, NOT a Phase 2 ship-claim blocker. Phase 3's plan-review must resolve this before training tensors are constructed. |
+| 35 | ~~**ESPN TOV scraper-convention decision.**~~ | — | **CLOSED** 2026-04-26 (Sprint 10.14) as **option-b** (keep `totalTurnovers` → `tov` convention; add `team_tov` NICE-TO-HAVE column for forensic value). v10 backfill briefly switched to player-summed convention (option-d) based on a non-representative single-game empirical check (LAL/IND 2023 Cup final); the broader Pass-B audit re-run on substituted N=50 FAILED at 57 raw + 139 rate failures because bbref's Tm TOV column **matches `totalTurnovers` for regular-season + postseason + Cup pool-play games** (post Oct-2024 SR correction); only Cup-knockout games (~14 per Phase-3 in-scope window, ~0.18% of training data) use bbref player-summed convention. v10 was rolled back via re-scrape with reverted FIELD_MAP; post-rollback audit PASS at 0/0/0; per-season AVG(tov) bit-identical to pre-v10 (15-sig-fig match across all 5 segments). Post-mortem council 2 rounds, R2 5 CLEAR avg 9.6/10. See `Plans/nba-learned-model.md` addendum v10 + post-mortem section. Phase-3 plan-review inherits 8 forwarded items including Cup-knockout handling, 5 ESPN-sentinel-row handling, stratified-bbref-validation pre-flight harness, and council-process refinements (dissenter-named falsification test + ≥2/stratum + ≥5 total + adversarial selection bar for R2 reversals). |
 
 **Audit performed Sprint 10.8 (council mandate):** All debts re-checked against current `main` after PR #29 merged. Debt #13 closed (PR #28). Debt #11 promoted to P0 and generalized (NBA-live → all-sport reliability diagrams from baseline). Old debt #18 "Dixon-Coles" (filed as single item in the PR #29 description) split into #24 (τ, math-proven zero margin impact) and #25 (ξ time-decay MLE, blocked on #26). Debts from earlier sprints have their original numbering preserved (#14-#23); new Sprint 10.8 debts are #24-#26.
 

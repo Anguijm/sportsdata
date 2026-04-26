@@ -67,14 +67,14 @@
         "bbref_url": "https://www.basketball-reference.com/boxscores/202506130IND.html",
         "home_team_id": "nba:IND",
         "away_team_id": "nba:OKC",
-        "note": "2025 NBA Finals"
+        "note": "2025 NBA Finals Game 1"
       },
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add a second NBA Finals game (any year). Find game_id in DB: SELECT g.id, g.date, g.home_team_id, g.away_team_id FROM games g WHERE g.sport='nba' AND g.season LIKE '%-postseason' AND g.date LIKE '%-06-%' ORDER BY g.date DESC LIMIT 10"
+        "game_id": "nba:bdl-15905067",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202406170BOS.html",
+        "home_team_id": "nba:BOS",
+        "away_team_id": "nba:DAL",
+        "note": "2024 NBA Finals Game 5 (BOS clinching game)"
       }
     ],
     "conference_finals": [
@@ -86,59 +86,59 @@
         "note": "2025 Eastern Conference Finals"
       },
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add Western Conference Finals game. Find game_id: SELECT g.id, g.date, g.home_team_id, g.away_team_id FROM games g WHERE g.sport='nba' AND g.season LIKE '%-postseason' AND g.date BETWEEN '2025-05-18' AND '2025-06-01' ORDER BY g.date LIMIT 10"
+        "game_id": "nba:bdl-18441830",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202505200OKC.html",
+        "home_team_id": "nba:OKC",
+        "away_team_id": "nba:MIN",
+        "note": "2025 Western Conference Finals Game 1"
       }
     ],
     "play_in": [
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add Play-In game. Find game_id: SELECT g.id, g.date, g.home_team_id, g.away_team_id FROM games g WHERE g.sport='nba' AND g.season LIKE '%-postseason' AND g.date BETWEEN '2025-04-13' AND '2025-04-19' ORDER BY g.date LIMIT 5"
+        "game_id": "nba:bdl-18421910",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202504150GSW.html",
+        "home_team_id": "nba:GS",
+        "away_team_id": "nba:MEM",
+        "note": "2025 Play-In Tournament — Western Conference (coded 2024-regular in DB)"
       },
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add second Play-In game (different seed bracket or different year)"
+        "game_id": "nba:bdl-18421229",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202504150ORL.html",
+        "home_team_id": "nba:ORL",
+        "away_team_id": "nba:ATL",
+        "note": "2025 Play-In Tournament — Eastern Conference (coded 2024-regular in DB)"
       }
     ],
     "cup_pool": [
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add NBA Cup pool-play game. These are Nov-Dec regular schedule games with Cup branding. The game IDs are in the DB; date filter: SELECT g.id, g.date, g.home_team_id, g.away_team_id FROM games g WHERE g.sport='nba' AND g.season='2024-regular' AND g.date BETWEEN '2024-11-04' AND '2024-12-03' ORDER BY g.date LIMIT 10"
+        "game_id": "nba:bdl-15907534",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202411040ATL.html",
+        "home_team_id": "nba:ATL",
+        "away_team_id": "nba:BOS",
+        "note": "2024-25 NBA Cup pool-play game (Nov 4 2024, East group)"
       },
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add second Cup pool-play game (different group or different year)"
+        "game_id": "nba:bdl-15907531",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202411040CLE.html",
+        "home_team_id": "nba:CLE",
+        "away_team_id": "nba:MIL",
+        "note": "2024-25 NBA Cup pool-play game (Nov 4 2024, East group)"
       }
     ],
     "cup_knockout": [
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add NBA Cup knockout game (SF or Final, neutral site). 2024-25 Cup: QF Dec 10-11 2024 (home arenas), SF Dec 14 2024 (T-Mobile Arena Las Vegas), Final Dec 17 2024 (Las Vegas). 2023-24 Cup: QF Dec 4-5 2023 (home arenas), SF Dec 7 2023 (Las Vegas), Final Dec 9 2023 (Las Vegas). Use game IDs from data/cup-knockout-game-ids.json."
+        "game_id": "nba:bdl-17195500",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202412170OKC.html",
+        "home_team_id": "nba:OKC",
+        "away_team_id": "nba:MIL",
+        "note": "2024-25 NBA Cup Final (Dec 17 2024, T-Mobile Arena Las Vegas — neutral site)"
       },
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add second Cup knockout game (different year: 2023-24 Cup, Dec 2023)"
+        "game_id": "nba:bdl-8258317",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202312090LAL.html",
+        "home_team_id": "nba:LAL",
+        "away_team_id": "nba:IND",
+        "note": "2023-24 NBA Cup Final (Dec 9 2023, T-Mobile Arena Las Vegas — neutral site)"
       }
     ],
     "marquee_broadcast": [
@@ -150,11 +150,11 @@
         "note": "NBA Opening Night 2023 — defending champs DEN vs LAL, TNT marquee game"
       },
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add Christmas Day, MLK Day, or other marquee ABC/TNT national-broadcast game. Find game_ids: SELECT g.id, g.date, g.home_team_id, g.away_team_id FROM games g WHERE g.sport='nba' AND (g.date LIKE '%-12-25' OR g.date LIKE '%-01-20') ORDER BY g.date DESC LIMIT 10"
+        "game_id": "nba:bdl-18447232",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202512250NYK.html",
+        "home_team_id": "nba:NY",
+        "away_team_id": "nba:CLE",
+        "note": "2025-26 Christmas Day game (ABC national broadcast)"
       }
     ],
     "rescheduled_2022_23": [
@@ -163,30 +163,30 @@
         "bbref_url": null,
         "home_team_id": null,
         "away_team_id": null,
-        "note": "TODO: add rescheduled 2022-23 game (COVID/wildfire/arena-conflict postponements re-scored from broadcast tape). These may not be in the current DB if 2022-regular is not in the eligible window — check: SELECT g.id, g.date, g.home_team_id, g.away_team_id FROM games g WHERE g.sport='nba' AND g.season='2022-regular' LIMIT 5"
+        "note": "N/A — 2022-regular season not in eligible DB window (confirmed by query returning 0 rows). This stratum cannot be populated; gap report will note it as intentionally skipped."
       },
       {
         "game_id": null,
         "bbref_url": null,
         "home_team_id": null,
         "away_team_id": null,
-        "note": "TODO: add second rescheduled 2022-23 game. If 2022-regular is not in the eligible window, document this stratum as N/A in the pre-flight report."
+        "note": "N/A — same reason as above. Both entries left null; validator will count 0 valid for this stratum."
       }
     ],
     "ot": [
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add overtime game. Find OT games: SELECT bs.game_id, g.date, g.home_team_id, g.away_team_id FROM nba_game_box_stats bs JOIN games g ON g.id = bs.game_id WHERE bs.minutes_played > 240 GROUP BY bs.game_id LIMIT 10"
+        "game_id": "nba:bdl-1037615",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202310270SAS.html",
+        "home_team_id": "nba:SA",
+        "away_team_id": "nba:HOU",
+        "note": "2023-24 regular season OT game (266 total minutes = single OT)"
       },
       {
-        "game_id": null,
-        "bbref_url": null,
-        "home_team_id": null,
-        "away_team_id": null,
-        "note": "TODO: add second overtime game (preferably double-OT if available)"
+        "game_id": "nba:bdl-15908920",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202504130CLE.html",
+        "home_team_id": "nba:CLE",
+        "away_team_id": "nba:IND",
+        "note": "2024-25 regular season double-OT game (292 total minutes, Apr 13 2025)"
       }
     ]
   },

@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-27 (post Sprint 10.15 — all 6 pre-flight scripts on branch `claude/phase3-preflight-1-3`, PR #51 open).
+Last regenerated: 2026-04-27 (post Sprint 10.16 — PR #51 merged at 6b21d42; all 6 pre-flight gates CLEAR; Phase 3 step 3 in progress on `claude/phase3-step3-game-type`).
 
 ## Where to start
 
@@ -23,14 +23,11 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Council results gate (3rd gate) on PR #51.** Review actual run outputs: v5 replay 11/11 PASS, falsification test FALSIFIED (Δ Brier=0.0816 > 0.02, CI [0.0105, 0.1671], evidence at `docs/cup-knockout-disposition-evidence.md`). Convention validator output pending manifest population (see next item). Once council clears 3rd gate, merge PR #51.
-- **Populate manifest TODO entries, then run convention scripts.** `data/bbref-convention-manifest.json` has TODO entries in strata: `play_in` (2), `cup_pool` (2), `cup_knockout` (2), `conference_finals` (1), `nba_finals` (1), `marquee_broadcast` (1), `rescheduled_2022_23` (2), `ot` (2). Each TODO entry has a SQL query in the `note` field to find the missing game IDs. Once manifest is populated: run `validate-bbref-convention.ts` → `data/bbref-convention-report.json` → run `check-game-type-asymmetries.ts` → `docs/phase-3-game-type-handling.md`. Commit both outputs; convention gate complete.
+- **Phase 3 step 3 — game-type metadata + neutral_site flag.** Council plan review → impl → results. Proposed: add `neutral_site BOOLEAN` to `nba_eligible_games` (14 cup-knockout neutral-site games) + document `game_type` derivation rule in Python. Supplementary Gate B (pre-backfill snapshot) required before DB write. Branch: `claude/phase3-step3-game-type`.
 
 ## Next (queued, scoped)
 
-- **Phase 3 step 2 — pre-flight runs.** *(Partially complete: v5-replay 11/11 PASS, falsification test FALSIFIED with evidence committed. Remaining: convention scripts after manifest population — see Now.)* Once convention outputs committed, all 6 pre-flight scripts are run-verified and ready for full council 3rd gate.
-- **Phase 3 step 3 — game-type metadata.** Add `game_type` enum to `games`/`nba_eligible_games` (or document derivation rule). Backfill historical games. Use `scripts/snapshot-prebackfill-db.sh` per Supplementary Gate B.
-- **Phase 3 step 4 — feature-engineering pipeline.** Implement `ml/nba/features.py` with all pinned dispositions (drop or keep Cup-knockout per falsification result, impute sentinel rows, etc.). Unit tests: `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_as_of_filter_completeness.py`, `test_time_machine_feature_purity.py`.
+- **Phase 3 step 4 — feature-engineering pipeline.** Implement `ml/nba/features.py` with all pinned dispositions (cup-knockout accept-as-is, neutral_site=1, sentinel imputation, etc.). Unit tests: `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_as_of_filter_completeness.py`, `test_time_machine_feature_purity.py`.
 - **Phase 3 steps 5–10**: training infrastructure → calibration + serving → pre-flight ship-rule gates → test-fold evaluation → shadow window → live swap. See addendum v11 §"Phase 3 implementation sequence (gating plan)".
 
 ## Someday (daydreams, architectural ideas)
@@ -45,17 +42,16 @@ These are ideas that have surfaced but haven't been costed or scoped. Move to "N
 - **Cross-sport meta-learning** — does an MLB pitcher-strength prior generalize to NHL goalies? Probably not, but worth a thought.
 - **Real-time prediction WebSocket** — push odds line-moves and prediction shifts to the frontend live.
 - **Sportsbook arbitrage scanner** — pure data play, no modeling required; consume multiple odds feeds, detect mispriced lines.
-- **Cup-format and play-in-tournament-aware features** — neutral-site characteristic isn't currently a feature in any model. Worth A/B-ing once Phase 3 is in motion (debt #35 surfaced this).
 - **Fully retire v2 baseline** — once Phase 3 (or v6, if Phase 1 ships) has ≥6 months of live track record.
 
 ## Open issues (mirror of `gh issue list --state open`)
 
-None. (`gh issue list --state open` returns empty as of 2026-04-26 end-of-session.)
+None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- **PR #51** (`claude/phase3-preflight-1-3`) — all 6 Phase 3 pre-flight scripts + `.harness/council/README.md` + council WARN→fixes. Open, not yet merged. Pending: council results gate (3rd gate) + manifest population.
-  - All Sprint 10.13–10.14 work already merged to main (PRs #47–#50).
+- **`claude/phase3-step3-game-type`** — Phase 3 step 3: game-type metadata + neutral_site flag. Fresh branch from main `6b21d42`. No commits yet. Pending: council plan review.
+  - PR #51 merged at `6b21d42` (Sprint 10.16).
 
 ---
 

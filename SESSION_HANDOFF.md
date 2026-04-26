@@ -4,22 +4,31 @@
 
 ---
 
-## Start here next session — 2026-04-27 end-of-session
+## Start here next session — 2026-04-27 (Sprint 10.16)
 
-**Current branch:** `claude/phase3-preflight-1-3` at `6c8be25`. PR #51 open — not yet merged.
-**Main:** `525bc4d` (unchanged from 2026-04-26 — PR #51 not merged yet).
+**Current branch:** `claude/phase3-step3-game-type` (fresh from main, no commits yet).
+**Main:** `6b21d42` — PR #51 squash-merged (all 6 pre-flight scripts + convention gate complete).
 **Production state (Fly):** unchanged — app v57, 7,604 box-stat rows, `tov = totalTurnovers`, `team_tov` populated, audit PASS 0/0/0.
+
+**Pre-flight gate status — ALL COMPLETE:**
+- Gate A: `validate-bbref-convention.ts` — 8/10 strata ≥2 validated, 22 total matches, 1 known mismatch cup_knockout (nba:bdl-8258317 LAL/IND 2023-24 Cup Final, pre-existing from debt #35 → db:20 vs bbref:18)
+- Gate B: `check-game-type-asymmetries.ts` — matrix in `docs/phase-3-game-type-handling.md`; cup_knockout mismatch flagged with pm.5 falsification on record
+- Gate C: `falsify-cup-knockout-disposition.ts` — FALSIFIED (Δ Brier=0.0816, CI [0.0105, 0.1671]), disposition=accept-as-is
+- Gate D: `v5-prediction-replay.ts` — 11/11 PASS
+- Gate E: `feature-extraction-parity.test.ts` — phase placeholder; activates at Phase 3 step 4
+- Gate F: `snapshot-prebackfill-db.sh` — ready; Supplementary Gate B fires it before any backfill
+- Council 3rd gate (test/results): **CLEAR** avg 8.25/10 (DQ 8, Stats 8, Pred 8, Domain 9)
+- `rescheduled_2022_23` stratum: intentional N/A — 2022-regular not in eligible DB window
 
 **Next 1-2 actions (priority order):**
 
-1. **Council results gate (3rd gate) on PR #51 pre-flight scripts.** Run the council test/results review on the actual run outputs: v5 replay 11/11 PASS, falsification test FALSIFIED (Δ Brier=0.0816, CI [0.0105, 0.1671], evidence at `docs/cup-knockout-disposition-evidence.md`). Convention validator output is not yet available (manifest TODO entries need populating first — see action 2). Review what exists now; note convention gate as pending. Once council clears, merge PR #51.
-2. **Populate manifest TODO entries + run convention scripts.** `data/bbref-convention-manifest.json` has TODO entries in strata: `play_in` (2), `cup_pool` (2), `cup_knockout` (2), `conference_finals` (1), `nba_finals` (1), `marquee_broadcast` (1), `rescheduled_2022_23` (2), `ot` (2). Each TODO entry has a SQL query in the `note` field to find the missing game IDs. Once manifest is populated: run `validate-bbref-convention.ts` → produces `data/bbref-convention-report.json` → run `check-game-type-asymmetries.ts` → produces `docs/phase-3-game-type-handling.md`. Commit both outputs. Then the full council results gate can run.
+1. **Phase 3 step 3 — game-type metadata.** Council plan review needed before implementation. Proposed approach: (a) add `neutral_site` BOOLEAN to `nba_eligible_games` (populated from `data/cup-knockout-game-ids.json` — 14 known neutral-site Cup games); (b) document full `game_type` derivation rule in Python for training-tensor construction (avoid full schema migration for stratification-only metadata). Supplementary Gate B (pre-backfill snapshot) required before any DB write. Read `Plans/nba-learned-model.md` addendum v11 §"Phase 3 implementation sequence" step 3 + §"Supplementary Gate B" before starting.
+2. **Phase 3 step 4 (next)** — feature-engineering pipeline: `ml/nba/features.py` + `src/ml/features.ts`. Step 4 starts ONLY after step 3 council plan clears.
 
-**Blockers:** Convention scripts blocked on manifest population (needs DB queries). Gate A (`validate-bbref-convention.ts`) requires ≥2 validated games per stratum to exit 0.
-
-**Key facts from this session:**
-- pm.5 falsification test result: Δ Brier = 0.0816 > 0.02 → **FALSIFIED**. Cup-knockout disposition = **accept-as-is** for Phase 3. Mechanism: v5's neutral-site blind spot (applies 2.25pt home-adv to "home" team even at T-Mobile Arena). Phase 3 ML model should add `neutral_site` binary feature.
-- All 6 pre-flight scripts implemented, council impl-reviewed, run-verified.
+**Key facts:**
+- Cup-knockout disposition = **accept-as-is** (keep in training; FALSIFIED → don't drop). Phase 3 adds `neutral_site=1` for Cup SF/Final games to let model learn the adjustment.
+- Play-in games are coded as `2024-regular` in BDL API (NOT postseason). Derivation rule must use date range + season code, not season code alone.
+- `rescheduled_2022_23`: not in DB — skip this stratum in training-tensor construction.
 
 **Pre-session context to read** (in order):
 1. This file (you're already here).

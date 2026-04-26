@@ -56,6 +56,10 @@ export interface NbaBoxStatsRow {
   ast: number;
   stl: number;
   blk: number;
+  // tov is the player-summed turnover convention (matches bbref Pace/ORtg
+  // glossary; addendum v10). team-attributed turnovers (24-sec, 8-sec,
+  // 5-sec inbound, lane violations, etc.) are stored separately as the
+  // NICE-TO-HAVE team_tov below.
   tov: number;
   pf: number;
 
@@ -74,6 +78,10 @@ export interface NbaBoxStatsRow {
   largest_lead?: number | null;
   technical_fouls?: number | null;
   flagrant_fouls?: number | null;
+  // team-attributed turnovers (added addendum v10). team_tov + tov ==
+  // ESPN totalTurnovers as a structural identity; the consistency check
+  // surfaces parse-level drift in scrape_warnings.
+  team_tov?: number | null;
 }
 
 /** Box-score for both teams of a single game. */
@@ -110,6 +118,7 @@ export const MUST_HAVE_RAW_FIELDS = [
 export const NICE_TO_HAVE_FIELDS = [
   'points_off_turnovers', 'fast_break_points',
   'points_in_paint', 'largest_lead', 'technical_fouls', 'flagrant_fouls',
+  'team_tov',
 ] as const;
 
 // ---------- Possessions formula (basketball-reference / Dean Oliver) ----------
@@ -117,9 +126,11 @@ export const NICE_TO_HAVE_FIELDS = [
 /**
  * Pinned possession estimator per plan §Phase 2 (MUST-HAVE derived column).
  * Formula: FGA + 0.44·FTA − OREB + TOV
- * Both teams are averaged and the averaged value is stored per-team per the
- * basketball-reference convention. Averaging happens in the caller, not here
- * (this function returns the single-team estimate).
+ * `tov` is the player-summed turnover convention (matches bbref Pace/ORtg
+ * glossary; addendum v10). Both teams are averaged and the averaged value
+ * is stored per-team per the basketball-reference convention. Averaging
+ * happens in the caller, not here (this function returns the single-team
+ * estimate).
  */
 export function possessionsSingleTeam(row: {
   fga: number; fta: number; oreb: number; tov: number;
@@ -147,10 +158,14 @@ interface EspnTeamStat {
 /** Map from ESPN stat `name` to our parsing behavior.
  *  `kind: 'made-att'` parses "42-89" into [made, attempts].
  *  `kind: 'int'` parses the displayValue as an integer.
+ *  `kind: 'check-only'` parses the displayValue but does NOT persist to the
+ *    NbaBoxStatsRow; the value is captured in a side-channel for consistency
+ *    checks (e.g., totalTurnovers ?= turnovers + teamTurnovers — addendum v10).
  *  `must_have` means a missing field produces `missing_field` + ok:false.
+ *  For `kind: 'check-only'` entries, `targets` names the side-channel key.
  */
 type FieldMap = Record<string, {
-  kind: 'int' | 'made-att';
+  kind: 'int' | 'made-att' | 'check-only';
   must_have: boolean;
   targets: readonly string[]; // which NbaBoxStatsRow field(s) this populates
 }>;
@@ -168,12 +183,18 @@ const ESPN_FIELD_MAP: FieldMap = {
   'assists': { kind: 'int', must_have: true, targets: ['ast'] },
   'steals': { kind: 'int', must_have: true, targets: ['stl'] },
   'blocks': { kind: 'int', must_have: true, targets: ['blk'] },
-  // `totalTurnovers` = player TOs + team TOs; matches basketball-reference
-  // convention and is what possessionsSingleTeam() expects.
-  'totalTurnovers': { kind: 'int', must_have: true, targets: ['tov'] },
+  // `turnovers` = player-summed (sum of individual stat lines). Matches
+  // basketball-reference Pace/ORtg glossary convention. Addendum v10 switched
+  // from `totalTurnovers` (player + team) to this. team-attributed turnovers
+  // are captured separately as the NICE-TO-HAVE `teamTurnovers` → team_tov.
+  'turnovers': { kind: 'int', must_have: true, targets: ['tov'] },
   'fouls': { kind: 'int', must_have: true, targets: ['pf'] },
 
   // NICE-TO-HAVE
+  // team-attributed turnovers (24-sec, 8-sec, 5-sec inbound, lane violations,
+  // illegal-screens not charged to an individual, etc.). NICE-TO-HAVE: NULL
+  // if absent in the ESPN response (older fixtures may omit). Addendum v10.
+  'teamTurnovers': { kind: 'int', must_have: false, targets: ['team_tov'] },
   'turnoverPoints': { kind: 'int', must_have: false, targets: ['points_off_turnovers'] },
   'fastBreakPoints': { kind: 'int', must_have: false, targets: ['fast_break_points'] },
   'pointsInPaint': { kind: 'int', must_have: false, targets: ['points_in_paint'] },
@@ -181,6 +202,13 @@ const ESPN_FIELD_MAP: FieldMap = {
   // ESPN has both 'technicalFouls' and 'totalTechnicalFouls'; prefer the total.
   'totalTechnicalFouls': { kind: 'int', must_have: false, targets: ['technical_fouls'] },
   'flagrantFouls': { kind: 'int', must_have: false, targets: ['flagrant_fouls'] },
+
+  // CHECK-ONLY: parsed for the consistency check
+  // `tov + team_tov == totalTurnovers` (addendum v10). Not stored to a column;
+  // value captured in the parser's consistencyValues side-channel. Not
+  // must_have because the canonical `tov` is already independently sourced
+  // from `turnovers`; if `totalTurnovers` is absent we just skip the check.
+  'totalTurnovers': { kind: 'check-only', must_have: false, targets: ['totalTurnovers'] },
 };
 
 /** ESPN stat keys we recognize but intentionally don't map to our schema
@@ -188,7 +216,6 @@ const ESPN_FIELD_MAP: FieldMap = {
  *  already know about and have decided not to persist). */
 const RECOGNIZED_BUT_UNMAPPED = new Set<string>([
   'fieldGoalPct', 'threePointFieldGoalPct', 'freeThrowPct', // we derive rates downstream
-  'turnovers', 'teamTurnovers', // individual + team; we use totalTurnovers
   'technicalFouls', // we use totalTechnicalFouls
   'leadChanges', 'leadPercentage', // informational, not features
 ]);
@@ -304,6 +331,9 @@ function parseOneTeamSide(
 
   const stats: Partial<NbaBoxStatsRow> = {};
   const seenNames = new Set<string>();
+  // Side-channel for `kind: 'check-only'` values used in post-parse consistency
+  // assertions (e.g., totalTurnovers ?= tov + team_tov — addendum v10).
+  const consistencyValues: Record<string, number> = {};
 
   for (const raw of statistics) {
     if (!isObj(raw)) continue;
@@ -329,6 +359,9 @@ function parseOneTeamSide(
         (stats as Record<string, number>)[spec.targets[0]] = parsed[0];
         (stats as Record<string, number>)[spec.targets[1]] = parsed[1];
       }
+    } else if (spec.kind === 'check-only') {
+      const v = parseInt10(stat.displayValue, stat.name, warnings, gameId);
+      if (v != null) consistencyValues[spec.targets[0]] = v;
     }
   }
 
@@ -338,6 +371,38 @@ function parseOneTeamSide(
     if (!seenNames.has(espnName)) {
       warnings.push({ warning_type: 'missing_field', detail: `team ${teamAbbr}: MUST-HAVE field "${espnName}" absent`, game_id: gameId });
       return { ok: false, reason: `team ${teamAbbr}: MUST-HAVE field "${espnName}" absent`, warnings };
+    }
+  }
+
+  // Consistency + bounds checks (addendum v10).
+  // - tov + team_tov == totalTurnovers (sum-identity).
+  // - tov ∈ [0, 40], team_tov ∈ [0, 10], tov ≥ team_tov (per-component bounds).
+  // All violations emit `schema_error` warnings but do not flip ok:false; the
+  // canonical `tov` value is already sourced from ESPN's `turnovers` field
+  // which is well-defined independently. Hard-failing would orphan the row
+  // from coverage gates for what is informational drift, not data corruption.
+  // Cross-source bbref consistency remains the audit-script's job, not a
+  // per-scrape assertion.
+  const tov = stats.tov;
+  const teamTov = stats.team_tov;
+  if (typeof tov === 'number') {
+    if (tov < 0 || tov > 40) {
+      warnings.push({ warning_type: 'schema_error', detail: `team ${teamAbbr}: tov out of bounds [0,40]: ${tov}`, game_id: gameId });
+    }
+  }
+  if (typeof teamTov === 'number') {
+    if (teamTov < 0 || teamTov > 10) {
+      warnings.push({ warning_type: 'schema_error', detail: `team ${teamAbbr}: team_tov out of bounds [0,10]: ${teamTov}`, game_id: gameId });
+    }
+    if (typeof tov === 'number' && tov < teamTov) {
+      warnings.push({ warning_type: 'schema_error', detail: `team ${teamAbbr}: tov<team_tov violates ordering: tov=${tov}, team_tov=${teamTov}`, game_id: gameId });
+    }
+  }
+  if (typeof tov === 'number' && typeof teamTov === 'number' && 'totalTurnovers' in consistencyValues) {
+    const expected = tov + teamTov;
+    const got = consistencyValues.totalTurnovers;
+    if (expected !== got) {
+      warnings.push({ warning_type: 'schema_error', detail: `team ${teamAbbr}: tov+team_tov!=totalTurnovers: ${tov}+${teamTov}=${expected}, got ${got}`, game_id: gameId });
     }
   }
 
@@ -511,6 +576,7 @@ export function validateNbaBoxScore(
     largest_lead: side.stats.largest_lead ?? null,
     technical_fouls: side.stats.technical_fouls ?? null,
     flagrant_fouls: side.stats.flagrant_fouls ?? null,
+    team_tov: side.stats.team_tov ?? null,
   });
 
   return {

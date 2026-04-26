@@ -145,6 +145,21 @@ function runFixture(fc: FixtureCase): void {
       failures++;
     }
   }
+
+  // Addendum v10: tov is the player-summed convention (matches ESPN.turnovers,
+  // not ESPN.totalTurnovers). team_tov captures team-attributed turnovers
+  // and is NICE-TO-HAVE. Consistency check tov+team_tov==totalTurnovers must
+  // pass silently on clean fixtures (no schema_error warnings).
+  assertTrue(typeof home.team_tov === 'number' && home.team_tov >= 0,
+    `${fc.eventId}: home.team_tov populated as NICE-TO-HAVE int (got ${home.team_tov})`);
+  assertTrue(typeof away.team_tov === 'number' && away.team_tov >= 0,
+    `${fc.eventId}: away.team_tov populated as NICE-TO-HAVE int (got ${away.team_tov})`);
+  for (const w of result.warnings) {
+    if (w.warning_type === 'schema_error' && (w.detail.includes('tov') || w.detail.includes('team_tov') || w.detail.includes('totalTurnovers'))) {
+      console.error(`FAIL ${fc.eventId}: unexpected schema_error on TOV consistency: ${w.detail}`);
+      failures++;
+    }
+  }
 }
 
 function runUnitTests(): void {
@@ -195,12 +210,83 @@ function runOtFallbackIntegration(): void {
   assertTrue(fallbackWarnings[0].detail.includes('periods=5'), `fallback warning identifies period count, got: ${fallbackWarnings[0].detail}`);
 }
 
+function runTovConsistencyChecks(): void {
+  // Addendum v10 Ship Rule 2: synthetic-corruption fixtures must produce
+  // schema_error warnings for (a) sum-mismatch, (b) out-of-bounds,
+  // (c) ordering-violation. Validator must NOT flip ok:false (warning-only).
+  console.log('\n## TOV consistency checks (addendum v10): synthetic corruption');
+  const fixturePath = join(__dirname, '../src/scrapers/__tests__/fixtures/espn-nba-box-401704627.json');
+  const baseRaw = JSON.parse(readFileSync(fixturePath, 'utf8'));
+
+  function findStat(team: number, name: string): { displayValue: string } {
+    return baseRaw.boxscore.teams[team].statistics.find((s: { name: string }) => s.name === name);
+  }
+
+  // (a) sum-mismatch: change totalTurnovers to a value that breaks
+  // tov + team_tov == totalTurnovers on the home side.
+  {
+    const raw = JSON.parse(JSON.stringify(baseRaw));
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'totalTurnovers').displayValue = '99';
+    const result = validateNbaBoxScore(raw, 'nba:401704627', 'nba:BOS', 'nba:NY', '2024-25', '2026-04-25T12:00:00Z');
+    assertTrue(result.ok, '(a) sum-mismatch: validator stays ok:true (warning-only, not hard-fail)');
+    if (result.ok) {
+      const sumWarn = result.warnings.find(w => w.warning_type === 'schema_error' && w.detail.includes('tov+team_tov!=totalTurnovers'));
+      assertTrue(!!sumWarn, `(a) sum-mismatch: schema_error warning fired (got: ${sumWarn?.detail ?? 'NONE'})`);
+    }
+  }
+
+  // (b) out-of-bounds: change turnovers to 50 (above tov ∈ [0,40] bound).
+  {
+    const raw = JSON.parse(JSON.stringify(baseRaw));
+    // Adjust totalTurnovers consistently so we don't also trip the sum-mismatch check.
+    const teamTovStr = findStat(0, 'teamTurnovers').displayValue;
+    const teamTov = Number.parseInt(teamTovStr, 10);
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'turnovers').displayValue = '50';
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'totalTurnovers').displayValue = String(50 + teamTov);
+    const result = validateNbaBoxScore(raw, 'nba:401704627', 'nba:BOS', 'nba:NY', '2024-25', '2026-04-25T12:00:00Z');
+    assertTrue(result.ok, '(b) out-of-bounds tov=50: validator stays ok:true');
+    if (result.ok) {
+      const boundsWarn = result.warnings.find(w => w.warning_type === 'schema_error' && w.detail.includes('tov out of bounds'));
+      assertTrue(!!boundsWarn, `(b) out-of-bounds: schema_error warning fired (got: ${boundsWarn?.detail ?? 'NONE'})`);
+    }
+  }
+
+  // (c) ordering-violation: tov < team_tov (player-summed less than team-attributed).
+  {
+    const raw = JSON.parse(JSON.stringify(baseRaw));
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'turnovers').displayValue = '1';
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'teamTurnovers').displayValue = '5';
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'totalTurnovers').displayValue = '6';
+    const result = validateNbaBoxScore(raw, 'nba:401704627', 'nba:BOS', 'nba:NY', '2024-25', '2026-04-25T12:00:00Z');
+    assertTrue(result.ok, '(c) tov<team_tov: validator stays ok:true');
+    if (result.ok) {
+      const orderWarn = result.warnings.find(w => w.warning_type === 'schema_error' && w.detail.includes('tov<team_tov'));
+      assertTrue(!!orderWarn, `(c) ordering: schema_error warning fired (got: ${orderWarn?.detail ?? 'NONE'})`);
+    }
+  }
+
+  // (d) team_tov out of bounds: 15 (above team_tov ∈ [0,10]).
+  {
+    const raw = JSON.parse(JSON.stringify(baseRaw));
+    const tov = Number.parseInt(findStat(0, 'turnovers').displayValue, 10);
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'teamTurnovers').displayValue = '15';
+    raw.boxscore.teams[0].statistics.find((s: { name: string }) => s.name === 'totalTurnovers').displayValue = String(tov + 15);
+    const result = validateNbaBoxScore(raw, 'nba:401704627', 'nba:BOS', 'nba:NY', '2024-25', '2026-04-25T12:00:00Z');
+    assertTrue(result.ok, '(d) team_tov=15: validator stays ok:true');
+    if (result.ok) {
+      const teamBoundsWarn = result.warnings.find(w => w.warning_type === 'schema_error' && w.detail.includes('team_tov out of bounds'));
+      assertTrue(!!teamBoundsWarn, `(d) team_tov bounds: schema_error warning fired (got: ${teamBoundsWarn?.detail ?? 'NONE'})`);
+    }
+  }
+}
+
 function main(): void {
   for (const fc of FIXTURES) {
     runFixture(fc);
   }
   runUnitTests();
   runOtFallbackIntegration();
+  runTovConsistencyChecks();
 
   console.log();
   if (failures === 0) {

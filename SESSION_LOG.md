@@ -179,36 +179,56 @@ Last updated: 2026-04-26 (Sprint 10.14 — Debt #35 CLOSED as option-b after v10
 
 > **Staleness rule:** this block is rewritten at the start of every new session (or at session end when doing handoff). If the date below is more than ~48 hours older than today, treat the block as STALE — regenerate it from the Sprint-by-Sprint Log + git history, not from memory.
 
-**Status as of 2026-04-26 end-of-session (Sprint 10.13 — Phase 2 ship-claim EARNED):**
+**Status as of 2026-04-26 end-of-session (Sprint 10.14 + Phase-3-plan-draft — both PRs merged):**
 
-- `main` at `bfc8217`. Branch `claude/debt-34-pass-b-c-prime` at `0890a62` pushed; PR not yet opened (CLAUDE.md gate). All 5 Phase 2 ship rules satisfied; Phase 3 unblocked.
-- **Debt #34 (Phase 2 cross-source audit Pass-B) closed.** Verdict PASS at N=50 (0/0/0).
-- **Debt #35 (ESPN TOV scraper-convention) opened.** Phase 3 plan-review item, NOT a Phase 2 blocker.
+- `main` at `525bc4d` (PR #49 Phase-3-plan-draft merged 2026-04-26 ~09:30 UTC; PR #48 debt-35 merged ~09:10 UTC).
+- **Debt #35 CLOSED** as option-b (`tov = totalTurnovers` restored; `team_tov` NICE-TO-HAVE column populated for 7,604 rows; 5 ESPN-sentinel rows surface as warnings; audit PASS at 0/0/0; bit-identical pre-v10 to 15 sig-figs across all 5 segments). v10 forward-and-rollback cycle taught the dissenter-named-falsification-test rule the hard way.
+- **Phase 3 plan-draft (addendum v11) council-CLEAR** at R2 5/5 avg 9.4/10. 10-step gating sequence pinned. 6 pre-flight scripts gated to land BEFORE any model code.
+- **No new debts opened this sprint.** Open-debts table at end of file is current.
 
 ### Priority queue for next session
 
-**P0 — finalize this sprint's ship:**
-1. **Open + merge the debt-34 PR.** https://github.com/Anguijm/sportsdata/pull/new/claude/debt-34-pass-b-c-prime — commit message has the full summary. No required CI gates.
+**P0 — start Phase 3 step 1 (pre-flight tooling):**
 
-**P1 — begin Phase 3:**
-2. **Phase 3 plan draft.** Phase 2 ship-claim earned; Phase 3 fully unblocked. Inherited Phase-3-plan-review items from addenda v6 / v7 / v8 / v9:
-   - test-fold training-time filter (addendum v7 §7)
-   - as-of-snapshot reproducibility (addendum v7 §8)
-   - season-aggregate as 10th feature-form candidate (addendum v6)
-   - multiple-comparisons mitigation on the 9-way grid selection (addendum v6)
-   - cron ordering: box-stats AFTER predictions (addendum v7 §12)
-   - Wilson-CI guidance for small-N Rule 3 cells (addendum v8)
-   - opp-* self-join feature-export pattern
-   - **TOV scraper-convention decision (debt #35)** — pin player-summed vs total before training tensors
-   - Council-CLEAR before any model code.
+Per addendum v11 §"Phase 3 implementation sequence (gating plan)" step 1: 6 scripts must land BEFORE any model code is written. Council impl-review batch-able per Pred R1 fix-pack #1 (scripts #1+#2 share a single review since #2 is mechanical execution).
 
-**Orthogonal (no Phase 2/3 dependency):**
-3. **Debt #19 — second injury data provider.** Trigger met (4+ days of zero `home_out_impact`). Strategic / scope decision; user holding.
-4. **Debt #32 — shadow-analysis CLI.** Gated on N≥30 shadow pairs per (sport × model). Zero pairs accruing while ESPN injury feed is flat.
-5. **Debt #26 — pre-2024 soccer match scrape.** Gating dependency for serious soccer-v2 (debts #24, #25).
-6. **Debt #20 — historical odds ingest.** Unblocks v4-spread ATS backtest.
+1. **`scripts/validate-bbref-convention.ts`** — stratified-bbref-validation regression harness; ≥20 games × 10 strata (regular / postseason / cup_pool / cup_knockout / play_in / nba_finals / conference_finals / marquee_broadcast / rescheduled_2022_23 / OT) + `--sentinel-game-ids` flag covering 4 known sentinel game_ids (CHI/LAC nba:bdl-18447432, GS nba:bdl-15907929, BOS nba:bdl-18446826, DEN nba:bdl-15907808). Output: `data/bbref-convention-report.json` + `docs/bbref-convention-report.md`. Uses Playwright + the existing `data/.bbref-cache/` infrastructure (proven Sprint 10.13).
+2. **`scripts/v5-prediction-replay.ts`** + `data/v5-replay-fixtures.json` + `data/v5-replay-expected.json`. Byte-for-byte tolerance intentional (Pred R1 fix-pack #5 confirmed). Pre-merge gate on any Phase 3 model-affecting commit.
+3. **`scripts/snapshot-prebackfill-db.sh`** — codified pre-backfill DB snapshot wrapper (`sqlite3 .backup` via `fly ssh`). MUST run before any production-data-irreversible operation.
+4. **`scripts/falsify-cup-knockout-disposition.ts`** — Domain's named falsification test (per pm.5 rule). v5-on-Cup-knockout vs v5-on-regular-season-same-month Brier comparison with paired bootstrap CI. Falsification criterion: Δ Brier > 0.02 → reject (b) drop disposition. Output: `docs/cup-knockout-disposition-evidence.md`.
+5. **`scripts/check-game-type-asymmetries.ts`** — depends on #1 output. Consolidates findings into a Phase-3-feature-engineering decision matrix (drop / impute / accept-as-is per stratum) with required citations of pm.6 evidence thresholds. Output: `docs/phase-3-game-type-handling.md`.
+6. **`scripts/feature-extraction-parity.test.ts`** — Python ↔ TS feature-extraction parity test. Bit-identical tensors across fixed fixture set. Pre-merge gate on any Python-or-TS feature-extraction commit. (Implementation-time prerequisite for step 4 of impl sequence; can land in step 1 batch as scaffolding even before `ml/nba/features.py` exists — initial fixture set + skeleton test that asserts trivially.)
+
+**Council impl-review** on the batch before proceeding to Phase 3 step 2 (pre-flight runs).
+
+**Pre-session-start checklist:**
+- Read `Plans/nba-learned-model.md` addendum v11 (most recent ~330 lines) for the full pre-flight tooling specs + 10-step sequence
+- Read addendum v10 + post-mortem (just before v11) for the Cup-asymmetry context that motivates several of the pre-flight scripts
+- Read `learnings.md` Sprint 10.14 entry for the 9-point lessons-learned summary
+- Confirm the 4 unique ESPN-sentinel game_ids in `nba_game_box_stats` on Fly are still surfacing as `scrape_warnings.schema_error` (one of the pre-flight scripts re-probes them)
+
+**P1 — Up next (after Phase 3 step 1 complete):**
+
+Phase 3 step 2: pre-flight runs (3 scripts execute, results consolidated into committed reports). Council impl-review on findings. See addendum v11 §"Phase 3 implementation sequence (gating plan)" steps 2-10 for the full path.
+
+**Orthogonal (no Phase 3 dependency):**
+- **Debt #19 — second injury data provider.** Trigger met (4+ days of zero `home_out_impact`). Strategic / scope decision; user holding.
+- **Debt #32 — shadow-analysis CLI.** Gated on N≥30 shadow pairs per (sport × model). Zero pairs accruing while ESPN injury feed is flat.
+- **Debt #26 — pre-2024 soccer match scrape.** Gating dependency for serious soccer-v2 (debts #24, #25).
+- **Debt #20 — historical odds ingest.** Unblocks v4-spread ATS backtest.
 
 See `BACKLOG.md` (repo root) for the canonical priority + idea log.
+
+### Verification at session end (2026-04-26)
+
+| Check | Result | Status |
+|-------|--------|--------|
+| PR #48 (debt-35) merged at `7313bc3` | confirmed via `gh pr view 48` | PASS |
+| PR #49 (Phase-3-plan-draft) merged at `525bc4d` | confirmed via `git log` | PASS |
+| `main` at `525bc4d` | confirmed locally | PASS |
+| Fly app v57 (post-rollback) running | health endpoint green at session start | PASS |
+| `nba_game_box_stats` post-rollback state | AVG(tov)=14.075, team_tov_NULL=0%, audit PASS at 0/0/0 | PASS |
+| Phase 3 plan-draft addendum v11 council-CLEAR | R2 5/5 avg 9.4/10 | PASS |
 
 ### Verification at session end (2026-04-26)
 

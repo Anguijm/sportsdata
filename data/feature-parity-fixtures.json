@@ -1,0 +1,47 @@
+{
+  "_note": "Feature extraction parity fixtures. Populated in Phase 3 step 4 after ml/nba/features.py and src/ml/features.ts are implemented. Run with --capture to generate expected outputs.",
+  "_schema_version": 1,
+  "_phase": "Phase 3 step 4 — feature engineering pipeline",
+  "_required_by": "scripts/feature-extraction-parity.test.ts",
+  "_how_to_populate": [
+    "1. Implement ml/nba/features.py with interface: python ml/nba/features.py --fixtures <path> --output <path>",
+    "2. Implement src/ml/features.ts exporting extractFeatures(fixture: FeatureFixture): FeatureVector",
+    "3. Run: npx tsx scripts/feature-extraction-parity.test.ts --capture to generate expected vectors",
+    "4. Commit updated data/feature-parity-fixtures.json + data/feature-parity-expected.json",
+    "5. CI gate: run without --capture to verify parity on every feature-extraction commit"
+  ],
+  "_input_schema": {
+    "game_id": "string — matches games.id",
+    "date": "string YYYY-MM-DD",
+    "home_team_id": "string nba:<ABBR>",
+    "away_team_id": "string nba:<ABBR>",
+    "home_win": "0 or 1",
+    "season": "string e.g. 2023-regular",
+    "as_of_date": "string YYYY-MM-DD — reproducibility cutoff (updated_at <= this)",
+    "home_rolling_games": "array of box stat rows (N most recent games for home team as of as_of_date)",
+    "away_rolling_games": "array of box stat rows (N most recent games for away team as of as_of_date)"
+  },
+  "_box_stat_row_schema": {
+    "game_id": "string",
+    "team_id": "string",
+    "date": "string YYYY-MM-DD",
+    "fga": "integer",
+    "fgm": "integer",
+    "fg3a": "integer",
+    "fg3m": "integer",
+    "fta": "integer",
+    "ftm": "integer",
+    "oreb": "integer",
+    "dreb": "integer",
+    "reb": "integer",
+    "ast": "integer",
+    "stl": "integer",
+    "blk": "integer",
+    "tov": "integer",
+    "pf": "integer",
+    "pts": "integer",
+    "possessions": "real",
+    "team_tov": "integer or null"
+  },
+  "fixtures": []
+}

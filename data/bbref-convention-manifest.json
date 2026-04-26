@@ -131,7 +131,7 @@
         "bbref_url": null,
         "home_team_id": null,
         "away_team_id": null,
-        "note": "TODO: add NBA Cup knockout game. 2024-25 Cup semifinals: Dec 12-13 2024 at T-Mobile Arena Las Vegas. 2023-24 Cup: Dec 14-16 2023. Find game_ids: SELECT g.id, g.date, g.home_team_id, g.away_team_id FROM games g WHERE g.sport='nba' AND g.season='2024-regular' AND g.date BETWEEN '2024-12-12' AND '2024-12-15' ORDER BY g.date"
+        "note": "TODO: add NBA Cup knockout game (SF or Final, neutral site). 2024-25 Cup: QF Dec 10-11 2024 (home arenas), SF Dec 14 2024 (T-Mobile Arena Las Vegas), Final Dec 17 2024 (Las Vegas). 2023-24 Cup: QF Dec 4-5 2023 (home arenas), SF Dec 7 2023 (Las Vegas), Final Dec 9 2023 (Las Vegas). Use game IDs from data/cup-knockout-game-ids.json."
       },
       {
         "game_id": null,

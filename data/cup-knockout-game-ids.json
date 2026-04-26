@@ -1,0 +1,22 @@
+{
+  "_note": "NBA In-Season Tournament (Cup) knockout-round game IDs. Used by scripts/falsify-cup-knockout-disposition.ts as the pm.5 named falsification test. Verified against the game schedule in the DB.",
+  "_how_to_verify": "sqlite3 data/sqlite/sportsdata.db \"SELECT id, date, home_team_id, away_team_id FROM games WHERE id IN (<ids>) ORDER BY date;\"",
+  "_2023_24_note": "7 games: QF Dec 4-5 (home arenas), SF Dec 7 (Las Vegas), Final Dec 9 (Las Vegas). All confirmed.",
+  "_2024_25_note": "7 games: QF Dec 10-11 (home arenas: Dec 10 OKC/DAL + MIL/ORL, Dec 11 NY/ATL + HOU/GS), SF Dec 14 (Las Vegas: OKC/HOU + MIL/ATL), Final Dec 17 (Las Vegas: OKC/MIL). All confirmed by sequential ID range 16968270-16968273 + 17136012-17136013 + 17195500.",
+  "game_ids": [
+    "nba:bdl-7045521",
+    "nba:bdl-7045522",
+    "nba:bdl-7045523",
+    "nba:bdl-7045524",
+    "nba:bdl-7996352",
+    "nba:bdl-7981414",
+    "nba:bdl-8258317",
+    "nba:bdl-16968270",
+    "nba:bdl-16968271",
+    "nba:bdl-16968272",
+    "nba:bdl-16968273",
+    "nba:bdl-17136012",
+    "nba:bdl-17136013",
+    "nba:bdl-17195500"
+  ]
+}

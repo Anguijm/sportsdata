@@ -149,16 +149,17 @@ data/               Local storage (sqlite/, duckdb/, logs/)
 
 ## Council Governance
 
-Every plan, implementation, and test is reviewed by a 4-expert council:
+Every plan, implementation, and test is reviewed by a 5-expert council:
 
 | Expert | Focus |
 |--------|-------|
 | Data Quality | Completeness, freshness, schema conformance |
-| Statistical Validity | Methodology, sample sizes, confounders |
+| Statistical Validity | Methodology, sample sizes, confounders, multiple-testing |
 | Prediction Accuracy | Calibration, backtesting, base rate comparison |
 | Domain Expert | Sport context, situational factors, schedule effects |
+| Mathematics | Formula derivation, numerical precision, bounds (sits out reviews with no calculations) |
 
-Verdicts: FAIL (blocks) / WARN (address concerns) / CLEAR (proceed).
+Verdicts: FAIL (blocks) / WARN (address concerns) / CLEAR (proceed). 2-round iteration is standard; the dissenter-named-falsification-test rule (codified per debt-#35 v10 post-mortem) makes a dissenter's named test blocking on R2 reversal of an R1 FAIL or WARN.
 
 ## Ratchet Loop (Prediction Engine)
 
@@ -218,14 +219,16 @@ Daily cron (`predict-cron.yml`, 05:00 + 22:00 UTC):
 1. `POST /api/trigger/scrape?sport=all` — scrapes all 6 leagues + writes odds to games
 2. `POST /api/trigger/predict` — generates v2 winner + v4-spread predictions, resolves outcomes
 
-## Current Stats (as of Sprint 10.13 — 2026-04-26)
+## Current Stats (as of Sprint 10.14 + Phase-3-plan-draft — 2026-04-26)
 
 - **6 leagues**: NFL, NBA, MLB, NHL, MLS, EPL — all selectable from the frontend
 - **174 teams** normalized across providers
-- **21,774 games** in DB · 21,605 outcomes resolved · cron auto-resolves nightly
+- **21,796 games** in DB · 21,639 outcomes resolved · cron auto-resolves nightly
 - **5,000+ player stats** (all 6 sports via ESPN core API)
 - **v5 + v4-spread predictions** live across NBA/NFL/MLB/NHL (winner + ATS); v2 backfill (12,813 games) retained as calibration baseline
-- **NBA box-score data** (Phase 2): 7,604 rows / 3,802 games × 3 seasons (2023-24 through 2025-26). **All 5 ship-rule gates met** (coverage 100% on aggregate / per-season / per-cell + schema integrity + cross-source bbref audit Pass-B verdict PASS at N=50). Phase 2 ship-claim EARNED 2026-04-26; Phase 3 (NBA learned-model training) unblocked. See `Plans/nba-learned-model.md` addenda v9 / v9.1 / v9.2 for the audit closure record.
+- **NBA box-score data** (Phase 2): 7,604 rows / 3,802 games × 3 seasons (2023-24 through 2025-26). **All 5 ship-rule gates met** (coverage 100% on aggregate / per-season / per-cell + schema integrity + cross-source bbref audit Pass-B verdict PASS at N=50). Phase 2 ship-claim EARNED 2026-04-26.
+  - **Schema addition (debt #35, Sprint 10.14):** `team_tov` NICE-TO-HAVE column added; populated for all 7,604 rows post-rescrape. `tov` source confirmed as ESPN's `totalTurnovers` (matches bbref Tm TOV for ~99.8% of games; Cup-knockout games are a documented <0.18% asymmetry forwarded to Phase 3). See `Plans/nba-learned-model.md` addendum v10 + post-mortem.
+- **NBA Phase 3 (learned-model training)**: plan-draft addendum v11 council-CLEAR (R2 5/5 avg 9.4/10, 2026-04-26). Implementation gated on 6 pre-flight scripts landing first per the addendum's 10-step gating sequence. No model code yet.
 - **MLB pitcher data**: probable starters + ERA extracted from ESPN scoreboard
 - **Shadow predictions** (forward A/B for injury signal): live infra; awaiting non-empty ESPN injury flow
 

@@ -51,6 +51,11 @@ interface SegmentMeans {
   team_tov_count: number;
   team_tov_null_count: number;
   avg_team_tov_nonnull: number | null;
+  // Restricted to rows with team_tov IS NOT NULL — Stats fix-pack #1 carryover
+  // from impl-review. Lets the Rule-3 magnitude check (addendum v10 ship rule)
+  // be evaluated from the snapshot diff alone, without re-querying the live DB.
+  avg_tov_team_tov_nonnull: number | null;
+  avg_possessions_team_tov_nonnull: number | null;
 }
 
 interface Segment extends SegmentMeans {
@@ -87,7 +92,9 @@ function meansForScope(db: ReturnType<typeof getDb>, season: string | null): Seg
       AVG(possessions) AS avg_possessions,
       SUM(CASE WHEN team_tov IS NOT NULL THEN 1 ELSE 0 END) AS team_tov_count,
       SUM(CASE WHEN team_tov IS NULL THEN 1 ELSE 0 END) AS team_tov_null_count,
-      AVG(team_tov) AS avg_team_tov_nonnull
+      AVG(team_tov) AS avg_team_tov_nonnull,
+      AVG(CASE WHEN team_tov IS NOT NULL THEN tov END) AS avg_tov_team_tov_nonnull,
+      AVG(CASE WHEN team_tov IS NOT NULL THEN possessions END) AS avg_possessions_team_tov_nonnull
     FROM nba_game_box_stats ${where}
   `).get(...params) as SegmentMeans;
   return m;

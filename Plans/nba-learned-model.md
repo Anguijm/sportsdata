@@ -1207,3 +1207,39 @@ Five-expert plan-review: DQ, Stats, Pred, Domain, Math. Verdicts: CLEAR / WARN-w
 - Math #2 → Per-component bounds added to the consistency check: `tov ∈ [0, 40]`, `team_tov ∈ [0, 10]`, `tov ≥ team_tov`.
 - Math #3 → "Convention vs derivation note" added to the Decision rationale: Oliver's term arguably wants `totalTurnovers`; we follow bbref's published convention for downstream comparability, accepting the small (~team_tov/2 per team-game) systematic under-count.
 - Math #4 → Risk #8 added: 0.44 vs 0.4 FT-coefficient asymmetry between scraper and audit (pre-existing per v9 C′; not introduced by v10; flagged for Phase 3 plan-review revisit).
+
+### Implementation review (2026-04-26)
+
+5-expert impl-review on commits `ff29300` (impl) + `f364fbb` (council-CLEAR plan). All 5 CLEAR, avg 9.1/10.
+
+| Expert | Verdict | Grade |
+|---|---|---|
+| DQ | CLEAR | 9.5/10 |
+| Stats | CLEAR | 9/10 |
+| Pred | CLEAR | 9/10 |
+| Domain | CLEAR | 9/10 |
+| Math | CLEAR | 9/10 |
+
+**Non-blocking notes carried forward (one folded into impl, two for Phase 3):**
+- Stats #1 (folded): snapshot script extended with `avg_possessions_team_tov_nonnull` and `avg_tov_team_tov_nonnull` per segment, so the post-backfill Rule-3 magnitude check can be evaluated from the pre/post snapshot diff alone (self-contained).
+- Pred carry-forward: no v5/v4-spread prediction-replay test exists in the repo. v10 itself is provably regression-safe (no live consumer reads `nba_game_box_stats.possessions`), so impl-review CLEARed without one. **Phase-3 plan-review entry item**: add a v5 frozen-prediction regression harness before next model swap.
+- Math carry-forward: percentile method in `snapshot-box-stats-segmented.ts` is Type-1/lower (off-by-one at p=0.50 for even N). Fine for drift comparison (both pre/post use the same method), but worth noting if Phase 3 uses these values quantitatively. Cosmetic.
+
+**Test posture:**
+- `npx tsc --noEmit`: clean.
+- `scripts/test-espn-box-schema.ts`: 4 fixtures + 4 unit tests + OT fallback + 8 corruption assertions ALL PASS.
+- `scripts/test-nba-box-upsert.ts`: all 5 scenarios + new 4b (team_tov NICE-TO-HAVE) PASS.
+- `scripts/test-audit-mechanics.ts`: 16/16 unchanged.
+- Smoke test of `--update-existing --limit 1 --dry-run`: queues 1 game with `mode=RE-SCRAPE (--update-existing) (≥72h old)` log line; coverage views unchanged at 100%.
+- Migration ran on local DB: `team_tov INTEGER` column 28, all 7,604 existing rows have NULL team_tov as expected pre-backfill.
+
+**Pre-backfill snapshot captured (local DB, mirrors Fly):** `data/v10-pre-backfill-snapshot-local.json`.
+- Overall: count=7,604, AVG(tov)=14.075 (currently `totalTurnovers`), AVG(possessions)=101.776, all team_tov NULL.
+- Per season: 2023-postseason (164), 2023-regular (2,474), 2024-postseason (168), 2024-regular (2,474), 2025-regular (2,324).
+
+**Implementation gate cleared. Awaiting user authorization to:**
+1. Capture pre-backfill snapshot on Fly DB → `data/v10-pre-backfill-snapshot-fly.json`.
+2. Run `npx tsx scripts/backfill-nba-box-stats.ts --update-existing` on Fly (~1 hour at 2 req/s for ~3,800 games × 2 sides).
+3. Capture post-backfill snapshot.
+4. Re-run debt-#34 audit on substituted N=50.
+5. Council test/results review.

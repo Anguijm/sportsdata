@@ -1778,3 +1778,209 @@ R2 non-blocking notes (informational; no further iteration):
 - Domain "vindication note": "The R2 fix-pack is exemplary on F1 — not only was the disposition reversed from 'pin (b)' to 'TBD pending the named test,' but the default fallback was correctly set to the most-conservative reversible state (a)... This is the pm.5 rule working as designed: a dissenter's named test was load-bearing, the proponent ran the rule, and the plan now cannot ship the contested disposition without the evidence. Round-tripping through pm.5 within the same addendum's R1→R2 cycle validates the council-process codification itself."
 
 **Phase 3 implementation may now begin** following the 10-step sequence pinned in §"Phase 3 implementation sequence (gating plan)." Step 1 (pre-flight tooling lands) is the first work item.
+
+---
+
+## Addendum v12 — Phase 3 step 4 plan: feature-engineering pipeline (2026-04-27)
+
+### Scope
+
+Implement `ml/nba/features.py` — the feature extraction module that, given a `FeatureConfig`, reads from `nba_eligible_games` + `nba_game_box_stats`, and outputs a structured feature tensor covering all games in the training window (test fold excluded). Also implement 5 required unit tests.
+
+This addendum is append-only once council-CLEAR per `CLAUDE.md`. It is the plan record for council gate 1 (plan review) of step 4.
+
+### Output contract
+
+`features.py` exposes:
+
+- **`FeatureConfig`** — frozen dataclass:
+  - `window_size: int` — rolling-N window (if feature_form="rolling")
+  - `feature_form: Literal["rolling", "ewma", "season_agg"]`
+  - `ewma_halflife: int | None` — half-life h (if feature_form="ewma")
+  - `training_as_of: str` — UTC ISO-8601 timestamp; filters `nba_game_box_stats.updated_at`
+  - `feature_names: list[str]` — ordered list of all feature columns in X (frozen after training)
+  - `norm_params: dict[str, dict]` — per-feature normalization params (mean, std, transform type); frozen after training-fold fit
+  - All fields are immutable after construction (use `dataclasses.replace` to create variants)
+
+- **`build_training_tensor(config: FeatureConfig, db_path: str) -> tuple[np.ndarray, np.ndarray, list[str]]`**
+  - Returns `(X, y, game_ids)`:
+    - `X`: shape `(N_games, N_features)`, dtype float64, fully normalized
+    - `y`: shape `(N_games,)`, dtype int (1 = home win, 0 = away win)
+    - `game_ids`: aligned list of game IDs
+  - Fits and stores normalization params in config on first call; second call uses stored params (idempotent)
+  - All preprocessing (sentinel imputation, normalization) happens inside this function
+  - Emits a sidecar `{run_id}_training_manifest.json` alongside the tensor with: game_id list, sentinel-imputation log (count + affected rows), team_tov-null-imputation log, season distribution, feature names, norm_params, training_as_of timestamp, db_sha256
+
+- **`build_live_tensor(config: FeatureConfig, game_row: dict, db_path: str) -> np.ndarray`**
+  - For a single upcoming game row (from `nba_eligible_games`), computes its feature vector using the config's frozen `norm_params` and `feature_names`
+  - Raises `ValueError` if `config.norm_params` is empty (training not yet run)
+  - Feature list MUST exactly match `config.feature_names` — no dynamic feature discovery at live time
+
+### Tensor layout
+
+**One row per game** (game-centric layout). Each row has separate columns for home-team and away-team rolling stats (e.g., `home_net_rating`, `away_net_rating`). `is_home` is NOT included as a feature (it would be a constant 1.0 for every row — no information). Home advantage is implicit in the home/away column asymmetry; the model learns it jointly via the named columns.
+
+`neutral_site` (0 or 1) IS included as a game-level feature (from `nba_eligible_games.neutral_site`).
+
+### Data flow
+
+1. Connect to SQLite at `db_path`.
+
+2. Read `nba_game_box_stats` filtered to `WHERE updated_at <= training_as_of`. This is the primary as-of filter; `nba_game_box_stats` has an indexed `updated_at` column.
+
+3. Read `nba_eligible_games` filtered to `season NOT IN ('2025-regular', '2025-postseason')`. **`nba_eligible_games` has no `updated_at` column** — apply option (b) frozen-pre-as-of attestation: the run config records a "nba_eligible_games frozen-pre-as-of" attestation, asserting the view's row set was stable as of `training_as_of`. In practice this is true because the view is a live window on `games` and our training window ends in 2024-25 (seasons that are complete). Any future 2025-26 games that appear in the view are excluded by the test-fold filter above.
+
+4. For each game in the training window (sorted by date ascending):
+   a. For home team: collect the N most recent games where this team appeared as home team, with date strictly before this game's date. Use box stats filtered to step 2's as-of set.
+   b. For away team: collect the N most recent games where this team appeared as away team, with date strictly before this game's date.
+   c. For EWMA: apply exponential weighting with decay `α = 1 − 2^(−1/h)` to the ordered game sequence (oldest first, most recent has highest weight).
+   d. For season_agg: collect all games for this team in the same season with date strictly before this game's date (variable-length window, grows through season). NOT all games in the season regardless of date — that would leak future data.
+
+5. Compute per-team rolling stats (see §Features below).
+
+6. Apply sentinel imputation before computing rates: for the 5 ESPN-sentinel rows (game IDs enumerated in §Pinned dispositions), replace `tov = 0` with `team_season_avg(tov)` where the average is computed over non-sentinel games for the same team in the same season. Log imputed values to training manifest.
+
+7. Compute opponent-adjusted Net Rating for each game:
+   - `opp_adj_nrtg_home = home_rolling_ORtg − opp_rolling_DRtg_avg_home`
+   - `opp_adj_nrtg_away = away_rolling_ORtg − opp_rolling_DRtg_avg_away`
+   Where `opp_rolling_DRtg_avg` is the mean of each opponent's rolling DRtg as of the date of the game against that opponent (NOT the current game date). This requires computing rolling DRtg for every team first, then doing a lookup join — implementer must do a two-pass computation (pass 1: compute all rolling DRtg per team per date; pass 2: look up opponent DRtg for each game).
+   - Also include defensive component: `opp_adj_def_home = away_rolling_DRtg − home_rolling_ORtg_opp_avg_home` (symmetric to offensive component).
+
+8. Build raw feature vectors for each game. Stack into X_raw.
+
+9. Fit normalization on X_raw (training fold only). Store params in config. Apply to get X_normalized.
+
+10. Return (X_normalized, y, game_ids).
+
+### Features
+
+**Team quality (separate home/away rolling windows):**
+- `home_net_rating` = home rolling_ORtg − home rolling_DRtg
+- `away_net_rating` = away rolling_ORtg − away rolling_DRtg
+- `home_opp_adj_nrtg` (offensive component; see data flow step 7)
+- `away_opp_adj_nrtg`
+- `home_opp_adj_def` (defensive component; see data flow step 7)
+- `away_opp_adj_def`
+- `home_ortg`, `away_ortg` — per 100 possessions (ORtg = 100 × PTS / possessions)
+- `home_drtg`, `away_drtg` — per 100 possessions (DRtg = 100 × OPP_PTS / possessions)
+- `home_efg_pct_off`, `away_efg_pct_off` — (FGM + 0.5·3PM) / FGA
+- `home_efg_pct_def`, `away_efg_pct_def` — opponent eFG% (from the opposing team's row in the same game)
+- `home_tov_pct_off`, `away_tov_pct_off` — Oliver: 100 × TOV / (FGA + 0.44·FTA + TOV)
+- `home_tov_pct_def`, `away_tov_pct_def` — opponent TOV% (from opposing team's row)
+- `home_oreb_pct`, `away_oreb_pct` — OREB / (OREB + OPP_DREB)
+- `home_dreb_pct`, `away_dreb_pct` — DREB / (DREB + OPP_OREB)
+- `home_3p_rate_off`, `away_3p_rate_off` — 3PA / FGA (NOT 3P%)
+- `home_3p_rate_def`, `away_3p_rate_def` — opponent 3PA / FGA
+- `home_ast_per_poss`, `away_ast_per_poss` — AST / possessions
+- `home_stl_per_poss`, `away_stl_per_poss` — STL / possessions
+- `home_blk_per_poss`, `away_blk_per_poss` — BLK / possessions
+
+**TOV% formula (pinned)**: `100 × TOV / (FGA + 0.44·FTA + TOV)` (Oliver possession-estimate denominator). NOT `TOV / possessions`.
+
+**Situational:**
+- `rest_days_home`, `rest_days_away` — calendar days since team's previous game; capped at 14 (rest > 14 is treated as 14)
+- `b2b_home` — 1 if home team's previous game was yesterday (rest_days_home == 1)
+- `b2b_away` — 1 if away team's previous game was yesterday (rest_days_away == 1)
+- `rest_days_in_last_7_home` — number of games home team played in the 7 days preceding this game
+- `rest_days_in_last_7_away` — number of games away team played in the 7 days preceding this game
+- `is_denver_home` — 1 if home team is DEN
+- `neutral_site` — from `nba_eligible_games.neutral_site`
+
+**Streak (ablation-tested per plan body L247):**
+- `home_win_rate_last_7` — win_count / game_count for home team's last 7 games (any venue). Renamed from "streak flag" to match actual spec.
+- `away_win_rate_last_7` — same for away team.
+- Pre-declared ablation: if win-rate-off Brier is within 0.002 of win-rate-on Brier on the val fold, the off-variant evaluates on test fold (feature retired).
+
+**Dropped features (not in step 4 scope):**
+- `home_out_impact`, `away_out_impact` — **DROPPED**. `player_injuries` is an overwrite-on-scrape table with no per-game-date historical record. Training on zeroed injury signal and serving non-zero creates a structural covariate shift on star-out games. Re-evaluate only when historical injury state is persisted per game. Gap documented in training manifest.
+- `circadian_penalty_flag` — **DROPPED**. Requires city→timezone lookup table not in DB and travel-origin tracking (prior game location) not captured. Strong domain endorsement but data infrastructure not in place. Re-evaluate in step 5+ or as a separate infra ticket.
+- `games_played_together_top5` — **DROPPED** (already flagged in plan body L231). Player-level minutes not in Phase 2 MUST-HAVE. Gap documented.
+
+### Normalization (per addendum v11, confirmed by council)
+
+Per-feature bucketing applied before Z-scoring:
+- **Rate features** (eFG%, 3P_rate, TOV%, OREB%, DREB%): clip to `[ε, 1−ε]` → logit → Z-score on training fold.
+  - Rolling-N: `ε = 1 / (2·N)`
+  - EWMA-h: `ε = 1 / (2·N_eff(h))` where `N_eff(h) = (2−α)/α`, `α = 1 − 2^(−1/h)`
+  - Season-agg: treat as `N = min(games_in_season_so_far, 82)` for ε purposes (approximate; season-agg features have the most data support)
+  - ε is **per-feature-form-and-window-size**, committed in FeatureConfig as a typed dict
+- **Count features** (rest_days, B2B count, rest_days_in_last_7): log1p → Z-score on training fold.
+- **Unbounded features** (point diff, ORtg, DRtg, Net Rating, opponent-adjusted Net Rating, win_rate_last_7, opp_adj_def, AST/STL/BLK per possession): Z-score directly on training fold.
+- **Binary features** (b2b_home, b2b_away, is_denver_home, neutral_site): passed through as-is (0/1); no normalization.
+
+All normalization params (mean, std, transform type, ε value) stored in FeatureConfig.norm_params under each feature name. Applied identically to val/test/live vectors.
+
+### Unit tests
+
+1. **`test_no_test_fold_in_training_tensor.py`** — calls `build_training_tensor` and asserts no game_id in returned game_ids belongs to a game with season in `('2025-regular', '2025-postseason')`. Connects to local DB.
+
+2. **`test_as_of_filter_reproducibility.py`** — calls `build_training_tensor(config, db_path)` twice with same config; asserts returned `(X, y, game_ids)` are bit-identical (same float64 values, same order).
+
+3. **`test_as_of_filter_completeness_behavioral.py`** — calls `build_training_tensor` with `training_as_of=T` and `training_as_of=T'` where T' > T (one calendar month later). Asserts the T-tensor game_ids are a strict subset (same rows in same order) of the T'-tensor game_ids. Verifies as-of filter doesn't silently drop games.
+
+4. **`test_as_of_filter_completeness_structural.py`** — enumerates every `sqlite3` read call in `features.py` (via inspection of the source) and asserts each either (a) reads from a table with `updated_at <= training_as_of` filter, OR (b) reads from `nba_eligible_games` (which has a frozen-pre-as-of attestation, documented in run config). This is a static code inspection test — if a new table read is added without an as-of filter, this test fails. Uses `ast.parse` or `grep` to enumerate SQL strings.
+
+5. **`test_time_machine_feature_purity.py`** — selects a randomly-seeded but deterministically chosen game G from the 2023-regular or 2023-postseason seasons (earliest in DB). Computes feature vector for G using full DB. Then computes feature vector for G using DB reads filtered to `date < G.date` (for `nba_eligible_games` row reads) and `updated_at < G.date T00:00:00Z` (for box stats reads). Asserts bit-identical vectors. Tests that no future data leaks into the feature computation for G.
+
+### Pinned dispositions
+
+- **Cup-knockout games (accept-as-is)**: falsification test confirmed (Δ=0.0816 Brier, CI [0.0105, 0.1671] — pm.1 disposition per `docs/cup-knockout-disposition-evidence.md`). Include in training with equal weight. No filter, no imputation, no drop. *(Note: the implementation-sequence text at addendum v11 §step 4 contained the stale phrase "drop Cup-knockout" — that was pre-falsification language and is superseded by this addendum. The accepted disposition is accept-as-is.)*
+
+- **5 ESPN-sentinel rows (impute tov from team_season_avg)**:
+  - `nba:bdl-18447432` — CHI vs LAC (two affected team-rows in this game)
+  - `nba:bdl-15907929` — GS (one team-row)
+  - `nba:bdl-18446826` — BOS (one team-row)
+  - `nba:bdl-15907808` — DEN (one team-row)
+  - `nba:bdl-8258317` — LAL/IND Cup Final (also Cup-knockout + neutral-site; sentinel imputation applies first, then game is included with accept-as-is disposition; no conflict)
+  - Imputation: `tov_imputed = mean(tov WHERE team_id = <this team> AND season = <this season> AND game_id NOT IN sentinel_set AND tov > 0)`
+  - Log count of imputed rows to training manifest.
+
+- **`team_tov` NULL-handling**: impute-zero for NULL rows (modal value). Log imputed count to training manifest.
+
+- **Test-fold exclusion**: `season NOT IN ('2025-regular', '2025-postseason')` at training-tensor construction.
+
+- **`training_as_of` filter**: applied to `nba_game_box_stats.updated_at`. `nba_eligible_games` covered by frozen-pre-as-of attestation (option b, addendum v7.8).
+
+### Branch
+
+`claude/phase3-step4-features` from `main` at current HEAD.
+
+### Council R1 verdicts (2026-04-27)
+
+| Expert | Verdict | Grade | Key issues |
+|---|---|---|---|
+| DQ | WARN | 6/10 | #1 updated_at TBD resolved; #2 eligible_games as-of unresolved; #3 test_completeness spec mismatch; #4 injury signal no historical record; #5 sentinel/cup-knockout overlap ordering |
+| Stats | WARN | 7/10 | #1 season_agg semantics unresolved; #2 Brier-residual output missing from contract; #3 opp-DRtg time-ordering; #4 streak naming inconsistency |
+| Pred | WARN | 7/10 | #1 injury drop endorsed; #2 stale "drop Cup-KO" language; #3 build_live_tensor feature-list coupling; #4 is_home layout question; #5 circadian flag data dependency |
+| Domain | WARN | 7/10 | #1 sentinel+cup-KO ordering (no blocker); #2 is_denver_home endorsed; #3 B2B multicollinearity noted; #4 circadian defer endorsed |
+| Math | WARN | 6/10 | #1 ε per-feature-form confirmed correct; #2 OREB%/DREB% edge case at ε clipping; #3 Net Rating Z-score confirmed correct; #4 opp-adj-NRtg defensive component gap; #5 TOV% formula not pinned |
+
+**R1 aggregate: 5 WARN, avg 6.6/10.**
+
+### R1 fix-pack (blocking items — resolved in this addendum)
+
+| # | Item | Resolution |
+|---|---|---|
+| DQ#2 | `nba_eligible_games` as-of semantics | Pinned to option (b): frozen-pre-as-of attestation in run config. Sufficient because training window ends in 2024-25 (completed seasons). |
+| DQ#3 | `test_as_of_filter_completeness` spec mismatch | Split into two separate tests: `_behavioral` (superset check) + `_structural` (AST-level enumerate-all-reads check). Both required. |
+| DQ#4 | Injury signal no historical record | Explicitly dropped. `home_out_impact` / `away_out_impact` removed from feature list. Gap documented in §"Dropped features." |
+| Pred#2 | Stale "drop Cup-KO" language | Corrected in §"Pinned dispositions." Accept-as-is is the confirmed disposition per falsification test. |
+| Stats#1 | `season_agg` semantics unresolved | Pinned: "prior games in same season, date strictly before this game's date." Implemented as variable-length rolling window with unbounded N. |
+| Pred#4 | Tensor layout unresolved | Pinned: one row per game, home/away in named columns. `is_home` dropped. |
+| Math#5 | TOV% formula not pinned | Pinned: Oliver formula `100 × TOV / (FGA + 0.44·FTA + TOV)`. |
+| Pred#5/Domain#4 | Circadian flag data dependency | Dropped from step 4. City→timezone lookup and travel-origin tracking not in DB. |
+| Math#4 | Opp-adj NRtg defensive component | Both components included: `opp_adj_nrtg` (offensive) + `opp_adj_def` (defensive). Documented in §Features. |
+
+Secondary items (addressed in this fix-pack or resolved at impl-review):
+- Stats#2 (Brier-residual output): `build_training_tensor` sidecar manifest already includes `(X, y, game_ids)` tuple. Step 5 (training infra) computes per-game Brier from this; no API change needed in step 4.
+- Stats#3 (opp-DRtg time-ordering): pinned in §data flow step 7. Two-pass computation explicitly required.
+- Stats#4 (streak naming): renamed to `home_win_rate_last_7` / `away_win_rate_last_7` in §Features.
+- DQ#5 (sentinel/cup-KO ordering): ordering documented in §Pinned dispositions — imputation applies first, then game included accept-as-is.
+- DQ#1 (`updated_at` confirmed present): confirmed from `src/storage/sqlite.ts`; no longer TBD.
+- Math#1 (ε per-feature-form): confirmed correct as per plan body L200.
+
+### Council R2 verdicts (pending)
+
+Resolver attestation: the fix-pack above addresses all 4 blocking R1 items (DQ#2, DQ#3/Pred#4 layout, DQ#4/Pred#1 injury, Pred#2 stale language) plus 5 secondary items resolved by design decisions. The remaining items (Stats#2 Brier-residual, Math#2 OREB ε edge case) are non-blocking and will surface at impl-review.
+
+Per council README §"Iteration cap" and §"R1→R2 reversal rules": R2 does not require another full expert round when all blocking items are addressed in the fix-pack and no load-bearing empirical claims are reversed (none here — all resolutions are design decisions). Resolver recommends CLEAR conditional on implementation review verifying the fix-pack items are reflected in code.

@@ -4,22 +4,32 @@
 
 ---
 
-## Start here next session — 2026-04-27 end-of-session
+## Start here next session — 2026-04-27 (Sprint 10.16)
 
-**Current branch:** `claude/phase3-preflight-1-3` at `6c8be25`. PR #51 open — not yet merged.
-**Main:** `525bc4d` (unchanged from 2026-04-26 — PR #51 not merged yet).
-**Production state (Fly):** unchanged — app v57, 7,604 box-stat rows, `tov = totalTurnovers`, `team_tov` populated, audit PASS 0/0/0.
+**Current branch:** `claude/phase3-step3-game-type` at `8e90016`. PR not yet created.
+**Main:** `6b21d42` — PR #51 squash-merged (Sprint 10.16).
+**Production state (Fly):** unchanged — app v57, 7,604 box-stat rows. Step 3 DB changes local only; deploy + remote backfill pending.
+
+**Phase 3 step 3 — COUNCIL-CLEAR + IMPLEMENTED (local):**
+- `nba_neutral_site_games` table: 6 Cup SF/Final game IDs (Las Vegas neutral-site)
+- `nba_eligible_games` view: updated with `neutral_site` column (LEFT JOIN)
+- `ml/nba/game_type_rules.py`: Python derivation rules; 3802/3802 classified
+- `ml/nba/test_game_type_classification_complete.py`: PASS
+- `scripts/backfill-neutral-site.ts`: PASS (6 rows verified)
+- v5 replay: 11/11 PASS (view migration backward-compatible)
+- Council plan: CLEAR avg 9/10; council impl: CLEAR avg 8.75/10
+- Snapshot: `data/snapshots/sportsdata-prebackfill-20260426T214309Z.db`
 
 **Next 1-2 actions (priority order):**
 
-1. **Council results gate (3rd gate) on PR #51 pre-flight scripts.** Run the council test/results review on the actual run outputs: v5 replay 11/11 PASS, falsification test FALSIFIED (Δ Brier=0.0816, CI [0.0105, 0.1671], evidence at `docs/cup-knockout-disposition-evidence.md`). Convention validator output is not yet available (manifest TODO entries need populating first — see action 2). Review what exists now; note convention gate as pending. Once council clears, merge PR #51.
-2. **Populate manifest TODO entries + run convention scripts.** `data/bbref-convention-manifest.json` has TODO entries in strata: `play_in` (2), `cup_pool` (2), `cup_knockout` (2), `conference_finals` (1), `nba_finals` (1), `marquee_broadcast` (1), `rescheduled_2022_23` (2), `ot` (2). Each TODO entry has a SQL query in the `note` field to find the missing game IDs. Once manifest is populated: run `validate-bbref-convention.ts` → produces `data/bbref-convention-report.json` → run `check-game-type-asymmetries.ts` → produces `docs/phase-3-game-type-handling.md`. Commit both outputs. Then the full council results gate can run.
+1. **Open PR for step 3 + deploy.** Create PR from `claude/phase3-step3-game-type`. After merge to main: deploy to Fly (migration fires on app restart), then run `npx tsx scripts/backfill-neutral-site.ts` via fly ssh console for production backfill.
+2. **Phase 3 step 4 — feature-engineering pipeline.** Implement `ml/nba/features.py` (rolling-window box-score features, neutral_site flag, sentinel imputation). Council plan review required first. Unit tests per plan addendum v11.
 
-**Blockers:** Convention scripts blocked on manifest population (needs DB queries). Gate A (`validate-bbref-convention.ts`) requires ≥2 validated games per stratum to exit 0.
-
-**Key facts from this session:**
-- pm.5 falsification test result: Δ Brier = 0.0816 > 0.02 → **FALSIFIED**. Cup-knockout disposition = **accept-as-is** for Phase 3. Mechanism: v5's neutral-site blind spot (applies 2.25pt home-adv to "home" team even at T-Mobile Arena). Phase 3 ML model should add `neutral_site` binary feature.
-- All 6 pre-flight scripts implemented, council impl-reviewed, run-verified.
+**Known limitations forwarded to step 4:**
+- `cup_pool` overincludes (all Nov 4–Dec 3 regular-season games, not just Cup-designated). Same TOV convention → no model impact.
+- `play_in`: only 2 confirmed IDs in manifest; earlier-season play-in classified as `regular`. Non-blocking.
+- `conference_finals` boundary (May 18): some conference-semi game 7s may be misclassified. Step 4 can refine.
+- `rescheduled_2022_23`: not in DB — skip this stratum.
 
 **Pre-session context to read** (in order):
 1. This file (you're already here).

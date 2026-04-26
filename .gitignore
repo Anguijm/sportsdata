@@ -11,3 +11,4 @@ mobile-audit/
 data/.bbref-cache/
 data/.thirdsource-cache/
 data/snapshots/*.db
+__pycache__/

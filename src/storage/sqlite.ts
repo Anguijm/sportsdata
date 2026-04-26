@@ -165,6 +165,24 @@ function initTables(db: Database.Database): void {
     // Table doesn't exist yet (fresh install) — CREATE TABLE above includes the column.
   }
 
+  // Phase 3 step 3 migration: update nba_eligible_games to add neutral_site column.
+  // SQLite has no CREATE OR REPLACE VIEW; must drop dependents + view + recreate all.
+  // Idempotent: only fires if the view definition doesn't already include neutral_site.
+  const viewRow = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='view' AND name='nba_eligible_games'"
+  ).get() as { sql: string } | undefined;
+  if (viewRow && !viewRow.sql.includes('neutral_site')) {
+    db.exec(`
+      DROP VIEW IF EXISTS box_stats_coverage_aggregate;
+      DROP VIEW IF EXISTS box_stats_coverage_per_season;
+      DROP VIEW IF EXISTS box_stats_coverage;
+      DROP VIEW IF EXISTS nba_eligible_games;
+    `);
+    // Views are recreated by the CREATE VIEW IF NOT EXISTS block that runs below
+    // on every getDb() call — the IF NOT EXISTS clauses will now fire since we
+    // just dropped them. No additional action needed here.
+  }
+
   // P1-3 migration: migrate predictions UNIQUE constraint from 2-column
   // (game_id, model_version) to 3-column (game_id, model_version, prediction_source).
   // Fresh DBs already have the 3-column constraint from CREATE TABLE, but
@@ -378,10 +396,21 @@ function initTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_nba_espn_event_ids_method ON nba_espn_event_ids(match_method);
 
     -- ============================================================
+    -- Phase 3 step 3: neutral-site game lookup.
+    -- Populated by scripts/backfill-neutral-site.ts from
+    -- data/cup-knockout-game-ids.json (6 Cup SF/Final games at
+    -- T-Mobile Arena, Las Vegas). Queried by nba_eligible_games view.
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS nba_neutral_site_games (
+      game_id TEXT PRIMARY KEY
+    );
+
+    -- ============================================================
     -- Debt #33: views for Phase-2 ship-rule evaluation.
     -- Eligibility: 'final' status, hardcoded post-2022 NBA seasons
-    -- (see Plans/nba-phase2-backfill.md §Component 2).
+    -- (see Plans/nba-learned-model.md addendum v11 step 3).
     -- Coverage gates evaluated against UNROUNDED ratios.
+    -- neutral_site added Phase 3 step 3 — LEFT JOIN on lookup table.
     -- ============================================================
     CREATE VIEW IF NOT EXISTS nba_eligible_games AS
     SELECT
@@ -389,8 +418,10 @@ function initTables(db: Database.Database): void {
       g.season,
       g.home_team_id,
       g.away_team_id,
-      g.date
+      g.date,
+      (nsgs.game_id IS NOT NULL) AS neutral_site
     FROM games g
+    LEFT JOIN nba_neutral_site_games nsgs ON nsgs.game_id = g.id
     WHERE g.sport = 'nba'
       AND g.status = 'final'
       AND g.season IN ('2023-regular', '2023-postseason',

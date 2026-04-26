@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-27 (post Sprint 10.16 — PR #51 merged at 6b21d42; all 6 pre-flight gates CLEAR; Phase 3 step 3 in progress on `claude/phase3-step3-game-type`).
+Last regenerated: 2026-04-27 (post Sprint 10.16+deploy — PR #52 merged at c3b8e65; Phase 3 step 3 SHIPPED to prod; neutral-site backfill complete (6 rows); prod at 70ac487).
 
 ## Where to start
 
@@ -23,11 +23,10 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 3 step 3 — game-type metadata + neutral_site flag.** Council plan review → impl → results. Proposed: add `neutral_site BOOLEAN` to `nba_eligible_games` (14 cup-knockout neutral-site games) + document `game_type` derivation rule in Python. Supplementary Gate B (pre-backfill snapshot) required before DB write. Branch: `claude/phase3-step3-game-type`.
+- **Phase 3 step 4 — feature-engineering pipeline.** Implement `ml/nba/features.py` (rolling-window box-score features, neutral_site flag, sentinel imputation). Council plan review required first. Unit tests: `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_as_of_filter_completeness.py`, `test_time_machine_feature_purity.py`.
 
 ## Next (queued, scoped)
 
-- **Phase 3 step 4 — feature-engineering pipeline.** Implement `ml/nba/features.py` with all pinned dispositions (cup-knockout accept-as-is, neutral_site=1, sentinel imputation, etc.). Unit tests: `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_as_of_filter_completeness.py`, `test_time_machine_feature_purity.py`.
 - **Phase 3 steps 5–10**: training infrastructure → calibration + serving → pre-flight ship-rule gates → test-fold evaluation → shadow window → live swap. See addendum v11 §"Phase 3 implementation sequence (gating plan)".
 
 ## Someday (daydreams, architectural ideas)
@@ -50,8 +49,7 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- **`claude/phase3-step3-game-type`** — Phase 3 step 3: game-type metadata + neutral_site flag. Fresh branch from main `6b21d42`. No commits yet. Pending: council plan review.
-  - PR #51 merged at `6b21d42` (Sprint 10.16).
+None.
 
 ---
 

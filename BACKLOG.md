@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-26 (post Sprint 10.14 + Phase-3-plan-draft, both PRs merged).
+Last regenerated: 2026-04-27 (post Sprint 10.15 — all 6 pre-flight scripts on branch `claude/phase3-preflight-1-3`, PR #51 open).
 
 ## Where to start
 
@@ -23,12 +23,12 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 3 step 1 — pre-flight tooling batch.** 6 scripts must land BEFORE any model code (per addendum v11 gating sequence). Council impl-review on the batch. Scripts spec'd in `SESSION_HANDOFF.md` "Start here" block + addendum v11 §"Pre-flight tooling".
-- **Council-process docs.** Codify pm.5 (dissenter-named falsification test) + pm.6 (≥2/stratum + ≥5 total + adversarial selection) in `.harness/council/README.md`. Small commit; can land alongside or before pre-flight tooling.
+- **Council results gate (3rd gate) on PR #51.** Review actual run outputs: v5 replay 11/11 PASS, falsification test FALSIFIED (Δ Brier=0.0816 > 0.02, CI [0.0105, 0.1671], evidence at `docs/cup-knockout-disposition-evidence.md`). Convention validator output pending manifest population (see next item). Once council clears 3rd gate, merge PR #51.
+- **Populate manifest TODO entries, then run convention scripts.** `data/bbref-convention-manifest.json` has TODO entries in strata: `play_in` (2), `cup_pool` (2), `cup_knockout` (2), `conference_finals` (1), `nba_finals` (1), `marquee_broadcast` (1), `rescheduled_2022_23` (2), `ot` (2). Each TODO entry has a SQL query in the `note` field to find the missing game IDs. Once manifest is populated: run `validate-bbref-convention.ts` → `data/bbref-convention-report.json` → run `check-game-type-asymmetries.ts` → `docs/phase-3-game-type-handling.md`. Commit both outputs; convention gate complete.
 
 ## Next (queued, scoped)
 
-- **Phase 3 step 2 — pre-flight runs.** Execute the 6 pre-flight scripts; commit reports to `docs/`. Council impl-review on findings (especially `docs/cup-knockout-disposition-evidence.md` from the falsification test, and `docs/bbref-convention-report.md` from validate-bbref-convention).
+- **Phase 3 step 2 — pre-flight runs.** *(Partially complete: v5-replay 11/11 PASS, falsification test FALSIFIED with evidence committed. Remaining: convention scripts after manifest population — see Now.)* Once convention outputs committed, all 6 pre-flight scripts are run-verified and ready for full council 3rd gate.
 - **Phase 3 step 3 — game-type metadata.** Add `game_type` enum to `games`/`nba_eligible_games` (or document derivation rule). Backfill historical games. Use `scripts/snapshot-prebackfill-db.sh` per Supplementary Gate B.
 - **Phase 3 step 4 — feature-engineering pipeline.** Implement `ml/nba/features.py` with all pinned dispositions (drop or keep Cup-knockout per falsification result, impute sentinel rows, etc.). Unit tests: `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_as_of_filter_completeness.py`, `test_time_machine_feature_purity.py`.
 - **Phase 3 steps 5–10**: training infrastructure → calibration + serving → pre-flight ship-rule gates → test-fold evaluation → shadow window → live swap. See addendum v11 §"Phase 3 implementation sequence (gating plan)".
@@ -54,12 +54,8 @@ None. (`gh issue list --state open` returns empty as of 2026-04-26 end-of-sessio
 
 ## In flight (branches not yet merged)
 
-None. All Sprint 10.14 + Phase-3-plan-draft work is merged to main:
-- PR #48 (`claude/debt-35-tov-convention`) merged at `7313bc3` 2026-04-26 ~09:10 UTC
-- PR #49 (`claude/phase-3-plan-draft`) merged at `525bc4d` 2026-04-26 ~09:30 UTC
-- PR #50 (this handoff PR) — pending open at end of session
-
-The local branch `claude/handoff-pre-phase-3` will be the source of PR #50.
+- **PR #51** (`claude/phase3-preflight-1-3`) — all 6 Phase 3 pre-flight scripts + `.harness/council/README.md` + council WARN→fixes. Open, not yet merged. Pending: council results gate (3rd gate) + manifest population.
+  - All Sprint 10.13–10.14 work already merged to main (PRs #47–#50).
 
 ---
 

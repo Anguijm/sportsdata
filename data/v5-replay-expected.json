@@ -1,0 +1,46 @@
+[
+  {
+    "id": "nba_low_conf_home",
+    "prob": 0.57
+  },
+  {
+    "id": "nba_low_conf_away",
+    "prob": 0.57
+  },
+  {
+    "id": "nba_even_teams",
+    "prob": 0.5560138905446199
+  },
+  {
+    "id": "nba_home_dominant_clamped",
+    "prob": 0.85
+  },
+  {
+    "id": "nba_away_dominant_clamped",
+    "prob": 0.15
+  },
+  {
+    "id": "nba_typical_home_favored",
+    "prob": 0.6046790847140094
+  },
+  {
+    "id": "nba_typical_away_favored",
+    "prob": 0.38343349547868066
+  },
+  {
+    "id": "nba_with_injuries_home_hurt",
+    "prob": 0.36008390326226586
+  },
+  {
+    "id": "nba_with_injuries_away_hurt",
+    "prob": 0.7729422593967386
+  },
+  {
+    "id": "nfl_even_teams",
+    "prob": 0.5621765008857981
+  },
+  {
+    "id": "nba_zero_diff_high_confidence",
+    "prob": 0.5560138905446199
+  }
+]

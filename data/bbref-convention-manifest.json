@@ -1,0 +1,200 @@
+{
+  "_comment": "Manifest for scripts/validate-bbref-convention.ts. Minimum 2 non-null entries per stratum before pre-flight run. TODO entries are skipped but counted toward the gap report. bbref_url format: https://www.basketball-reference.com/boxscores/{YYYYMMDD}0{HOME_BBREF_ABBR}.html",
+  "strata": {
+    "regular": [
+      {
+        "game_id": "nba:bdl-1038347",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202402100NYK.html",
+        "home_team_id": "nba:NY",
+        "away_team_id": "nba:IND",
+        "note": "2023-24 regular season mid-year"
+      },
+      {
+        "game_id": "nba:bdl-15907488",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202410280PHO.html",
+        "home_team_id": "nba:PHX",
+        "away_team_id": "nba:LAL",
+        "note": "2024-25 regular season early"
+      },
+      {
+        "game_id": "nba:bdl-15907727",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202411300DET.html",
+        "home_team_id": "nba:DET",
+        "away_team_id": "nba:PHI",
+        "note": "2024-25 regular season Nov"
+      },
+      {
+        "game_id": "nba:bdl-18447026",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202511180ORL.html",
+        "home_team_id": "nba:ORL",
+        "away_team_id": "nba:GS",
+        "note": "2025-26 regular season early"
+      }
+    ],
+    "postseason": [
+      {
+        "game_id": "nba:bdl-15882375",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202404200DEN.html",
+        "home_team_id": "nba:DEN",
+        "away_team_id": "nba:LAL",
+        "note": "2024 R1 game 1"
+      },
+      {
+        "game_id": "nba:bdl-15881959",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202404200CLE.html",
+        "home_team_id": "nba:CLE",
+        "away_team_id": "nba:ORL",
+        "note": "2024 R1 game 1"
+      },
+      {
+        "game_id": "nba:bdl-18421937",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202504190NYK.html",
+        "home_team_id": "nba:NY",
+        "away_team_id": "nba:DET",
+        "note": "2025 R1 game 1"
+      },
+      {
+        "game_id": "nba:bdl-18436463",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202505070OKC.html",
+        "home_team_id": "nba:OKC",
+        "away_team_id": "nba:DEN",
+        "note": "2025 conference semis"
+      }
+    ],
+    "nba_finals": [
+      {
+        "game_id": "nba:bdl-18444561",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202506130IND.html",
+        "home_team_id": "nba:IND",
+        "away_team_id": "nba:OKC",
+        "note": "2025 NBA Finals Game 1"
+      },
+      {
+        "game_id": "nba:bdl-15905067",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202406170BOS.html",
+        "home_team_id": "nba:BOS",
+        "away_team_id": "nba:DAL",
+        "note": "2024 NBA Finals Game 5 (BOS clinching game)"
+      }
+    ],
+    "conference_finals": [
+      {
+        "game_id": "nba:bdl-18441484",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202505310IND.html",
+        "home_team_id": "nba:IND",
+        "away_team_id": "nba:NY",
+        "note": "2025 Eastern Conference Finals"
+      },
+      {
+        "game_id": "nba:bdl-18441830",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202505200OKC.html",
+        "home_team_id": "nba:OKC",
+        "away_team_id": "nba:MIN",
+        "note": "2025 Western Conference Finals Game 1"
+      }
+    ],
+    "play_in": [
+      {
+        "game_id": "nba:bdl-18421910",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202504150GSW.html",
+        "home_team_id": "nba:GS",
+        "away_team_id": "nba:MEM",
+        "note": "2025 Play-In Tournament — Western Conference (coded 2024-regular in DB)"
+      },
+      {
+        "game_id": "nba:bdl-18421229",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202504150ORL.html",
+        "home_team_id": "nba:ORL",
+        "away_team_id": "nba:ATL",
+        "note": "2025 Play-In Tournament — Eastern Conference (coded 2024-regular in DB)"
+      }
+    ],
+    "cup_pool": [
+      {
+        "game_id": "nba:bdl-15907534",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202411040ATL.html",
+        "home_team_id": "nba:ATL",
+        "away_team_id": "nba:BOS",
+        "note": "2024-25 NBA Cup pool-play game (Nov 4 2024, East group)"
+      },
+      {
+        "game_id": "nba:bdl-15907531",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202411040CLE.html",
+        "home_team_id": "nba:CLE",
+        "away_team_id": "nba:MIL",
+        "note": "2024-25 NBA Cup pool-play game (Nov 4 2024, East group)"
+      }
+    ],
+    "cup_knockout": [
+      {
+        "game_id": "nba:bdl-17195500",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202412170OKC.html",
+        "home_team_id": "nba:OKC",
+        "away_team_id": "nba:MIL",
+        "note": "2024-25 NBA Cup Final (Dec 17 2024, T-Mobile Arena Las Vegas — neutral site)"
+      },
+      {
+        "game_id": "nba:bdl-8258317",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202312090LAL.html",
+        "home_team_id": "nba:LAL",
+        "away_team_id": "nba:IND",
+        "note": "2023-24 NBA Cup Final (Dec 9 2023, T-Mobile Arena Las Vegas — neutral site)"
+      }
+    ],
+    "marquee_broadcast": [
+      {
+        "game_id": "nba:bdl-1037593",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202310240DEN.html",
+        "home_team_id": "nba:DEN",
+        "away_team_id": "nba:LAL",
+        "note": "NBA Opening Night 2023 — defending champs DEN vs LAL, TNT marquee game"
+      },
+      {
+        "game_id": "nba:bdl-18447232",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202512250NYK.html",
+        "home_team_id": "nba:NY",
+        "away_team_id": "nba:CLE",
+        "note": "2025-26 Christmas Day game (ABC national broadcast)"
+      }
+    ],
+    "rescheduled_2022_23": [
+      {
+        "game_id": null,
+        "bbref_url": null,
+        "home_team_id": null,
+        "away_team_id": null,
+        "note": "N/A — 2022-regular season not in eligible DB window (confirmed by query returning 0 rows). This stratum cannot be populated; gap report will note it as intentionally skipped."
+      },
+      {
+        "game_id": null,
+        "bbref_url": null,
+        "home_team_id": null,
+        "away_team_id": null,
+        "note": "N/A — same reason as above. Both entries left null; validator will count 0 valid for this stratum."
+      }
+    ],
+    "ot": [
+      {
+        "game_id": "nba:bdl-1037615",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202310270SAS.html",
+        "home_team_id": "nba:SA",
+        "away_team_id": "nba:HOU",
+        "note": "2023-24 regular season OT game (266 total minutes = single OT)"
+      },
+      {
+        "game_id": "nba:bdl-15908920",
+        "bbref_url": "https://www.basketball-reference.com/boxscores/202504130CLE.html",
+        "home_team_id": "nba:CLE",
+        "away_team_id": "nba:IND",
+        "note": "2024-25 regular season double-OT game (292 total minutes, Apr 13 2025)"
+      }
+    ]
+  },
+  "sentinel_game_ids": [
+    "nba:bdl-18447432",
+    "nba:bdl-15907929",
+    "nba:bdl-18446826",
+    "nba:bdl-15907808"
+  ],
+  "_sentinel_note": "These 4 game_ids (spanning 5 rows: nba:bdl-18447432 affects both CHI and LAC) had tov=0 due to ESPN totalTurnovers=0 sentinel pattern. The ESPN re-probe checks if ESPN now returns valid data. No bbref_url needed for sentinel probe — script looks up ESPN event ID from nba_espn_event_ids table."
+}

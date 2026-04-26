@@ -4,30 +4,28 @@
 
 ---
 
-## Start here next session — 2026-04-26 end-of-session
+## Start here next session — 2026-04-27 end-of-session
 
-**Current branch:** `main` at `525bc4d` (all session work merged).
-**Last-merged PRs this session:** #48 (debt-35 close, `7313bc3`) + #49 (Phase-3-plan-draft, `525bc4d`).
-**Production state (Fly):** app v57, 7,604 box-stat rows, `tov = totalTurnovers`, `team_tov` column populated, audit PASS at 0/0/0.
+**Current branch:** `claude/phase3-preflight-1-3` at `6c8be25`. PR #51 open — not yet merged.
+**Main:** `525bc4d` (unchanged from 2026-04-26 — PR #51 not merged yet).
+**Production state (Fly):** unchanged — app v57, 7,604 box-stat rows, `tov = totalTurnovers`, `team_tov` populated, audit PASS 0/0/0.
 
 **Next 1-2 actions (priority order):**
 
-1. **Phase 3 step 1 — pre-flight tooling batch.** 6 scripts must land BEFORE any model code per addendum v11 §"Phase 3 implementation sequence (gating plan)" (Plans/nba-learned-model.md, ~last 200 lines). Council impl-review on the batch before proceeding to step 2. Scripts:
-   - `scripts/validate-bbref-convention.ts` (≥20 games × 10 strata + 4 sentinel game_ids re-probe)
-   - `scripts/v5-prediction-replay.ts` + `data/v5-replay-fixtures.json` + `data/v5-replay-expected.json`
-   - `scripts/snapshot-prebackfill-db.sh`
-   - `scripts/falsify-cup-knockout-disposition.ts` (Domain's named falsification test per pm.5)
-   - `scripts/check-game-type-asymmetries.ts` (depends on validate-bbref-convention output)
-   - `scripts/feature-extraction-parity.test.ts` (Python ↔ TS parity scaffolding)
-2. **(Adjacent) Council-process docs.** v11 codified pm.5 + pm.6 rules in the addendum body but `.harness/council/` doesn't yet have a README consolidating them. Land that as a small commit alongside or before #1.
+1. **Council results gate (3rd gate) on PR #51 pre-flight scripts.** Run the council test/results review on the actual run outputs: v5 replay 11/11 PASS, falsification test FALSIFIED (Δ Brier=0.0816, CI [0.0105, 0.1671], evidence at `docs/cup-knockout-disposition-evidence.md`). Convention validator output is not yet available (manifest TODO entries need populating first — see action 2). Review what exists now; note convention gate as pending. Once council clears, merge PR #51.
+2. **Populate manifest TODO entries + run convention scripts.** `data/bbref-convention-manifest.json` has TODO entries in strata: `play_in` (2), `cup_pool` (2), `cup_knockout` (2), `conference_finals` (1), `nba_finals` (1), `marquee_broadcast` (1), `rescheduled_2022_23` (2), `ot` (2). Each TODO entry has a SQL query in the `note` field to find the missing game IDs. Once manifest is populated: run `validate-bbref-convention.ts` → produces `data/bbref-convention-report.json` → run `check-game-type-asymmetries.ts` → produces `docs/phase-3-game-type-handling.md`. Commit both outputs. Then the full council results gate can run.
 
-**Blockers:** none. Phase 3 implementation is fully unblocked per addendum v11 §"R2 verdicts" (5/5 CLEAR avg 9.4/10).
+**Blockers:** Convention scripts blocked on manifest population (needs DB queries). Gate A (`validate-bbref-convention.ts`) requires ≥2 validated games per stratum to exit 0.
+
+**Key facts from this session:**
+- pm.5 falsification test result: Δ Brier = 0.0816 > 0.02 → **FALSIFIED**. Cup-knockout disposition = **accept-as-is** for Phase 3. Mechanism: v5's neutral-site blind spot (applies 2.25pt home-adv to "home" team even at T-Mobile Arena). Phase 3 ML model should add `neutral_site` binary feature.
+- All 6 pre-flight scripts implemented, council impl-reviewed, run-verified.
 
 **Pre-session context to read** (in order):
 1. This file (you're already here).
 2. `BACKLOG.md` "Now" section.
-3. `Plans/nba-learned-model.md` addendum v11 (most recent ~330 lines).
-4. `learnings.md` Sprint 10.14 + phase-3-plan-draft entries (last ~150 lines).
+3. `learnings.md` `phase3-preflight-scripts` entry (last ~60 lines).
+4. `Plans/nba-learned-model.md` addendum v11 §"Pre-flight tooling" + §"Phase 3 implementation sequence".
 
 ---
 

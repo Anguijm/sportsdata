@@ -1,0 +1,200 @@
+[
+  {
+    "id": "nba_low_conf_home",
+    "description": "NBA: home team < 5 games → returns base rate 0.57",
+    "game": {
+      "game_id": "fixture:nba_low_conf_home",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 3, "wins": 2, "losses": 1, "pointsFor": 330, "pointsAgainst": 315, "lastNResults": [true, false, true] },
+      "away": { "games": 30, "wins": 18, "losses": 12, "pointsFor": 3390, "pointsAgainst": 3180, "lastNResults": [true, true, false, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_low_conf_away",
+    "description": "NBA: away team < 5 games → returns base rate 0.57",
+    "game": {
+      "game_id": "fixture:nba_low_conf_away",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 30, "wins": 18, "losses": 12, "pointsFor": 3390, "pointsAgainst": 3180, "lastNResults": [true, true, false, false, true] },
+      "away": { "games": 2, "wins": 1, "losses": 1, "pointsFor": 220, "pointsAgainst": 215, "lastNResults": [true, false] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_even_teams",
+    "description": "NBA: both teams identical stats → x=0.10*(0+2.25)=0.225, sigmoid(0.225)",
+    "game": {
+      "game_id": "fixture:nba_even_teams",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 30, "wins": 15, "losses": 15, "pointsFor": 3300, "pointsAgainst": 3300, "lastNResults": [true, false, true, false, true] },
+      "away": { "games": 30, "wins": 15, "losses": 15, "pointsFor": 3300, "pointsAgainst": 3300, "lastNResults": [true, false, true, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_home_dominant_clamped",
+    "description": "NBA: home much better → x=0.10*(20+2.25)=2.225, sigmoid≈0.902 → clamped to 0.85",
+    "game": {
+      "game_id": "fixture:nba_home_dominant_clamped",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 30, "wins": 26, "losses": 4, "pointsFor": 3600, "pointsAgainst": 2850, "lastNResults": [true, true, true, true, true] },
+      "away": { "games": 30, "wins": 5, "losses": 25, "pointsFor": 3000, "pointsAgainst": 3600, "lastNResults": [false, false, false, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_away_dominant_clamped",
+    "description": "NBA: away much better → x=0.10*(-20+2.25)=-1.775, sigmoid≈0.145 → clamped to 0.15",
+    "game": {
+      "game_id": "fixture:nba_away_dominant_clamped",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 0
+    },
+    "ctx": {
+      "home": { "games": 30, "wins": 5, "losses": 25, "pointsFor": 3000, "pointsAgainst": 3600, "lastNResults": [false, false, false, false, true] },
+      "away": { "games": 30, "wins": 26, "losses": 4, "pointsFor": 3600, "pointsAgainst": 2850, "lastNResults": [true, true, true, true, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_typical_home_favored",
+    "description": "NBA: home +3 pt diff, away +1 pt diff → x=0.10*((3-1)+2.25)=0.425",
+    "game": {
+      "game_id": "fixture:nba_typical_home_favored",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 30, "wins": 18, "losses": 12, "pointsFor": 3390, "pointsAgainst": 3300, "lastNResults": [true, true, false, true, true] },
+      "away": { "games": 30, "wins": 16, "losses": 14, "pointsFor": 3330, "pointsAgainst": 3300, "lastNResults": [true, false, true, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_typical_away_favored",
+    "description": "NBA: away +5 pt diff, home -2 pt diff → x=0.10*((-2-5)+2.25)=-0.475",
+    "game": {
+      "game_id": "fixture:nba_typical_away_favored",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 0
+    },
+    "ctx": {
+      "home": { "games": 40, "wins": 18, "losses": 22, "pointsFor": 4320, "pointsAgainst": 4400, "lastNResults": [false, false, true, false, false] },
+      "away": { "games": 40, "wins": 26, "losses": 14, "pointsFor": 4600, "pointsAgainst": 4400, "lastNResults": [true, true, true, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_with_injuries_home_hurt",
+    "description": "NBA: home team missing 25 PPG star (injuryAdj = (0-25)*0.4 = -10)",
+    "game": {
+      "game_id": "fixture:nba_with_injuries_home_hurt",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 0
+    },
+    "ctx": {
+      "home": { "games": 30, "wins": 18, "losses": 12, "pointsFor": 3390, "pointsAgainst": 3300, "lastNResults": [true, true, false, true, true] },
+      "away": { "games": 30, "wins": 16, "losses": 14, "pointsFor": 3330, "pointsAgainst": 3300, "lastNResults": [true, false, true, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": { "homeOutImpact": 25, "awayOutImpact": 0 }
+  },
+  {
+    "id": "nba_with_injuries_away_hurt",
+    "description": "NBA: away team missing 20 PPG star (injuryAdj = (20-0)*0.4 = +8)",
+    "game": {
+      "game_id": "fixture:nba_with_injuries_away_hurt",
+      "date": "2025-01-01",
+      "sport": "nba",
+      "home_team_id": "nba:BOS",
+      "away_team_id": "nba:LAL",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 30, "wins": 18, "losses": 12, "pointsFor": 3390, "pointsAgainst": 3300, "lastNResults": [true, true, false, true, true] },
+      "away": { "games": 30, "wins": 16, "losses": 14, "pointsFor": 3330, "pointsAgainst": 3300, "lastNResults": [true, false, true, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": { "homeOutImpact": 0, "awayOutImpact": 20 }
+  },
+  {
+    "id": "nfl_even_teams",
+    "description": "NFL: both teams identical → x=0.10*(0+2.5)=0.25, sigmoid(0.25)",
+    "game": {
+      "game_id": "fixture:nfl_even_teams",
+      "date": "2025-01-01",
+      "sport": "nfl",
+      "home_team_id": "nfl:NE",
+      "away_team_id": "nfl:KC",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 10, "wins": 5, "losses": 5, "pointsFor": 220, "pointsAgainst": 220, "lastNResults": [true, false, true, false, true] },
+      "away": { "games": 10, "wins": 5, "losses": 5, "pointsFor": 220, "pointsAgainst": 220, "lastNResults": [true, false, true, false, true] },
+      "asOfDate": "2025-01-01"
+    },
+    "injuries": null
+  },
+  {
+    "id": "nba_zero_diff_high_confidence",
+    "description": "NBA: 60 games each, exactly zero differential → x=0.225, tests stability at high game count",
+    "game": {
+      "game_id": "fixture:nba_zero_diff_high_confidence",
+      "date": "2025-03-15",
+      "sport": "nba",
+      "home_team_id": "nba:DEN",
+      "away_team_id": "nba:OKC",
+      "home_win": 1
+    },
+    "ctx": {
+      "home": { "games": 60, "wins": 30, "losses": 30, "pointsFor": 6600, "pointsAgainst": 6600, "lastNResults": [true, false, true, false, true] },
+      "away": { "games": 60, "wins": 30, "losses": 30, "pointsFor": 6600, "pointsAgainst": 6600, "lastNResults": [true, false, true, false, true] },
+      "asOfDate": "2025-03-15"
+    },
+    "injuries": null
+  }
+]

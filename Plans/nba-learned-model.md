@@ -1452,3 +1452,219 @@ Added by post-mortem (with R2 fix-pack refinements):
   - The dissenter's named falsification test (above) is also blocking
 
 - **Pre-backfill DB snapshot is mandatory.** For any backfill / migration / mass-UPDATE on production data, capture `sqlite3 .backup` (or equivalent atomic snapshot) of `data/sportsdata.db` BEFORE execution begins. Risk #4 mitigation pre-states the rollback recipe; without the snapshot, the recipe is incomplete.
+
+---
+
+## Addendum v11 — 2026-04-26 (Phase 3 plan-draft: integrating v6–v10 + post-mortem forwarded items)
+
+**Trigger.** Phase 2 fully shipped (debt #34 closed Sprint 10.13). Debt #35 closed as option-b (Sprint 10.14 v10 forward-and-rollback). Per CLAUDE.md ("Council discipline: every substantive change runs through the 5-expert council") and the Phase 3 plan body §"Council review at three gates per phase," Phase 3 cannot move from "plan body council-CLEAR (rounds 1–4 in addendum series)" to "implementation" without a plan-draft addendum that integrates the ~20 forwarded items pinned across addenda v6 / v7 / v8 / v9 / v10 / post-mortem. This addendum is that integration.
+
+**Scope.** This addendum is plan-draft only. NO model code is written. NO data backfill executes. The artifact is a council-reviewable design document that:
+1. Enumerates every forwarded item from prior addenda + sources
+2. Disposes each (integrate into Phase 3 plan / forward to a future addendum / drop with rationale)
+3. Pre-declares additional ship rules + implementation-sequence constraints
+4. Identifies the pre-flight tooling that must land BEFORE any model code
+5. Surfaces the contested decisions that need council input
+
+The plan body §Phase 3 (lines 145–301) remains the authoritative ship-rule + design document; this addendum extends and pins, but does not back-edit, that body.
+
+### Forwarded-items inventory + dispositions
+
+Compact table of every item pinned by prior addenda. **Disposition column**: `INTEGRATE` = fold into Phase 3 plan via §-references below; `FORWARD` = defer to Phase 4 or future addendum; `DROP` = no longer applicable; `RESOLVED` = already addressed by plan body or earlier addendum.
+
+| # | Item (source) | Disposition | Where addressed in this addendum |
+|---|---|---|---|
+| v6.1 | Add season-aggregate as 10th feature-form candidate | **INTEGRATE** | §"Feature engineering" |
+| v6.2 | Multiple-testing mitigation on 10-way grid | **INTEGRATE** | §"Inner-CV grid + statistical hygiene" |
+| v6.3 | Opponent-adjustment sanity (rolling-vs-SoS-adjusted) | **RESOLVED** | Already in plan body §Features L211 ("Opponent-adjusted Net Rating") |
+| v6.4 | Season-segment stability check | **INTEGRATE** | §"Inner-CV grid + statistical hygiene" |
+| v7.7 | Test-fold filter `season != '2025-26'` + unit test | **INTEGRATE** | §"Test-fold discipline" |
+| v7.8 | `training_as_of_timestamp` semantics pinned | **INTEGRATE** | §"As-of-snapshot semantics" |
+| v7.9 | Eligibility denominator (regular + postseason + play-in + Cup KO) | **RESOLVED** | Pinned by addendum v7 itself + addendum v8 implementation |
+| v7.10 | `box_stats_coverage` view + audit script | **RESOLVED** | Debt #33 (Sprint 10.12) + debt #34 (Sprint 10.13) |
+| v7.11 | Cross-source audit target bug-class | **RESOLVED** | Pinned by addendum v7 itself |
+| v7.12 | Cron ordering: box-stats AFTER predictions per tick | **INTEGRATE** | §"Cron ordering" |
+| v7.13 | `second_chance_points` / `bench_points` ingestion | **DROP** | Not used by Phase 3 feature list (plan body §Features); revisit at Phase 4 if a feature is proposed |
+| v7.14 | `minutes_played` retained as MUST-HAVE | **RESOLVED** | Plan body §Features doesn't directly consume; retained per addendum v7 rationale |
+| v8 | Wilson-CI for small-N Rule 3 cells | **DROP** (Phase 2 scope) | Phase 2 ship-claim earned without per-cell Wilson; not a Phase 3 concern |
+| v10.1 | `team_tov` admissible only as predictor (NOT a grid axis) | **INTEGRATE** | §"Feature engineering" |
+| v10.2 | `team_tov` NULL-handling policy | **INTEGRATE** | §"Feature engineering" |
+| v10.3 | Cron ordering reaffirmed | **INTEGRATE** | §"Cron ordering" (folded with v7.12) |
+| v10.4 | 0.44 vs 0.4 FT-coefficient revisit | **INTEGRATE** | §"Possessions formula coefficient" |
+| pm.1 | Cup-knockout game handling | **INTEGRATE** | §"Feature engineering" |
+| pm.2 | Other game-type asymmetry pre-screens | **INTEGRATE** | §"Pre-flight tooling" |
+| pm.3 | 5 ESPN-sentinel rows row-level handling | **INTEGRATE** | §"Feature engineering" |
+| pm.4 | Stratified-bbref-validation regression harness | **INTEGRATE** | §"Pre-flight tooling" |
+| pm.5 | Council process: dissenter-named falsification test | **INTEGRATE** | §"Council process codification" |
+| pm.6 | ≥2/stratum + ≥5 total + adversarial-selection bar | **INTEGRATE** | §"Council process codification" |
+| pm.7 | Pre-backfill DB snapshot mandatory | **INTEGRATE** | §"Pre-flight tooling" |
+| v10-impl-review carry-forward | v5 prediction-replay regression test | **INTEGRATE** | §"Pre-flight tooling" |
+
+### Feature engineering (decisions pinned)
+
+**Cup-knockout game handling (pm.1).** Phase 3 plan body §Features (line 207) does not currently distinguish Cup games from regular-season games. Per debt #35 post-mortem, ~14 Cup-knockout games per Phase-3 in-scope window (~0.18% of training data) carry a documented bbref-convention bias on `tov` (player-summed in bbref vs totalTurnovers in our DB). Four options were forwarded; **this addendum recommends (b) drop Cup-knockout games from training**. Rationale:
+
+- Training-data cost is negligible: ~14 games out of 7,604 = 0.18%. v5/v4-spread baselines show no meaningful Brier sensitivity at this sample-size delta.
+- (a) accept-as-is preserves the bias forever; rolling-window features dilute it but the bias compounds across any per-Cup-game evaluation.
+- (c) loss-weight-down requires per-game weights in the training pipeline; adds complexity for marginal benefit.
+- (d) impute-as-player-summed (`tov - team_tov`) requires a Phase-3-specific ETL step that diverges from the schema convention; brittle if bbref ever extends the Oct-2024 correction to Cup-knockout (the imputation becomes wrong overnight).
+- **Drop is the simplest reversible option.** Phase 3 implementation includes a `WHERE g.game_type != 'cup_knockout'` filter at training-tensor construction (game_type derivation pending — see "Game-type derivation" below); test-fold inference retains Cup-knockout games (we still serve predictions on them at test time).
+
+**Game-type derivation.** Currently `nba_eligible_games` does not distinguish Cup-knockout games. Phase 3 implementation adds either (i) a `game_type` enum column to `games`/`nba_eligible_games`, or (ii) a derivation rule at training-tensor construction (e.g., "knockout = neutral-site games in Dec 2023+ OR Mar 2024+"). Implementation-time decision; pinned at impl-review.
+
+**5 ESPN-sentinel rows (pm.3).** Per Pred R2 fix-pack: default handling is `(b) impute tov from team-season average` for the 5 enumerated rows (CHI/LAC nba:bdl-18447432, GS nba:bdl-15907929, BOS nba:bdl-18446826, DEN nba:bdl-15907808). These rows currently have `tov=0` (ESPN sentinel pattern). Implementation: at training-tensor construction, replace `tov=0` rows with `tov = team_season_avg(tov)` for the affected (team, season). Document the imputation in the row-level training-data manifest. **This addendum confirms that recommendation as the Phase 3 default.**
+
+**`team_tov` admissibility (v10.1).** `team_tov` is admissible **only as a candidate predictor inside the existing feature vector**, NOT as an axis of the feature-form selection grid (the 10-way grid below remains rolling-N × EWMA-h × season-aggregate; no `(team_tov_form)` axis). The Phase-3-plan-body §Features list (line 207) does not currently include `team_tov_rate` as a feature; **this addendum proposes adding `rolling_team_tov_rate_off` and `rolling_team_tov_rate_def` as candidate features**, ablation-tested in implementation review (does adding them improve val-fold Brier by ≥0.001? if yes, keep; if no, retire).
+
+**`team_tov` NULL-handling (v10.2).** For the ~7,599 rows where `team_tov ∈ [0, 10]` (valid integer), no special handling needed. For the 5 sentinel rows (already imputed via pm.3 above) and any future rows with `team_tov IS NULL` (NICE-TO-HAVE coverage gap on historical fixtures): impute `team_tov = 0` (the modal value) for feature computation. Document the imputation count per training run. **This addendum pins impute-zero as the default**; learned-missingness not justified by current coverage (~99.9% non-NULL post-rescrape).
+
+### Inner-CV grid + statistical hygiene (decisions pinned)
+
+**10-way grid (v6.1).** The plan body §Training protocol (line 244) declared a 9-candidate feature-form grid: 5 rolling-N × 4 EWMA-h. **This addendum adds a 10th candidate**: `season-aggregate` (mean of all prior in-season games for the team, equivalent to rolling-N where N → ∞). Rationale: provides a proper baseline for the rolling-vs-aggregate comparison the addendum v6 §Correction-2 made the case for. Without it, the test-fold-against-v5 comparison is the only recency-vs-aggregate signal in the plan, which is too narrow.
+
+**Multiple-testing mitigation (v6.2).** With 10 candidates evaluated via per-game-pooled Brier on inner CV folds, the winner is upward-biased (sample-best of 10 i.i.d. point estimates has expected gap of ~`σ·√(2·ln(10)/n) ≈ 0.001-0.003` on typical Brier-fold variance). Mitigation: **Bonferroni-adjusted CI threshold for the winner-vs-baseline comparison**. Specifically, before declaring the winner moves to test-fold evaluation, the inner-CV per-game-pooled Brier of the winner must beat the median candidate's per-game-pooled Brier by ≥`(σ_inner · √(2·ln(K)/n))` where `K=10` candidates, `n` = inner-fold sample-size. If the winner doesn't clear this threshold, **the season-aggregate baseline candidate ships to test-fold instead** (multiple-comparisons-corrected fallback). Pre-declared.
+
+**Season-segment stability (v6.4).** Pre-declared 3-segment split of the *training* fold: early (games 1–25 per team-season), middle (games 26–55), late (games 56+). The inner-CV winner's per-game-pooled Brier must be in the top-3 of the 10-candidate ranking on **each** segment independently. If the winner is top-3 on 0–1 segments, it is rejected and the next-stable candidate is selected. **Rationale**: catches "the winner is best on aggregate but only because one segment dominates the sample weighting." Documented in addendum v6 §Plan-review-items #4.
+
+### Test-fold discipline (decisions pinned)
+
+**Test-fold filter (v7.7).** Phase 3 implementation MUST filter `season != '2025-26'` (or whatever the test-fold season string is — currently per Phase 2 backfill convention this is `'2025-regular'`, NOT `'2025-26'`; pin updated below) at training-tensor construction. Pin: **`season NOT IN ('2025-regular', '2025-postseason')`** at training-tensor construction. Unit test required: `test_no_test_fold_in_training_tensor.py` asserts no rows with these season strings appear in any training tensor materialized for any inner-CV fold or hyperparameter run. Phase 3 implementation-review gate.
+
+**Test-fold-touch counter (extends plan body §Phase 3 ship rules #1).** Add a tooling-enforced counter that increments each time the test-fold tensor is materialized. Counter should be ≤ 2 per Phase 3 attempt (1 for LightGBM evaluation, +1 IFF LightGBM fails all six rules and MLP gets evaluated per the sequential discipline at L153-160). Counter committed to a pinned file in the repo (`ml/nba/.test-fold-touch-counter`); implementation-review checks the counter's pre-attempt state matches expectation.
+
+### As-of-snapshot semantics (decisions pinned)
+
+**`training_as_of_timestamp` (v7.8).** Phase 3 training pins a `training_as_of_timestamp` (UTC ISO-8601 timestamp), commits it to `ml/nba/configs/<run-id>.json`, and applies it as a `WHERE updated_at <= training_as_of_timestamp` filter on every read of `nba_game_box_stats`, `nba_box_stats_audit`, and any other Phase-3-relevant table. The `nba_box_stats_audit` table is a forensic surface (why did this field change?), NOT the reproducibility mechanism — that role goes to the timestamp filter. **Pin**: `as_of` defaults to the most recent UTC midnight before the training run starts, unless the run-config explicitly overrides. Unit test required: `test_as_of_filter_reproducibility.py` runs feature extraction at two different wall-clock times against the same `as_of` and asserts bit-identical tensors.
+
+### Cron ordering (decisions pinned)
+
+**Box-stats scrape AFTER predictions per tick (v7.12 + v10.3).** The current cron schedule in `.github/workflows/predict-cron.yml` has `'0 5 * * *'` (predict at 5am UTC). Per addendum v7 §12 + v10.3 reaffirmation, when Phase 3 lands, the box-stats scrape (currently the `'0 22 * * *'` scrape cron) must run AFTER the prediction writes for the same tick — so predictions log what the model actually saw at prediction time, not a mid-tick scrape update. **Phase 3 implementation moves the box-stats scrape to a post-prediction tick** (e.g., `'15 5 * * *'` runs 15 minutes after the predict cron). Tooling-enforced via the cron YAML; documented in DEPLOY.md.
+
+### Possessions formula coefficient (v10.4)
+
+The plan body §Features uses `possessions_per_team` (computed at scrape time via `possessionsSingleTeam(...)`) as the denominator for per-possession rate features. The scraper formula uses `0.44·FTA` (Oliver-basic). The audit script (`scripts/audit-espn-box-stats.ts`) uses `0.4·FTA` (bbref full Pace formula) per the v9 C′ disposition. Per-team-game divergence: ~`0.04·FTA ≈ 1.0 possession at FTA=25, ≈ 1.6 at FTA=40`.
+
+**Phase 3 disposition**: keep the schema column on `0.44` (no schema migration, no re-backfill). Phase 3 features that consume `possessions` use the schema column directly. The bbref-validation pre-flight harness (see §Pre-flight tooling) reports any per-game divergence between the two coefficients on the stratified sample; if divergence is consistent and material (>2 possessions per team-game on a typical game), Phase 3 plan-review revisits. **Default**: keep `0.44`; cite this decision in the Phase 3 results addendum.
+
+### Pre-flight tooling (must land BEFORE any model code)
+
+Per debt #35 post-mortem learnings, the following pre-flight tooling lands as a **gating commit** before any Phase 3 model code is written. Council impl-review for each artifact below before the next one starts.
+
+**1. `scripts/validate-bbref-convention.ts` (pm.4).** Stratified-bbref-validation regression harness. ≥16 games × 8 strata (regular / postseason / Cup-pool / Cup-knockout / Play-In / marquee national-broadcast / rescheduled-2022-23 / OT). For each: pull bbref Tm TOV via Playwright (cached), compare to `(ESPN.turnovers, ESPN.totalTurnovers)`, report convention match per stratum. Output: `data/bbref-convention-report.json` and a markdown summary at `docs/bbref-convention-report.md`. **Run before any Phase 3 model-affecting backfill OR feature change.** First run produces the empirical baseline; subsequent runs (e.g., quarterly) detect bbref-side convention drift.
+
+**2. `scripts/v5-prediction-replay.ts` (Pred carry-forward from v10 impl-review).** v5 prediction-replay regression harness. Reads a fixed test-fixture set of v5-input rows (committed at `data/v5-replay-fixtures.json`), invokes the v5 prediction code path, asserts byte-for-byte output match against committed `data/v5-replay-expected.json`. Pre-Phase-3 baseline: capture v5 outputs for all fixtures and commit. Phase 3 model-affecting commits run this harness in CI (or as a pre-merge gate); any non-zero diff fails the harness. **This catches code regressions; the bbref-validation harness catches data-correctness drift.** Both are needed.
+
+**3. `scripts/snapshot-prebackfill-db.sh` (pm.7).** Codified pre-backfill DB snapshot. Wraps `sqlite3 .backup /tmp/sportsdata-prebackfill-<timestamp>.db` against the Fly DB via SSH; uploads the snapshot to a forensic-artifact bucket (or commits to repo at `data/snapshots/` if size permits). MUST run before any production-data-irreversible operation (backfill, mass UPDATE, schema migration). The Phase 3 plan-review gate enforces this script's invocation at the first pre-backfill commit; subsequent backfills must cite its output in the commit message.
+
+**4. `scripts/check-game-type-asymmetries.ts` (pm.2 — depends on #1).** Once `validate-bbref-convention.ts` has produced the stratified report, this script consolidates the findings into a Phase-3-feature-engineering decision matrix: for each stratum where bbref and our schema disagree on `tov` convention, decide drop / impute / accept-as-is. Output: `docs/phase-3-game-type-handling.md`. This document is the input to the Phase 3 model-code council impl-review.
+
+### Council process codification (pm.5 + pm.6)
+
+The post-mortem council learnings about R1/R2 reversal discipline are tooling-only-when-needed. **Pin**: codify the following two rules in the council-process docs at `.harness/council/README.md` (creating the file if absent):
+
+1. **Dissenter-named falsification test (pm.5)**: When a council R1 surfaces a load-bearing convention disagreement and R2 entertains a reversal driven by an empirical claim, the falsification test named by the dissenting expert in R1 becomes blocking on R2 reversal. The proponent must run that test before the reversal can stand.
+
+2. **Multi-row-write empirical-verification standard (pm.6)**: Any future plan that pivots on a single empirical check requires (a) ≥2 data points per stratum the population contains, (b) ≥5 total data points across the population, (c) adversarial selection (≥1 data point per stratum chosen by the dissenting expert, not the proponent), AND (d) the dissenter's named falsification test. All four conditions are blocking; any one failing blocks R2 reversal.
+
+CLAUDE.md cross-reference: add a one-line pointer to `.harness/council/README.md` from the "Council discipline" section of CLAUDE.md.
+
+### Phase 3 implementation sequence (gating plan)
+
+The Phase 3 work decomposes into the following sequence. **Each step's completion gates the next.** Council impl-review at each step before proceeding.
+
+1. **Pre-flight tooling lands** (no model code yet):
+   - `scripts/validate-bbref-convention.ts` (#1)
+   - `scripts/v5-prediction-replay.ts` (#2) + `data/v5-replay-fixtures.json` + `data/v5-replay-expected.json`
+   - `scripts/snapshot-prebackfill-db.sh` (#3)
+   - Council impl-review on this batch.
+
+2. **Pre-flight runs**:
+   - Run validate-bbref-convention; commit report
+   - Capture v5 baseline; commit fixtures + expected outputs
+   - (Snapshot script doesn't run yet; deferred to first backfill)
+   - `check-game-type-asymmetries.ts` (#4) consolidates findings; commit decision matrix
+   - Council impl-review on findings.
+
+3. **Game-type metadata** (gated on #2 findings):
+   - Add `game_type` enum to `games` / `nba_eligible_games` (or document derivation rule)
+   - Backfill `game_type` for historical games
+   - Council impl-review on this scope-limited backfill (uses snapshot script per pm.7).
+
+4. **Feature-engineering pipeline**:
+   - `ml/nba/features.py` implements feature extraction with all pinned dispositions (drop Cup-knockout, impute sentinels, etc.)
+   - Unit tests: `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_time_machine_feature_purity.py`
+   - Council impl-review.
+
+5. **Inner-CV training infrastructure**:
+   - LightGBM + MLP training scripts (`ml/nba/train_lightgbm.py`, `ml/nba/train_mlp.py`)
+   - 10-candidate feature-form grid wired (rolling-N × 5, EWMA-h × 4, season-aggregate × 1)
+   - Multiple-testing-mitigation gate per §Inner-CV (Bonferroni threshold)
+   - Season-segment stability check
+   - Forward-chaining 5-fold CV + 20-seed ensemble
+   - Council impl-review.
+
+6. **Calibration + serving**:
+   - Platt scaling primary (per plan body §Calibration L181)
+   - Isotonic fallback if val-fold ≥1,500 games
+   - ONNX export of weight-averaged 20-seed ensemble
+   - Council impl-review.
+
+7. **Pre-flight ship-rule gates** (BEFORE test-fold touch):
+   - Power check on training fold per plan body §Phase 3 ship rules #1 (paired-diff block-bootstrap SE)
+   - Seed-instability gate (95% bootstrap CI on seed-std ≤ 0.008 Brier)
+   - v5-prediction-replay regression PASS
+   - Council pre-touch review.
+
+8. **Test-fold evaluation** (touched at most 2× per Phase 3 attempt):
+   - LightGBM eval first
+   - MLP eval iff LightGBM fails
+   - All 6 ship rules evaluated
+   - Test-fold-touch counter incremented + committed
+
+9. **Shadow window** (per plan body Rule 5 L289):
+   - Shadow-mode logging via PR #38 infra
+   - 28 game-days OR 500 predictions, whichever first
+   - Load-management partition diagnostic
+   - Block-bootstrap paired CI on (shadow − test) Brier
+
+10. **Live swap** (gated on all six ship rules + shadow parity):
+    - Interpretability utility (`scripts/explain-prediction.ts`) verified
+    - Cron ordering reconfigured (box-stats AFTER predictions per tick)
+    - Council results-review
+    - Live swap
+
+### Phase 3 ship rules — additions and refinements (extending plan body L275-301)
+
+This addendum **does not modify** the 6 ship rules in the plan body (those are append-only). It **adds 3 supplementary gates** specific to the v10 + post-mortem learnings:
+
+**Supplementary Gate A — Pre-flight regression harnesses PASS.** Before test-fold touch, both `scripts/validate-bbref-convention.ts` and `scripts/v5-prediction-replay.ts` must produce GREEN reports. Bbref-convention report: no stratum's measured convention diverges from the Phase-3-feature-engineering pinned disposition by >1 game (catches bbref-side state drift since the addendum was written). v5-replay: byte-identical output across all fixtures.
+
+**Supplementary Gate B — Pre-backfill snapshot present.** For any production-data backfill executed during Phase 3 (game-type metadata backfill, feature-cache materialization, etc.), a `scripts/snapshot-prebackfill-db.sh` invocation must precede the backfill, and the snapshot artifact path must be cited in the backfill commit message. CI-enforceable via a commit-message linter; council-enforced via impl-review checklist.
+
+**Supplementary Gate C — Test-fold-touch counter at expected value.** Before each test-fold-touching commit, the `ml/nba/.test-fold-touch-counter` file must be at its expected pre-touch value (0 for first attempt, 1 if LightGBM has been evaluated and MLP is being evaluated). Mismatch indicates an unauthorized prior touch; council halts the run and audits.
+
+### Risks + mitigations
+
+| # | Risk | Mitigation |
+|---|---|---|
+| 1 | Pre-flight tooling effort balloons (≥4 scripts to land before any model work) | Time-box each script to ≤1 day; council impl-review enforces narrow scope |
+| 2 | bbref-convention report surfaces additional asymmetries we hadn't anticipated (e.g., All-Star Game, summer league, exhibition) | Each new asymmetry → handled per the same decision matrix as Cup-knockout: drop / impute / accept; documented in `docs/phase-3-game-type-handling.md` |
+| 3 | v5-prediction-replay fixtures don't capture the production code path comprehensively (false confidence) | Fixture set must include ≥1 example per v5-decision-branch; coverage check at impl-review |
+| 4 | Game-type backfill (#3 above) requires its own stratified-bbref-validation pre-flight, recursing the gating sequence | Acceptable — game-type backfill IS a model-affecting backfill; the recursion terminates at "validate before each backfill" |
+| 5 | Phase 3 ships and Cup-knockout drop-from-training turns out to materially hurt Brier on the test fold (we lose ~14 high-leverage early-season games) | Pre-flight power check (plan body Rule 1 power check) accounts for this; if expected SE >0.0033, abandon the phase per Rule 1 power-check failure mode |
+| 6 | Pred fix-pack default (impute-sentinels-from-team-season-avg) is wrong for the 5 sentinel rows (ESPN's currently-incorrect data may get corrected in the future, making our imputation a documented divergence) | Document the imputation in the row-level training-data manifest; re-evaluate at next quarterly bbref-validation re-run |
+| 7 | Multiple-testing mitigation is too strict (Bonferroni-adjusted threshold rejects all 10 candidates including season-aggregate, leaving Phase 3 with no winner to ship) | Pre-declared fallback: ship the **incumbent (v6 or v5)** with no Phase 3 swap; document null result; re-council on whether to widen the threshold or accept that Phase 3 didn't beat incumbent |
+| 8 | `team_tov` ablation (added per v10.1) doesn't improve val-fold Brier by ≥0.001 → feature is retired → schema column was wasted | Acceptable. NICE-TO-HAVE column has near-zero ongoing storage cost; keep for future re-evaluation |
+
+### Council ask — Addendum v11 plan-review
+
+5-expert plan-review (DQ / Stats / Pred / Domain / Math). Items to evaluate:
+
+- **All experts**: is the forwarded-items inventory complete? Any pinned items from prior addenda not captured? Any disposition you'd flip?
+- **DQ**: pre-flight tooling sequence (4 scripts before any model code) — is each script's data-quality scope adequate? Specifically, is `scripts/check-game-type-asymmetries.ts`'s decision-matrix output (drop / impute / accept) the right level of granularity?
+- **Stats**: multiple-testing mitigation (Bonferroni-adjusted threshold for the 10-way grid) — is this the right correction? Are the season-segment stability check + Bonferroni jointly over-strict (do they conflict on cases where the winner is segment-stable but Bonferroni-borderline)?
+- **Pred**: implementation-sequence gating (10 steps with council impl-review at each) — is this too many gates (slow to iterate) or appropriately disciplined? Does Supplementary Gate C (test-fold-touch counter) correctly enforce the test-fold-touch budget? Should any of the supplementary gates be promoted to plan-body Rule status?
+- **Domain**: Cup-knockout drop disposition — does this incur any NBA-domain cost we haven't modeled (e.g., late-2025-26 Cup games are leverage-prone for playoff seeding)? The 8 strata in `validate-bbref-convention.ts` — are there NBA-specific game-types we're missing? (Summer League is out of scope but worth checking.)
+- **Math**: feature-form 10-candidate grid + Bonferroni — verify the threshold formula. Inner-CV per-game-pooled Brier σ at the typical fold size is approximately what? Does the Bonferroni-adjusted gap requirement match the ship-FPR budget the plan body §Multiple-comparisons discipline already commits to?
+
+Iterate to CLEAR or WARN-with-pre-declared-mitigations before any code is written.

@@ -1243,3 +1243,121 @@ Five-expert plan-review: DQ, Stats, Pred, Domain, Math. Verdicts: CLEAR / WARN-w
 3. Capture post-backfill snapshot.
 4. Re-run debt-#34 audit on substituted N=50.
 5. Council test/results review.
+
+---
+
+## Addendum v10 post-mortem — 2026-04-26 (TOV convention rollback; debt #35 closed as option-b)
+
+**Trigger.** Backfill ran cleanly (3,802 / 3,802 ok; 6 schema_error warnings from ESPN's `teamTurnovers=-N` sentinel pattern; Ship Rule 3 magnitude check PASS at Δposs=0.73 ∈ [0.2, 2.5]). But Ship Rule 4 (audit re-run on substituted N=50) **FAILED** with **57 raw + 139 rate failures**, all TOV-driven. Per Ship Rule 4 + Risk #4: rollback fires *and* every failing entry diagnosed before any re-attempt — no silent re-run loop.
+
+### Root cause: empirical-verification flaw (single-game check non-representative)
+
+The v10 plan body cited inline empirical evidence for the bbref-convention claim (player-summed):
+
+> "Direct inspection of the cached bbref HTML for `nba_bdl-8258317` (LAL/IND 2023 Cup final ...) settles the question: the bbref Team Totals row shows `data-stat="tov">18` for the team whose ESPN `turnovers` (player-summed) = 18 and `totalTurnovers` = 20. The bbref advanced-stats row shows `tov_pct = 14.8%`, which algebraically requires TOV=18 in the numerator."
+
+This evidence was internally consistent but **non-representative of the broader NBA corpus**. Direct re-verification on a 2023-regular game (`nba:bdl-1037593`, DEN/LAL 2023-10-24, in the audit truth file) shows the **opposite** pattern:
+
+| Surface | Value | Convention match |
+|---|---|---|
+| bbref Team Totals tov for DEN | 12 | matches ESPN.totalTurnovers (12 = 11 + 1) |
+| ESPN.turnovers (player-summed) for DEN | 11 | mismatch with bbref by −1 |
+| ESPN.totalTurnovers for DEN | 12 | matches bbref |
+
+Same pattern across all 50 audit-truth-file games: bbref's `tov` column equals ESPN's `totalTurnovers`, NOT ESPN's `turnovers`. Median Δ per failing entry: −1 to −2 per team-game, exactly matching the magnitude of teamTurnovers per side. The Round-1 Domain expert FAIL — citing the Sports-Reference October-2024 blog post on game-level team-turnover corrections — was substantively correct for the broad NBA corpus. The Round-2 reversal-via-empirical-check, driven by a single Cup game, was **wrong for ~99% of the data**.
+
+### New empirical finding: Cup vs regular-season bbref convention asymmetry
+
+NBA Cup games appear to be an **exception** to the Oct-2024 bbref Tm TOV correction:
+
+| Game | Game type | bbref tov | ESPN.turnovers | ESPN.totalTurnovers | Convention |
+|---|---|---|---|---|---|
+| `nba:bdl-1037593` (DEN/LAL 2023-10-24) | regular | 12 | 11 | 12 | **totalTurnovers** |
+| `nba:bdl-15882375` (LAL/DEN 2023 postseason) | postseason | 6 | 4 | 6 | **totalTurnovers** |
+| `nba:bdl-8258317` (LAL/IND 2023 Cup final) | Cup | 18 | 18 | 20 | **player-summed** |
+
+Plausible explanation: the Sports-Reference Oct-2024 blog post described a corrections pass on historical game-level Tm TOV data (adding team-attributed turnovers to the player-summed total). That pass may not have covered NBA Cup games, which were a relatively new event format at the time and may have been processed under a different aggregation pipeline. bbref staff may extend the correction to Cup games in a future pass; or they may not. Either way, **the asymmetry is bbref-state-dependent and may shift over time.**
+
+### Disposition: option (b) — keep `totalTurnovers`, document the Cup asymmetry
+
+Per user direction post-failure (2026-04-26).
+
+**Why (b) over (d′ — split-by-game-type):**
+
+1. **Statistical impact is negligible.** NBA Cup games are ~3-5 per year (pool play + knockout). Across 3 in-scope seasons that's ~10-15 games out of 7,604 — well under 0.2% of training data. Phase 3's TOV features will be team-level rolling-N averages, which dilute single-game bias to noise.
+2. **bbref's state may drift.** The Cup asymmetry is plausibly an *incomplete* rollout of the Oct-2024 correction. Hard-coding "Cup = player-summed" today and bbref rolling out the correction tomorrow makes our split-by-game-type logic the new bug.
+3. **Engineering cost is asymmetric.** Option (d′) requires reliable Cup-game detection (does ESPN's response carry a clear flag?), new schema column or branching scraper logic, new tests, new council round, potentially another backfill. Option (b) requires reverting one FIELD_MAP swap.
+4. **No consumer compares Cup per-possession rates against bbref.** Diagnostic value of bbref-Cup-comparable possessions is essentially zero.
+5. **`team_tov` column kept.** Schema addition (`team_tov` NICE-TO-HAVE) is retained for forensic value + Phase-3 optionality.
+
+### What got reverted (and what was retained)
+
+| Item | v10 build | Post-rollback |
+|---|---|---|
+| `tov` source field | ESPN `turnovers` (player-summed) | ESPN `totalTurnovers` (player + team) — REVERTED |
+| `team_tov` column in schema | NICE-TO-HAVE INTEGER nullable | RETAINED (NICE-TO-HAVE, useful for Phase 3) |
+| `teamTurnovers` → `team_tov` mapping | NICE-TO-HAVE | RETAINED |
+| `totalTurnovers` field handling | `kind: 'check-only'` (side-channel) | MUST-HAVE → `tov` — REVERTED |
+| Sum-identity check (`tov + team_tov == totalTurnovers`) | Active | REMOVED (tautological under restored convention) |
+| Ordering check (`tov ≥ team_tov`) | Active | REMOVED (structurally guaranteed under `totalTurnovers` convention) |
+| Per-component bounds check (`tov ∈ [0,40]`, `team_tov ∈ [0,10]`) | Active | RETAINED |
+| `--update-existing` + `--min-age-hours` flags | New | RETAINED (general-purpose backfill enhancement) |
+| `scripts/snapshot-box-stats-segmented.ts` | New | RETAINED (general-purpose forensic tool) |
+| `--update-existing` rescrape, post-rollback | N/A | RUN — restores `tov = totalTurnovers` for all 7,604 rows |
+
+### Procedural failure: missed pre-backfill DB snapshot
+
+Risk #4 mitigation explicitly called for "restore from pre-backfill `data/sportsdata.db` snapshot taken immediately before re-backfill." **No such snapshot was taken** before the v10 backfill. Recovery via re-scrape (option 1 of two; preferred over mathematical recovery for fewer error surfaces) accomplishes the same end-state but is wallclock-equivalent to a second backfill run (~32 min). Lesson logged to `learnings.md`: **for any irreversible production-data operation, the pre-state snapshot is a hard prerequisite, not a recommended-best-practice**.
+
+### Council process learnings
+
+The R2 reversal of the Domain expert's FAIL was driven by a single empirical check that I (Claude) presented confidently. The Domain expert's R2 verdict explicitly accepted the algebraic verification as dispositive; the response noted "I'd still like a one-time spot-check on a pre-2024 game (e.g. 2019-20)" but treated this as a non-blocker. **In hindsight, the Domain expert's spot-check ask should have been treated as a blocker** — a single empirical data point against a council expert's prior is not sufficient evidence for a 7,604-row backfill commitment. Lesson: when council R1 surfaces a load-bearing convention disagreement, R2 reversal requires a multi-game empirical check (≥3, ideally stratified by game-type), not a single-game algebraic closure.
+
+For Phase 3 plan-review: every empirical claim in a future addendum that affects a multi-row write path should be verified against ≥3 stratified data points before being load-bearing on a council reversal.
+
+### Forensic artifacts (committed in this branch)
+
+- `data/v10-pre-backfill-snapshot-fly.json` — pre-backfill state (AVG(tov)=14.075, all team_tov NULL).
+- `data/v10-post-backfill-snapshot-fly.json` — post-v10 state (AVG(tov)=13.339, AVG(team_tov)=0.737, post-rollback).
+- `data/v10-audit-rerun-fly.md` — audit FAIL evidence (57 raw + 139 rate failures on substituted N=50).
+- `data/v10-backfill-fly.log` — backfill execution log (3802/3802 ok, 6 ESPN-sentinel schema_errors).
+- `data/v10-pre-rollback-snapshot-fly.json` — captured before the rollback rescrape (= post-v10 state).
+- `data/v10-rollback-backfill-fly.log` — rollback rescrape log.
+- `data/v10-post-rollback-snapshot-fly.json` — post-rollback state (will mirror pre-v10 modulo any genuine ESPN drift in the 5 sentinel-pattern rows).
+- `data/v10-audit-rerun-post-rollback-fly.md` — audit re-run after rollback (pre-declared verdict: PASS at 0/0/0; same as Sprint 10.13).
+
+### Pre-declared post-rollback validation rules
+
+Mirror of Ship Rules 3 + 4 from the v10 plan body, evaluated against the post-rollback state:
+
+1. **Schema integrity.** `team_tov` column still present; `tov` column populated from `totalTurnovers`. No data loss. Migration is idempotent (already applied).
+2. **Convention restored.** AVG(tov) on the post-rollback snapshot equals AVG(tov) on the pre-v10 snapshot to within ESPN-drift tolerance (5 sentinel rows expected to differ by at most 0.001 league-wide, since 5/7604 × max_drift_per_row ≈ 0).
+3. **Audit re-run PASS.** `scripts/audit-espn-box-stats.ts` on substituted N=50: **0 raw + 0 rate + 0 missing**. Pre-declared. Same verdict as Sprint 10.13. If FAIL, escalate as a separate failure mode (would mean rollback didn't fully restore).
+4. **Cup-game `team_tov` column populated.** Spot-check that team_tov for `nba:bdl-8258317` (LAL/IND Cup final) shows team_tov=2 for LAL side post-rollback (preserves the asymmetry-evidence for future revisits).
+
+### Council ask — post-mortem
+
+Five-expert mini-review on this post-mortem addendum + the rollback diff (commit `07367fc`) + post-rollback test/results.
+
+Items to evaluate:
+
+- **All experts**: is option-(b) disposition correctly justified? Are the documented procedural-failure lessons + council-process lessons complete?
+- **DQ**: are the forensic artifacts adequate? Is the post-mortem traceable end-to-end (plan → impl → backfill → audit-FAIL → diagnosis → rollback → re-audit)?
+- **Stats**: is the multi-game-stratified-check requirement (≥3 stratified by game-type) the right standard for future R2 empirical-check reversals? Is "5 sentinel rows expected to differ by at most 0.001 league-wide" a defensible drift-tolerance?
+- **Pred**: is the Cup-asymmetry as a "documented bias of <0.2% of data, accepted" the right Phase-3 forwarding? Should Phase 3 plan-review explicitly handle Cup games (e.g., exclude from training, weight down) or accept the bias?
+- **Domain**: is the bbref Cup-game asymmetry hypothesis (Oct-2024 correction not applied to Cup data) supported by additional evidence we should pull? Are there other game-type asymmetries (preseason, summer league, NBA G-League) we should pre-screen for before Phase 3?
+- **Math**: is the rollback's "tov = totalTurnovers" change strictly inverse to the v10 forward change? I.e., does rescraping with the reverted FIELD_MAP yield bit-identical `tov` and `possessions` values to what existed pre-v10 (modulo ESPN drift)? Verify by comparing pre-v10 snapshot to post-rollback snapshot, restricted to non-sentinel rows.
+
+Iterate to CLEAR or WARN-with-pre-declared-mitigations. **Debt #35 closes as option-b after this post-mortem council clears.**
+
+### Updated Phase-3 plan-review items pinned by v10 + post-mortem
+
+Carry-forwards from v10 (still apply):
+- `team_tov` admissible only as candidate predictor inside the existing feature vector — NOT as a 10th feature-form grid axis. NULL-handling policy required at Phase 3 plan-review.
+- v7 §12 cron-ordering invariant unchanged.
+- 0.44 vs 0.4 FT-coefficient asymmetry between scraper and audit (pre-existing).
+
+Added by post-mortem:
+- **Cup-game handling.** ~10-15 NBA Cup games per Phase-3 in-scope window have `tov = totalTurnovers` (our convention) but bbref-published Tm TOV uses player-summed for these games. Phase 3 plan-review must decide: (a) include Cup games in training as-is and accept the ~0.2% biased subset, (b) exclude Cup games from training, (c) weight Cup games down in the loss function. Recommendation: (a), but pin the choice explicitly.
+- **Multi-row-write empirical-verification standard.** Any future plan that pivots on a single-game empirical check should require ≥3 stratified data points before R2 council reversal. Codify this in council-process docs.
+- **Pre-backfill DB snapshot is mandatory.** For any backfill / migration / mass-UPDATE on production data, capture `sqlite3 .backup` (or equivalent atomic snapshot) of `data/sportsdata.db` BEFORE execution begins. Risk #4 mitigation pre-states the rollback recipe; without the snapshot, the recipe is incomplete.

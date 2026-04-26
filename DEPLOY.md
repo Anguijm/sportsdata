@@ -224,6 +224,21 @@ The API uses SQLite at `/app/data/sqlite/sportsdata.db`, mounted from the Fly vo
 
 **TODO (filed as a council debt, Sprint 11+):** automated nightly snapshot of the SQLite file to R2 or S3. Currently there is NO backup discipline — a volume failure loses everything. Fly volumes are single-host and not replicated unless explicitly configured.
 
+## Reference JSON files on the Fly volume
+
+The Fly volume (`sportsdata_vol`) mounts at `/app/data`, shadowing the Docker image's `data/` directory. Static reference JSON files (`cup-knockout-game-ids.json`, `bbref-convention-manifest.json`) baked into the image are therefore NOT accessible at runtime on Fly — they must be uploaded explicitly to the volume.
+
+If you need to run any script on Fly that reads these files (e.g., `backfill-neutral-site.ts` or future `game_type_rules.py` integrations), first upload them:
+
+```bash
+~/.fly/bin/fly sftp shell --app sportsdata-api <<'SFTP'
+put data/cup-knockout-game-ids.json /app/data/cup-knockout-game-ids.json
+put data/bbref-convention-manifest.json /app/data/bbref-convention-manifest.json
+SFTP
+```
+
+Run from the repo root. These files are small (<10 KB each) and idempotent to re-upload. Verify with `~/.fly/bin/fly sftp get --app sportsdata-api /app/data/cup-knockout-game-ids.json /tmp/check.json`.
+
 ## Known deploy hazards
 
 1. **Silent workflow failures.** The Pages workflow exits 1 when secrets are missing but GitHub still marks the push as "pushed." Always verify with `gh run list` + a content curl after pushing. See Sprint 10.5.

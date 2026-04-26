@@ -55,6 +55,8 @@ User should never be the first reviewer. Skipping council = CRITICAL FAILURE
 per `feedback_council_discipline.md`. Math expert sits out reviews that have
 no calculations (see persona spec).
 
+Full protocol + R1→R2 reversal rules (pm.5 + pm.6): `.harness/council/README.md`.
+
 ## Pre-declared ship rules
 
 Any A/B, benchmark, or model comparison must pre-declare its ship rules in a

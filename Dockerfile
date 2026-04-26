@@ -9,6 +9,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src/ src/
 COPY scripts/ scripts/
+COPY data/*.json ./data/
 COPY .harness/ .harness/
 COPY skills/ skills/
 COPY harness.yml ./
@@ -23,6 +24,7 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/data ./data
 COPY --from=builder /app/.harness ./.harness
 COPY --from=builder /app/skills ./skills
 COPY --from=builder /app/harness.yml ./harness.yml

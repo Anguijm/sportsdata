@@ -219,16 +219,20 @@ Daily cron (`predict-cron.yml`, 05:00 + 22:00 UTC):
 1. `POST /api/trigger/scrape?sport=all` — scrapes all 6 leagues + writes odds to games
 2. `POST /api/trigger/predict` — generates v2 winner + v4-spread predictions, resolves outcomes
 
-## Current Stats (as of Sprint 10.14 + Phase-3-plan-draft — 2026-04-26)
+## Current Stats (as of Sprint 10.18 — Phase 3 step 5 — 2026-04-27)
 
 - **6 leagues**: NFL, NBA, MLB, NHL, MLS, EPL — all selectable from the frontend
 - **174 teams** normalized across providers
 - **21,796 games** in DB · 21,639 outcomes resolved · cron auto-resolves nightly
 - **5,000+ player stats** (all 6 sports via ESPN core API)
 - **v5 + v4-spread predictions** live across NBA/NFL/MLB/NHL (winner + ATS); v2 backfill (12,813 games) retained as calibration baseline
-- **NBA box-score data** (Phase 2): 7,604 rows / 3,802 games × 3 seasons (2023-24 through 2025-26). **All 5 ship-rule gates met** (coverage 100% on aggregate / per-season / per-cell + schema integrity + cross-source bbref audit Pass-B verdict PASS at N=50). Phase 2 ship-claim EARNED 2026-04-26.
-  - **Schema addition (debt #35, Sprint 10.14):** `team_tov` NICE-TO-HAVE column added; populated for all 7,604 rows post-rescrape. `tov` source confirmed as ESPN's `totalTurnovers` (matches bbref Tm TOV for ~99.8% of games; Cup-knockout games are a documented <0.18% asymmetry forwarded to Phase 3). See `Plans/nba-learned-model.md` addendum v10 + post-mortem.
-- **NBA Phase 3 (learned-model training)**: plan-draft addendum v11 council-CLEAR (R2 5/5 avg 9.4/10, 2026-04-26). Implementation gated on 6 pre-flight scripts landing first per the addendum's 10-step gating sequence. No model code yet.
+- **NBA box-score data** (Phase 2): 7,604 rows / 3,802 games × 3 seasons (2023-24 through 2025-26). All 5 ship-rule gates met. Phase 2 ship-claim EARNED 2026-04-26.
+  - **Schema addition (debt #35):** `team_tov` column; `tov` source confirmed as ESPN's `totalTurnovers` (~99.8% match vs bbref; Cup-knockout <0.18% asymmetry forwarded to Phase 3).
+- **NBA Phase 3 (learned-model training)**:
+  - **Step 3 SHIPPED** (Fly prod): `nba_neutral_site_games` table, `nba_eligible_games` view, 6 neutral-site rows backfilled.
+  - **Step 4 SHIPPED** (PR #53, merged at a0ba673): `ml/nba/features.py` — 42-feature rolling-window tensor (`build_training_tensor()` / `build_live_tensor()`), opponent-adjusted Net Rating, sentinel TOV imputation, NaN→0.0 mean imputation, 5 unit tests (2640 games, 0 leakage violations).
+  - **Step 5 PR open** (`claude/phase3-step5-cv-training`): inner-CV training infrastructure — 10-candidate Phase 1 (ewma-h21 wins, segment-stable, council override of bias gate), 18-config Phase 2, 20-seed LightGBM+MLP ensemble (val Brier=0.2065, seed-std=0.0012). Pinned: ewma halflife=21, LightGBM {num_leaves=31, min_child=200, reg_alpha=1.0}.
+  - **Step 6 next**: Platt calibration + ONNX export (council plan review required first).
 - **MLB pitcher data**: probable starters + ERA extracted from ESPN scoreboard
 - **Shadow predictions** (forward A/B for injury signal): live infra; awaiting non-empty ESPN injury flow
 

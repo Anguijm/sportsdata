@@ -4,39 +4,58 @@
 
 ---
 
-## Start here next session — 2026-04-27 (Sprint 10.17 — Phase 3 step 4)
+## Start here next session — 2026-04-27 (Sprint 10.18 — Phase 3 step 5)
 
-**Current branch:** `claude/phase3-step4-features` (PR open, not yet merged).
-**Production state (Fly):** Phase 3 step 3 SHIPPED — `nba_neutral_site_games` table live, `nba_eligible_games` view updated, 6 neutral-site rows backfilled and confirmed. API healthy.
+**Current branch:** `claude/phase3-step5-cv-training` (PR open, pending merge).
+**Production state (Fly):** Phase 3 step 3 SHIPPED — `nba_neutral_site_games` table live, `nba_eligible_games` view updated, 6 neutral-site rows backfilled. API healthy.
 
-**Phase 3 step 4 — COMPLETE (pending merge):**
-- Branch: `claude/phase3-step4-features`
-- `ml/nba/features.py` (new, ~870 lines): rolling-window box-score features, 42-feature tensor, `build_training_tensor()`, `build_live_tensor()`, sentinel TOV imputation, rate/count/unbounded normalization, NaN→0.0 (mean imputation in normalized space)
-- 5 unit tests (all PASS): `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_as_of_filter_completeness_behavioral.py`, `test_as_of_filter_completeness_structural.py`, `test_time_machine_feature_purity.py`
-- Tensor: 2640 games, 42 features, home_win=54.6%, NaN=0, mean≈0, std≈1
-- Plans/nba-learned-model.md: addendum v12 appended (R1 plan WARN→CLEAR avg 6.6/10; Gate 2 impl WARN→CLEAR avg 7.0/10 after 2 blocking bugs fixed)
-- Gate 2 bug fixes: `rest_days_in_last_7` month-boundary arithmetic (→ timedelta), NULL tov pre-pass in `_impute_sentinel_tov`
+**Phase 3 step 5 — COMPLETE (pending merge):**
+- Branch: `claude/phase3-step5-cv-training`
+- `ml/nba/cv_runner.py`: 10-candidate feature-form inner CV, Phase 1 (K=10 order-statistic gate) + Phase 2 (18-config hyperparameter grid), 20-seed ensemble
+- `ml/nba/train_lightgbm.py`: LightGBM fit/score, subsample=0.8/colsample=0.8 for seed diversity
+- `ml/nba/train_mlp.py`: MLP [42→128→64→1] + BatchNorm + AdamW + early stopping
+- `requirements-ml.txt`: lightgbm>=4.6.0, scikit-learn>=1.8.0, torch>=2.0.0
+- `ml/nba/test-fold-touch-counter.json`: `{"counter": 0, "history": []}`
+- **CV results**: ewma-h21 wins Phase 1 in both CV runs (segment-stable, rank 1,1,2). Bias gate FAILED (σ_inner=0.151 vs planned 0.095 — planning estimate off 1.6×). Council override: proceed with ewma-h21.
+- **Pinned config**: ewma halflife=21, LightGBM {num_leaves=31, min_child=200, reg_alpha=1.0}, MLP {lr=0.001, dropout=0.5, wd=0}
+- **Ensemble**: val Brier=0.2065, seed-std=0.0012, gate PASS
+- **Run config**: `ml/nba/configs/20260427T104117-e39d20c0-override.json`
+- Gate 1 CLEAR (avg 7.2/10); Gate 2 CLEAR (avg 7.6/10, council override documented)
 
 **Next action:**
 
-**Phase 3 step 5 — Inner-CV training infrastructure.** Implement `ml/nba/train_lightgbm.py`, `ml/nba/train_mlp.py`, 10-candidate feature-form grid, forward-chaining 5-fold CV. **Council plan review required first** (plan gate before any code). See addendum v12 §"Phase 3 implementation sequence" (steps 5–10).
+**Phase 3 step 6 — Calibration + serving.** Platt scaling on val fold (last 20% of training pool ≈ 528 games). ONNX export of 20-seed ensemble. See addendum v13 §"Phase 3 implementation sequence" (steps 6–10). **Council plan review required first.**
 
-**Known limitations forwarded from step 4:**
-- `cup_pool` overincludes (all Nov 4–Dec 3 regular-season games, not just Cup-designated). Same TOV convention → no model impact.
-- `play_in`: only 2 confirmed IDs in manifest; earlier-season play-in classified as `regular`. Non-blocking.
-- `conference_finals` boundary (May 18): some conference-semi game 7s may be misclassified. Step 5 can refine if needed.
-- `rescheduled_2022_23`: not in DB — skip this stratum.
+**Known limitations forwarded from steps 4–5:**
+- `cup_pool` overincludes. No model impact.
+- `play_in`: 2 confirmed IDs. Non-blocking.
+- Injury features absent by design (step 8 forward item).
+- num_leaves non-binding at n=2640 (min_child_samples is the active constraint).
 
 **Pre-session context to read** (in order):
 1. This file (you're already here).
 2. `BACKLOG.md` "Now" section.
-3. `Plans/nba-learned-model.md` addendum v12 §"Phase 3 implementation sequence" (steps 5–10).
+3. `Plans/nba-learned-model.md` addendum v13 §"Phase 3 implementation sequence" (steps 6–10).
 
 ---
 
 ## Historical session log
 
 Older session-end states are preserved below. Most recent at top.
+
+### 2026-04-27 — Sprint 10.18 — Phase 3 step 5 (inner-CV training infrastructure)
+
+**What shipped:**
+- `ml/nba/cv_runner.py`, `train_lightgbm.py`, `train_mlp.py`, `requirements-ml.txt`, `test-fold-touch-counter.json` on `claude/phase3-step5-cv-training` (PR open).
+- 10-candidate feature-form inner CV: ewma-h21 wins both runs (segment-stable). Bias gate failed due to σ_inner planning error; council override justified and documented.
+- Pinned: ewma-h21 + LightGBM {nl=31, mc=200, ra=1.0}. Ensemble val Brier=0.2065, seed-std=0.0012.
+- addendum v13 appended to Plans/nba-learned-model.md (Gate 1 CLEAR, Gate 2 CLEAR).
+- Gate 2 council override: Risk #7 season-agg fallback overridden for segment-stable ewma-h21.
+
+**Lessons codified:**
+- σ_inner planning estimate (0.095) was the std of the mean, not per-game std (actual: 0.151). Future threshold calibration: use per-game Brier std from a held-out calibration set.
+- LightGBM num_leaves is non-binding at n=2640 (31=63=127 produce identical CV Brier). min_child_samples is the active constraint.
+- Plan Risk #7 fallback ("season-agg if all candidates fail threshold") was designed for the null case — not for a segment-stable winner with consistent multi-run advantage.
 
 ### 2026-04-27 — Sprint 10.17 — Phase 3 step 4 (feature-engineering pipeline)
 

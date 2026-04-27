@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-27 (post Sprint 10.16+deploy — PR #52 merged at c3b8e65; Phase 3 step 3 SHIPPED to prod; neutral-site backfill complete (6 rows); prod at 70ac487).
+Last regenerated: 2026-04-27 (post Sprint 10.17 — Phase 3 step 4 feature-engineering pipeline complete; branch claude/phase3-step4-features, PR open; prod still at 70ac487 / step 3).
 
 ## Where to start
 
@@ -23,7 +23,8 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 3 step 4 — feature-engineering pipeline.** Implement `ml/nba/features.py` (rolling-window box-score features, neutral_site flag, sentinel imputation). Council plan review required first. Unit tests: `test_no_test_fold_in_training_tensor.py`, `test_as_of_filter_reproducibility.py`, `test_as_of_filter_completeness.py`, `test_time_machine_feature_purity.py`.
+- **Phase 3 step 4 — DONE (PR open, pending merge).** `ml/nba/features.py` shipped: 42-feature rolling-window tensor, 5 unit tests PASS (2640 games, 0 NaN, bit-identical). See branch `claude/phase3-step4-features`.
+- **Phase 3 step 5 — Inner-CV training infrastructure.** Implement `ml/nba/train_lightgbm.py`, `ml/nba/train_mlp.py`, 10-candidate feature-form grid, forward-chaining 5-fold CV. **Council plan review required first.**
 
 ## Next (queued, scoped)
 

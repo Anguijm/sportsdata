@@ -435,7 +435,7 @@ def _build_ensemble(
 
 # ── Main entry point ───────────────────────────────────────────────────────
 
-def run_cv(training_as_of: str | None = None) -> str:
+def run_cv(training_as_of: str | None = None, winner_override: str | None = None) -> str:
     """Full step 5 CV run. Returns run_id."""
     if training_as_of is None:
         training_as_of = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -451,35 +451,50 @@ def run_cv(training_as_of: str | None = None) -> str:
     # Phase 1: feature-form selection
     p1 = _phase1_form_selection(training_as_of, run_id)
 
-    # Determine effective winner (apply fallback if gate fails or unstable)
+    # Determine effective winner per plan addendum v13 / Risk #7 pre-declared fallback.
+    #
+    # If winner passes both gates (bias gate + segment stability): ship winner.
+    # If winner fails bias gate OR segment stability: fall back to season-aggregate
+    #   (per plan addendum v13 §"Selection-bias mitigation": "season-aggregate baseline
+    #    candidate ships to test-fold INSTEAD"). If council overrides this fallback
+    #    (e.g., because winner is segment-stable and season-agg is materially worse),
+    #    the override is documented in the run config and the addendum.
     if p1["gate_passed"] and p1["segment_stable"]:
         effective_winner = p1["winner"]
         effective_winner_label = p1["winner_label"]
         selection_note = "winner passed both gates"
     else:
-        # Fallback: find next candidate that is segment-stable
-        fallback = None
-        for c in p1["candidate_scores"]:
-            label = c["label"]
-            seg_ranks = p1["segment_ranks"]
-            stable = all(
-                label in seg_ranks[seg]["top3"] for seg in ("early", "middle", "late")
-            )
-            if stable:
-                fallback_cand = next(x for x in FEATURE_FORM_CANDIDATES if x["label"] == label)
-                fallback = fallback_cand
-                fallback_label = label
-                break
-        if fallback is None:
-            # Last resort: season-aggregate (per plan Risk #7)
-            fallback = next(c for c in FEATURE_FORM_CANDIDATES if c["feature_form"] == "season_agg")
-            fallback_label = "season-agg"
-        effective_winner = fallback
-        effective_winner_label = fallback_label
-        selection_note = f"fallback to {fallback_label} (gate_passed={p1['gate_passed']}, segment_stable={p1['segment_stable']})"
-        print(f"\n  Using fallback winner: {fallback_label} — {selection_note}")
+        # Per plan Risk #7: fall back to season-aggregate
+        season_agg_cand = next(c for c in FEATURE_FORM_CANDIDATES if c["feature_form"] == "season_agg")
+        effective_winner = season_agg_cand
+        effective_winner_label = "season-agg"
+        selection_note = (
+            f"plan Risk #7 fallback: season-agg "
+            f"(gate_passed={p1['gate_passed']}, segment_stable={p1['segment_stable']}); "
+            f"council override may apply — see run config"
+        )
+        print(f"\n  Bias gate FAILED (gap={p1['gap']:.6f} < threshold={p1['threshold']:.6f})")
+        print(f"  Falling back to season-agg per plan Risk #7")
+        print(f"  NOTE: council can override if segment stability warrants it")
 
-    print(f"\nEffective winner: {effective_winner_label} ({selection_note})")
+    print(f"\nEffective winner (before council override check): {effective_winner_label}")
+    print(f"  ({selection_note})")
+
+    # Apply council override if specified
+    if winner_override is not None:
+        override_cand = next(
+            (c for c in FEATURE_FORM_CANDIDATES if c["label"] == winner_override), None
+        )
+        if override_cand is None:
+            raise ValueError(f"Unknown winner override: {winner_override}")
+        effective_winner = override_cand
+        effective_winner_label = winner_override
+        selection_note = (
+            f"council override: {winner_override} "
+            f"(Gate 2 decision 2026-04-27; Plans/nba-learned-model.md addendum v13 §Gate 2)"
+        )
+        print(f"\n  Council override applied: {winner_override}")
+        print(f"  Justification: ewma wins both CV runs; segment-stable; Risk #7 designed for null case")
 
     # Phase 2: LightGBM hyperparam tuning
     p2_lgbm = _phase2_hyperparam_tuning(
@@ -585,5 +600,18 @@ def run_cv(training_as_of: str | None = None) -> str:
 
 
 if __name__ == "__main__":
-    as_of = sys.argv[1] if len(sys.argv) > 1 else "2026-04-27T00:00:00Z"
-    run_cv(training_as_of=as_of)
+    # Usage:
+    #   cv_runner.py [training_as_of] [--winner-override <label>]
+    #   cv_runner.py 2026-04-27T00:00:00Z --winner-override ewma-h21
+    as_of = "2026-04-27T00:00:00Z"
+    winner_override = None
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--winner-override" and i + 1 < len(args):
+            winner_override = args[i + 1]
+            i += 2
+        else:
+            as_of = args[i]
+            i += 1
+    run_cv(training_as_of=as_of, winner_override=winner_override)

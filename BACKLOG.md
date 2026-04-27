@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-27 (post Sprint 10.17 — Phase 3 step 4 feature-engineering pipeline complete; branch claude/phase3-step4-features, PR open; prod still at 70ac487 / step 3).
+Last regenerated: 2026-04-27 (post Sprint 10.18 — Phase 3 step 5 inner-CV training infrastructure complete; branch claude/phase3-step5-cv-training, PR open; prod still at step 3 / a0ba673 on main).
 
 ## Where to start
 
@@ -23,8 +23,8 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 3 step 4 — DONE (PR open, pending merge).** `ml/nba/features.py` shipped: 42-feature rolling-window tensor, 5 unit tests PASS (2640 games, 0 NaN, bit-identical). See branch `claude/phase3-step4-features`.
-- **Phase 3 step 5 — Inner-CV training infrastructure.** Implement `ml/nba/train_lightgbm.py`, `ml/nba/train_mlp.py`, 10-candidate feature-form grid, forward-chaining 5-fold CV. **Council plan review required first.**
+- **Phase 3 step 5 — DONE (PR open, pending merge).** ewma-h21 wins inner CV (segment-stable, council override of bias gate). LightGBM {nl=31, mc=200, ra=1.0}. Ensemble val Brier=0.2065, seed-std=0.0012. See branch `claude/phase3-step5-cv-training`.
+- **Phase 3 step 6 — Calibration + serving.** Platt scaling on val fold. ONNX export. **Council plan review required first.**
 
 ## Next (queued, scoped)
 

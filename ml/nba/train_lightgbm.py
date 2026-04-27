@@ -26,6 +26,10 @@ LGBM_FIXED = {
     "metric": "binary_logloss",
     "verbose": -1,
     "n_jobs": -1,
+    # Randomization for seed diversity in 20-seed ensemble
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8,
 }
 
 

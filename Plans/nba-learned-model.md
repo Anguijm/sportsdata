@@ -2017,3 +2017,25 @@ Per council README §"Iteration cap" and §"R1→R2 reversal rules": R2 does not
 **Resolver: CLEAR** — both blocking defects fixed; pinned dispositions verified; 5 unit tests PASS.
 
 **Gate 2 verdict: CLEAR** (avg 7.0/10 before fix-pack → CLEAR conditional on fixes verified above).
+
+---
+
+### Gate 3 council review — test/results (2026-04-27)
+
+**Subject:** 5 unit tests all PASS. Tensor: 2640 games, 42 features, home_win=54.6%, NaN=0, mean≈0, std≈1.
+
+**Expert verdicts:**
+
+- **DQ 8/10 CLEAR** — structural SQL test is a strong forward-looking leakage guard. Minor gaps: sentinel imputation not asserted by count; time-machine test covers a "healthy" game (#50, full rolling window) — NaN→0.0 imputation path for early-season games not independently verified.
+- **Stats 8/10 CLEAR** — 2640 games adequate N; behavioral completeness test confirms temporal monotonicity; test-fold exclusion gate clean.
+- **Pred 8/10 CLEAR** — time-machine purity PASS is the primary leakage guard; structural SQL test extends this to future code; NaN-path not covered by purity test.
+- **Domain 7/10 WARN** — home_win=54.6% queried: 2023-regular=54.5% (1237 games), 2024-regular=54.3% (1237 games), 2023-postseason=58.5% (82 games), 2024-postseason=57.1% (84 games). Training set is only 2 seasons (2023-24, 2024-25) — no COVID-era data. The low regular-season rate reflects genuine post-COVID decline in NBA home-court advantage (analytics-optimized travel, circadian protocols). Postseason norms intact. Data is clean. WARN resolved — no action required.
+- **Math 8/10 CLEAR** — Gate 2 bugs confirmed fixed; 0 NaN in purity test confirms no division-by-zero on tested path; eFG%>1 edge case handled by ε-clipping (astronomically unlikely in 10-game rolling windows); two-pass opp-drtg is a sound 1-iteration approximation.
+
+**Resolver: WARN → resolved → CLEAR** — avg 7.8/10. Domain WARN investigated immediately; home_win% breakdown confirms data is correct (post-COVID era effect, not a pipeline bug). No blocking items remain.
+
+**Gate 3 verdict: CLEAR.**
+
+**Forward items (non-blocking, for step 5 plan):**
+- Injury features absent by design; step 5 training plan must pre-declare calibration implications of injury-blind predictions.
+- Add time-machine purity variant for early-season game (NaN-heavy) as future test hardening.

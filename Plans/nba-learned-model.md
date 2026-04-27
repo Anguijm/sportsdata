@@ -2163,3 +2163,59 @@ LightGBM beats MLP (0.2163 vs 0.2187) — consistent with prior intuition. Seque
 - MLP: lr=0.001, dropout=0.5, weight_decay=0.0, architecture=[42→128→64→1]+BatchNorm+AdamW
 - Run config: `ml/nba/configs/20260427T104117-e39d20c0-override.json`
 - Test-fold-touch-counter: 0 (untouched)
+
+---
+
+## Addendum v14 — Phase 3 step 6 plan review (Gate 1) — 2026-04-27
+
+### Step 6 plan under review
+
+Calibration + serving: Platt scaling on the val fold (slice 5, ~528 games) from the ewma-h21 override run; ONNX export of the 20-seed LightGBM ensemble; serving artifact for production inference. Key plan body refs: §Calibration (L181), §Training protocol (L250), step 6 bullet (L1652–1656).
+
+### DQ — WARN
+
+1. **Model source not git-tracked.** The 20-seed pickles in `ml/nba/results/20260427T104117-e39d20c0-override/models/` are excluded by `*/models/` gitignore. Pre-declare in calibrate.py header: models are regenerable deterministically by re-running `cv_runner.py --winner-override ewma-h21` with the pinned config JSON.
+2. **Val-fold size must be verified at runtime.** Calibrate.py must assert `len(X_val) < 1500`, log the count, and emit the Platt/isotonic decision as a logged fact.
+3. **Data hash for deterministic replay.** Calibrate.py should compute `hashlib.sha256(X_train.tobytes()).hexdigest()` and log it to the run config JSON.
+
+### Stats — WARN
+
+1. **Platt parameterization not pinned.** Pre-declare: standard Platt 1999 in logit space — `LogisticRegression(C=1e9)` on `X = logit(p_ensemble).reshape(-1,1)`, `y = y_true`.
+2. **LightGBM weight averaging is undefined.** The plan body's "averaged-weights ONNX" language (L250) is MLP-specific. LightGBM serving = predict-and-average (20 seeds). The >0.005 fallback threshold does not apply to LightGBM (predict-and-average IS the primary approach).
+3. **Val Brier direction pre-declared as hard stop.** Calibrated Brier must be ≤ raw Brier on val fold. If not, halt and re-council before step 7.
+
+### Pred — WARN
+
+1. **Platt applied to ensemble mean, not per-seed.** Pipeline: average 20 seeds → then apply Platt. Must be explicit in both calibrate.py (fits on mean) and infer.py (applies to mean).
+2. **MLP BatchNorm vs LayerNorm: forward-declare latent blocker.** `train_mlp.py` uses BatchNorm. Plan L403 requires LayerNorm for weight-averaged ONNX. MLP lost step 5 (Brier 0.2186 vs LightGBM 0.2065) and is not exported in step 6. If MLP is needed at step 8 (LightGBM fails ship rules), `train_mlp.py` must be updated BatchNorm→LayerNorm before ONNX export. Not a step 6 blocker, but pre-declared here so it is not discovered at step 8.
+3. **ONNX deferral acceptable.** For twice-daily batch cadence, native LightGBM pickles + `infer.py` Python script is architecturally simpler with no latency penalty. ONNX deferred unless impl finds a concrete serving benefit. Deferral must be documented in calibrate.py header.
+
+### Domain — WARN
+
+1. **Log val-fold game-type breakdown.** Slice 5 mixes late regular season + postseason. Calibrate.py should log regular vs postseason game counts.
+2. **Log post-calibration unconditional mean.** Mean calibrated prediction on val fold must be within 2pp of empirical val-fold home-win rate. Log both. Flag if divergence exceeds 2pp.
+
+### Math — WARN
+
+1. **Use `C=1e9` in LogisticRegression.** Default `C=1.0` adds L2 regularization that biases coef→0, intercept→0 (p_cal→0.5 for all inputs). `C=1e9` matches the maximum-likelihood Platt procedure.
+2. **Epsilon-clip before logit.** Clip `p_ensemble` to `[1e-7, 1-1e-7]` before logit transform. LightGBM sigmoid output is bounded but can reach boundary in edge cases.
+3. **If ONNX: output column is [:, 1].** `onnxmltools.convert_lightgbm` binary output is `(n, 2)` — column 0 = P(away wins), column 1 = P(home wins). Verify with a sanity-check game (known home favorite, p > 0.5 for home).
+
+### Fix-pack (must be verified at Gate 2 impl-review)
+
+| # | Item |
+|---|---|
+| 1 | Platt in logit space, `C=1e9` |
+| 2 | LightGBM serving = predict-and-average; plan's weight-average language is MLP-only |
+| 3 | Platt applied to 20-seed mean; infer.py: average → then calibrate |
+| 4 | Forward-declare BatchNorm→LayerNorm blocker if MLP needed at step 8 |
+| 5 | calibrate.py header: models regenerable via `cv_runner.py --winner-override ewma-h21` |
+| 6 | Runtime assertions: val-fold size, game-type breakdown, post-calibration unconditional mean |
+| 7 | Hard stop: calibrated Brier ≤ raw Brier; if not, re-council before step 7 |
+| 8 | Clip p_ensemble to [1e-7, 1-1e-7] before logit; if ONNX, verify [:, 1] output column |
+| 9 | ONNX deferral documented; infer.py + native pickles is acceptable for batch cadence |
+| 10 | Data tensor hash logged to run config JSON |
+
+**Resolver: WARN → CLEAR. No R2 required. All WARNs are implementation pre-declarations verifiable at Gate 2.**
+
+**Gate 1 verdict: CLEAR** (avg 7.3/10). Proceed to implementation.

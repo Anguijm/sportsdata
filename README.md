@@ -219,7 +219,7 @@ Daily cron (`predict-cron.yml`, 05:00 + 22:00 UTC):
 1. `POST /api/trigger/scrape?sport=all` — scrapes all 6 leagues + writes odds to games
 2. `POST /api/trigger/predict` — generates v2 winner + v4-spread predictions, resolves outcomes
 
-## Current Stats (as of Sprint 10.18 — Phase 3 step 5 — 2026-04-27)
+## Current Stats (as of Sprint 10.19 — Phase 3 step 6 — 2026-04-28)
 
 - **6 leagues**: NFL, NBA, MLB, NHL, MLS, EPL — all selectable from the frontend
 - **174 teams** normalized across providers
@@ -231,8 +231,9 @@ Daily cron (`predict-cron.yml`, 05:00 + 22:00 UTC):
 - **NBA Phase 3 (learned-model training)**:
   - **Step 3 SHIPPED** (Fly prod): `nba_neutral_site_games` table, `nba_eligible_games` view, 6 neutral-site rows backfilled.
   - **Step 4 SHIPPED** (PR #53, merged at a0ba673): `ml/nba/features.py` — 42-feature rolling-window tensor (`build_training_tensor()` / `build_live_tensor()`), opponent-adjusted Net Rating, sentinel TOV imputation, NaN→0.0 mean imputation, 5 unit tests (2640 games, 0 leakage violations).
-  - **Step 5 PR open** (`claude/phase3-step5-cv-training`): inner-CV training infrastructure — 10-candidate Phase 1 (ewma-h21 wins, segment-stable, council override of bias gate), 18-config Phase 2, 20-seed LightGBM+MLP ensemble (val Brier=0.2065, seed-std=0.0012). Pinned: ewma halflife=21, LightGBM {num_leaves=31, min_child=200, reg_alpha=1.0}.
-  - **Step 6 next**: Platt calibration + ONNX export (council plan review required first).
+  - **Step 5 MERGED** (PR #54 at `1bc750b`): inner-CV training infrastructure — ewma-h21 wins 10-candidate Phase 1 (segment-stable, council override of bias gate), 18-config Phase 2, 20-seed LightGBM+MLP ensemble (val Brier=0.2065, seed-std=0.0012). Pinned: ewma halflife=21, LightGBM {num_leaves=31, min_child=200, reg_alpha=1.0}.
+  - **Step 6 PR open** (`claude/phase3-step6-calibration`): Platt calibration (A=1.350, B=0.016; raw Brier 0.2050→calibrated 0.2025); `ml/nba/calibrate.py` + `ml/nba/infer.py` serving script; ONNX deferred.
+  - **Step 7 next**: Pre-flight ship-rule gates before test-fold touch (power check, seed-instability CI, v5-replay).
 - **MLB pitcher data**: probable starters + ERA extracted from ESPN scoreboard
 - **Shadow predictions** (forward A/B for injury signal): live infra; awaiting non-empty ESPN injury flow
 

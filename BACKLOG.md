@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-27 (post Sprint 10.18 — Phase 3 step 5 inner-CV training infrastructure complete; branch claude/phase3-step5-cv-training, PR open; prod still at step 3 / a0ba673 on main).
+Last regenerated: 2026-04-28 (post Sprint 10.19 — Phase 3 step 6 Platt calibration complete; branch claude/phase3-step6-calibration, PR open; PR #54 (step 5) merged at 1bc750b; prod still at step 3).
 
 ## Where to start
 
@@ -23,12 +23,12 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 3 step 5 — DONE (PR open, pending merge).** ewma-h21 wins inner CV (segment-stable, council override of bias gate). LightGBM {nl=31, mc=200, ra=1.0}. Ensemble val Brier=0.2065, seed-std=0.0012. See branch `claude/phase3-step5-cv-training`.
-- **Phase 3 step 6 — Calibration + serving.** Platt scaling on val fold. ONNX export. **Council plan review required first.**
+- **Phase 3 step 6 — DONE (PR open, pending merge).** Platt calibration (A=1.350, B=0.016) on 528-game val fold. `calibrate.py` + `infer.py`. Raw Brier 0.2050→calibrated 0.2025. Gate 1 CLEAR (7.3/10), Gate 2 CLEAR (8.5/10). Branch: `claude/phase3-step6-calibration`.
+- **Phase 3 step 7 — Pre-flight ship-rule gates.** Power check (block-bootstrap SE on training fold), seed-instability CI, v5-replay regression. Council pre-touch review required before test-fold is opened. No test-fold touch until council signs off.
 
 ## Next (queued, scoped)
 
-- **Phase 3 steps 5–10**: training infrastructure → calibration + serving → pre-flight ship-rule gates → test-fold evaluation → shadow window → live swap. See addendum v11 §"Phase 3 implementation sequence (gating plan)".
+- **Phase 3 steps 7–10**: pre-flight ship-rule gates → test-fold evaluation (LightGBM first) → shadow window (28 game-days or 500 preds) → live swap. See `Plans/nba-learned-model.md` addendum v14 + plan body §Phase 3 ship rules.
 
 ## Someday (daydreams, architectural ideas)
 
@@ -50,7 +50,7 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-None.
+- `claude/phase3-step6-calibration` — Phase 3 step 6 Platt calibration + serving (PR open).
 
 ---
 

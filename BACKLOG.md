@@ -50,7 +50,7 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- `claude/phase3-step6-calibration` — Phase 3 step 6 Platt calibration + serving (PR open).
+- `claude/phase3-step6-calibration` — Phase 3 step 6 Platt calibration + serving (branch pushed, PR not yet opened).
 
 ---
 

@@ -6,7 +6,7 @@
 
 ## Start here next session — 2026-04-28 (Sprint 10.19 — Phase 3 step 7)
 
-**Current branch:** `claude/phase3-step6-calibration` (PR open, pending merge).
+**Current branch:** `claude/phase3-step6-calibration` (branch pushed; open PR when ready to merge).
 **Production state (Fly):** Phase 3 step 3 SHIPPED — `nba_neutral_site_games` table live, `nba_eligible_games` view updated. Steps 4–6 on feature branches, not yet in prod.
 
 **Phase 3 step 6 — COMPLETE (pending merge):**

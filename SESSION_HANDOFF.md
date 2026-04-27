@@ -4,40 +4,42 @@
 
 ---
 
-## Start here next session — 2026-04-28 (Sprint 10.19 — Phase 3 step 7)
+## Start here next session — 2026-04-28 (Sprint 10.20 — Phase 3 null result closed)
 
-**Current branch:** `claude/phase3-step6-calibration` (branch pushed; open PR when ready to merge).
-**Production state (Fly):** Phase 3 step 3 SHIPPED — `nba_neutral_site_games` table live, `nba_eligible_games` view updated. Steps 4–6 on feature branches, not yet in prod.
+**Current branch:** `claude/phase3-step6-calibration` (2 commits pushed `785a7d1`→`ee05ab4`; open PR to merge).
+**Production state (Fly):** v5 remains incumbent. Phase 3 null result — nothing ships.
 
-**Phase 3 step 6 — COMPLETE (pending merge):**
-- Branch: `claude/phase3-step6-calibration`
-- `ml/nba/calibrate.py`: Platt fit on val fold (n=528, 444 regular + 84 postseason)
-- `ml/nba/infer.py`: `Predictor` class — loads 20 LightGBM pickles + Platt params, predict-and-average → calibrate mean
-- `ml/nba/configs/calibration-params.json`: A=1.349938, B=0.015640; raw Brier=0.2050→calibrated=0.2025 (Δ−0.0025)
-- ONNX deferred; native pickles + infer.py for batch cadence
-- Gate 1 CLEAR (avg 7.3/10, addendum v14 `5c3d1df`); Gate 2 CLEAR (avg 8.5/10, `04625a8`)
+**Phase 3 — CLOSED (null result, 2026-04-28):**
+- Step 7 pre-flight: CLEAR (addendum v15, `step7_preflight.py`, Gate 1/2 pass)
+- Step 8 LightGBM: Gate D FAIL — AUC 0.6954 < v5 0.7283; Brier −0.013 degradation
+- Step 8b MLP: Gate D FAIL — AUC 0.7026 < v5 0.7283; Brier −0.009 degradation
+- Test fold burned (counter = 2/2). Neither family ships. v5 remains incumbent.
+- Root causes: EWMA cold-start fragility, val/test composition asymmetry, TOV% zeroing bug (4/42 features silently zeroed), v5 season-aggregate structural advantage
 
-**Phase 3 step 5 — MERGED:** PR #54 squash-merged to main at `1bc750b` (2026-04-28).
+**Phase 3 steps 5 — MERGED:** PR #54 squash-merged to main at `1bc750b`.
+**Phase 3 steps 6–8b — pending merge** via `claude/phase3-step6-calibration`.
 
 **Next actions (in order):**
-1. **Merge PR for step 6** (`claude/phase3-step6-calibration`).
-2. **Phase 3 step 7 — Pre-flight ship-rule gates** (before any test-fold touch):
-   - Power check on training fold (paired-diff block-bootstrap SE, plan body §Phase 3 ship rules #1)
-   - Seed-instability gate (95% bootstrap CI on seed-std ≤ 0.008)
-   - v5-prediction-replay regression PASS (already scripted at `scripts/v5-prediction-replay.ts`)
-   - Council pre-touch review required before test-fold is opened
+1. **Open PR and merge** `claude/phase3-step6-calibration` → main (all step 6–8b artifacts).
+2. **Phase 3 post-mortem (before any future attempt):**
+   - Fix TOV% bug: divide pct-form values by 100 before logit_zscore transform
+   - Add cold-start fallback for first N games of season
+   - Hybrid feature design: season-aggregate base + EWMA adjustment
+   - Regular-season-only val fold (remove postseason inflation)
+   - New plan addendum + council review before any new test-fold touch
 
-**Known limitations forwarded:**
-- `cup_pool` overincludes. No model impact.
-- `play_in`: 2 confirmed IDs. Non-blocking.
-- Injury features absent by design (step 8 forward item).
-- MLP BatchNorm→LayerNorm latent blocker: only relevant if LightGBM fails step 8 ship rules.
-- 20-seed model pickles gitignored; regenerable via `cv_runner.py --winner-override ewma-h21`.
+**Key artifacts on branch:**
+- `ml/nba/features.py`: `build_test_fold_tensor()` (NOT IN bypass)
+- `ml/nba/step7_preflight.py`, `ml/nba/evaluate_test_fold.py`, `ml/nba/evaluate_test_fold_mlp.py`
+- `ml/nba/train_mlp_winner.py`, `ml/nba/calibrate_mlp.py`
+- `ml/nba/configs/calibration-params.json`: LightGBM Platt (A=1.3499, B=0.0156)
+- `ml/nba/configs/mlp-calibration-params.json`: MLP Platt (A=1.2941, B=0.0373)
+- `ml/nba/test-fold-touch-counter.json`: counter=2
 
-**Pre-session context to read** (in order):
-1. This file (you're already here).
-2. `BACKLOG.md` "Now" section.
-3. `Plans/nba-learned-model.md` addendum v14 + plan body §Phase 3 ship rules (steps 7–10).
+**Pre-session context to read:**
+1. This file.
+2. `Plans/nba-learned-model.md` addendum v16 + v17 (null result + post-mortem scope).
+3. `learnings.md` last 3 sections.
 
 ---
 

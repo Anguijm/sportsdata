@@ -2038,4 +2038,67 @@ Per council README §"Iteration cap" and §"R1→R2 reversal rules": R2 does not
 
 **Forward items (non-blocking, for step 5 plan):**
 - Injury features absent by design; step 5 training plan must pre-declare calibration implications of injury-blind predictions.
+
+---
+
+## Addendum v13 — Phase 3 step 5 plan (2026-04-27)
+
+### Step 5 implementation plan
+
+**Context:** PR #53 merged (step 4 CLEAR). Branch: `claude/phase3-step5-cv-training`.
+
+**Data structure (pre-declared deviation from plan body):**
+Training pool = 2640 games, 2023-10-24 to 2025-06-22 (2023-regular + 2023-postseason + 2024-regular + 2024-postseason). Plan body "validation fold (2024-25)" reserved concept is **redefined**: with only 2 training seasons in DB, reserving 1 full season would leave only ~1319 inner-CV games. Instead: all 2640 games used for 5-fold forward-chaining inner CV (~528 games/slice); final ensemble uses last slice (slice 5 ≈ late 2024-regular + 2024-postseason) as early-stopping reference. No ship-rule changes.
+
+Pooled held-out n ≈ 2112 (folds 2–5). Selection-bias threshold: σ_inner × √(2·ln(K)) / √2112. With K=10, σ_inner ≈ 0.095: **≈ 0.00443 Brier** (plan pinned 0.00226 for n=8120; deviation pre-declared; conservative direction; both values logged in run config).
+
+**Feature-form candidates (10, all implemented in features.py):**
+Rolling-N: {5,10,15,20,30}. EWMA halflife (in games): {3,7,14,21}. Season-aggregate (1). All via `FeatureConfig(feature_form=..., window_size=..., ewma_halflife=...)`.
+
+**Staged selection (pinned per Math R1 fix-pack, blocking item #1 resolved):**
+- Phase 1 (form selection, K=10): evaluate all 10 feature-form candidates using fixed default LightGBM hyperparams (num_leaves=63, min_child_samples=100, reg_alpha=0.1, n_estimators=2000, early_stopping_rounds=50). Apply K=10 order-statistic threshold. Select winning feature form.
+- Phase 2 (hyperparam tuning, K=18): with winning form fixed, tune 18-config grid. No additional multiplicity correction (no downstream ship-rule gate depends on this ranking; val-fold Brier used directly).
+- Rationale: joint (form × hyperparam) selection would require K=180, threshold ≈ 0.00666 Brier — inconsistent with plan's K=10 framing. Staged selection is faithful to the plan.
+
+**LightGBM hyperparameter grid (18):** num_leaves × {31,63,127} × min_child_samples × {50,100,200} × reg_alpha × {0,0.1,1.0}. Objective: binary logloss. Fixed: n_estimators=2000, early_stopping_rounds=50.
+
+**MLP architecture (pinned per Pred R1 fix-pack, blocking item #2 resolved):**
+`[42 → 128 → ReLU → BatchNorm → Dropout(p) → 64 → ReLU → BatchNorm → Dropout(p) → 1 → Sigmoid]`. Optimizer: AdamW. Max epochs: 200, early_stopping_patience: 20 on held-out slice Brier. Hyperparam grid: learning_rate × {0.01,0.001,0.0001} × dropout_p × {0,0.3,0.5} × weight_decay × {0,0.01} = 18 configs.
+
+**Season-segment stability:** per-team game position within season (chronological game-count per team per season from game dates + team IDs in game metadata — no box-score data). Early = positions 1–25, middle = 26–55, late = 56+. Winner must rank top-3 in the 10-candidate ranking on each segment.
+
+**20-seed ensemble:** after Phase 1+2 select winning (form, hyperparam) combo, train 20 independent LightGBM models on full 2640 games (early stopping on last slice). Final prediction = mean of 20 seed probabilities.
+
+**Injury-blind pre-declaration (Gate 3 forward item):** step 5 trains an injury-blind model. Predictions for games with significant star-player absences will regress toward the rolling-average prior — a conservative underreaction to injury impact. The shadow-window (step 9) and game-type partition diagnostics will flag this. Pre-declared here; not a blocking concern for step 5.
+
+**Dependencies to install (none currently in environment):** `lightgbm`, `scikit-learn`, `torch` (CPU). `requirements-ml.txt` created and added to repo.
+
+**Files to create:**
+- `requirements-ml.txt`
+- `ml/nba/cv_runner.py` — Phase 1 form selection loop + Phase 2 hyperparam tuning
+- `ml/nba/train_lightgbm.py` — LightGBM fit/score + 20-seed ensemble
+- `ml/nba/train_mlp.py` — MLP fit/score + 20-seed ensemble
+- `ml/nba/test-fold-touch-counter.json` — initialized at `{"counter": 0, "history": []}`
+
+### Gate 1 council review — plan (2026-04-27)
+
+**Expert verdicts (R1):**
+
+- **DQ 8/10 CLEAR** — time-ordered fold boundaries correct; feature vectors already passed time-machine purity. Season-segment stability join must use only game metadata (verified at Gate 2).
+- **Stats 7/10 WARN** — n_pooled=2112 (not 8120): threshold ~0.00443 Brier (conservative); 2112 games is adequate to rank candidates that differ by ≥0.004 Brier. Blocking: joint vs staged selection (K=10 vs K=180 threshold).
+- **Pred 7/10 WARN** — MLP architecture underspecified. Blocking: pin hidden layer sizes.
+- **Domain 8/10 CLEAR** — EWMA halflife in games (not calendar days) is appropriate. Season-segment split (25/55) is domain-appropriate. 10-candidate grid covers the right hypothesis space.
+- **Math 6/10 WARN** — Blocking: joint selection would require K=180 threshold (0.00666 Brier); staged selection (Phase 1 K=10, Phase 2 K=18) is faithful to plan. Pin staging.
+
+**R1 aggregate: 2 WARN + 1 WARN (Math low score), avg 7.2/10.**
+
+**Blocking items (resolved in fix-pack):**
+1. **Staged selection declared:** Phase 1 K=10 with default hyperparams; Phase 2 K=18 on winning form. Threshold 0.00443 applies to Phase 1 only. ✓
+2. **MLP architecture pinned:** [42→128→64→1] + BatchNorm + AdamW. ✓
+
+**Fix-pack applied (same session).**
+
+**Resolver: CLEAR** — both blocking items self-resolved; pre-declared deviations (n_pooled, validation fold) are conservative/non-ship-rule-affecting; domain and DQ CLEAR.
+
+**Gate 1 verdict: CLEAR** (avg 7.2/10 before fix-pack → CLEAR after).
 - Add time-machine purity variant for early-season game (NaN-heavy) as future test hardening.

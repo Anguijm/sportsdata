@@ -1,0 +1,7 @@
+# ML training dependencies for Phase 3 NBA learned model
+# Install with: /usr/bin/python3 -m pip install -r requirements-ml.txt
+lightgbm>=4.6.0
+scikit-learn>=1.8.0
+torch>=2.0.0
+numpy>=1.17.0
+scipy>=1.9.0

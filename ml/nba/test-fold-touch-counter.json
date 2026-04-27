@@ -1,4 +1,20 @@
 {
-  "counter": 0,
-  "history": []
+  "counter": 1,
+  "history": [
+    {
+      "timestamp": "2026-04-28T00:00:00Z",
+      "touch": 1,
+      "description": "step8 LightGBM test-fold evaluation \u2014 Gate D FAIL (AUC 0.6954 < v5 0.7283; Brier +0.013 worse)",
+      "council_co_sign": "Stats:WARN-CLEAR DQ:WARN-CLEAR Pred:WARN-CLEAR Domain:WARN-CLEAR Math:WARN-CLEAR",
+      "results_summary": {
+        "gate_d_pass": false,
+        "gate_d_lgbm_auc": 0.6954,
+        "gate_d_v5_auc": 0.7283,
+        "lgbm_cal_brier": 0.222185,
+        "v5_test_brier": 0.209259,
+        "brier_improvement": -0.012926,
+        "note": "Gate D halt \u2014 script exited before counter increment; manually recorded. Script fixed for future runs."
+      }
+    }
+  ]
 }

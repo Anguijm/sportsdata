@@ -852,3 +852,138 @@ def build_live_tensor(
 
     vec = _game_feature_vector(game_row, histories, config)
     return _normalize_live(vec, config.feature_names, config)
+
+
+# ---------------------------------------------------------------------------
+# Test-fold tensor builder (Phase 3 step 8)
+# ---------------------------------------------------------------------------
+
+_SQL_LOAD_BOX_STATS_WITH_TEST = """
+        SELECT bs.game_id, bs.team_id, bs.season,
+               g.date, g.home_team_id, g.away_team_id,
+               bs.fga, bs.fgm, bs.fg3a, bs.fg3m,
+               bs.fta, bs.ftm, bs.tov,
+               bs.oreb, bs.dreb, bs.ast, bs.stl, bs.blk,
+               bs.pts, bs.possessions, bs.updated_at
+        FROM nba_game_box_stats bs
+        JOIN games g ON g.id = bs.game_id
+        WHERE bs.updated_at <= ?
+        ORDER BY g.date ASC, bs.game_id, bs.team_id
+        """
+
+
+def _load_box_stats_with_test(conn: sqlite3.Connection, training_as_of: str) -> list[dict]:
+    """Load ALL box stats including test-fold seasons.
+
+    Fix-pack #1 (DQ, addendum v15): needed for correct rolling-window history
+    when building test-fold features — prior test-fold game stats must be
+    visible to subsequent test-fold game feature vectors.
+    """
+    rows = conn.execute(_SQL_LOAD_BOX_STATS_WITH_TEST, (training_as_of,)).fetchall()
+    cols = [
+        "game_id", "team_id", "season", "date", "home_team_id", "away_team_id",
+        "fga", "fgm", "fg3a", "fg3m", "fta", "ftm", "tov",
+        "oreb", "dreb", "ast", "stl", "blk",
+        "pts", "possessions", "updated_at",
+    ]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+_SQL_LOAD_TEST_ELIGIBLE_GAMES = """
+        SELECT eg.game_id, eg.season, eg.home_team_id, eg.away_team_id,
+               eg.date, eg.neutral_site,
+               gr.home_win
+        FROM nba_eligible_games eg
+        JOIN game_results gr ON gr.game_id = eg.game_id
+        WHERE eg.season IN ({placeholders})
+          AND eg.date <= SUBSTR(?, 1, 10)
+        ORDER BY eg.date ASC, eg.game_id
+        """
+
+
+def _load_test_eligible_games(
+    conn: sqlite3.Connection, training_as_of: str,
+    test_seasons: frozenset[str] = TEST_FOLD_SEASONS,
+) -> list[dict]:
+    """Load eligible games for test-fold seasons only."""
+    placeholders = ",".join("?" * len(test_seasons))
+    sql = _SQL_LOAD_TEST_ELIGIBLE_GAMES.format(placeholders=placeholders)
+    rows = conn.execute(sql, (*test_seasons, training_as_of)).fetchall()
+    cols = ["game_id", "season", "home_team_id", "away_team_id", "date", "neutral_site", "home_win"]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def build_test_fold_tensor(
+    config: FeatureConfig,
+    db_path: str,
+    test_seasons: frozenset[str] = TEST_FOLD_SEASONS,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """Build feature tensor for test-fold games with frozen normalization.
+
+    Fix-pack #1 (DQ, addendum v15): bypasses the NOT IN test-fold exclusion
+    used in build_training_tensor(). Loads ALL box stats (training + test-fold)
+    so rolling windows span the full history. Computes feature vectors for
+    test-fold games only. Applies frozen norm_params from config — does NOT
+    refit normalization.
+
+    config must have norm_params pre-populated (e.g. loaded from
+    calibration-params.json via infer._build_fitted_config()).
+    """
+    if not config.is_fitted():
+        raise ValueError(
+            "config.norm_params must be pre-populated. Load from calibration-params.json "
+            "via infer._build_fitted_config() before calling build_test_fold_tensor()."
+        )
+    if not config.training_as_of:
+        raise ValueError("config.training_as_of must be set")
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = None
+
+    # Load ALL box stats (training + test fold) for complete rolling windows
+    box_rows = _load_box_stats_with_test(conn, config.training_as_of)
+
+    # Load test-fold eligible games (only these get feature vectors)
+    test_eligible_games = _load_test_eligible_games(conn, config.training_as_of, test_seasons)
+
+    # All game results (including test fold outcomes for won/lost tracking in histories)
+    game_results_raw = conn.execute(
+        "SELECT game_id, home_win FROM game_results WHERE sport = 'nba'"
+    ).fetchall()
+    game_results: dict[str, int] = {r[0]: r[1] for r in game_results_raw}
+
+    conn.close()
+
+    # Use ALL games in box_rows for history building (includes prior test-fold games)
+    all_game_ids = {r["game_id"] for r in box_rows}
+
+    # Sentinel imputation (same as training)
+    box_rows, _, _ = _impute_sentinel_tov(box_rows)
+
+    # Build team histories spanning training + test-fold games
+    paired = _pair_game_rows(box_rows)
+    histories = _build_team_histories_with_wins(
+        box_rows, paired, all_game_ids, game_results
+    )
+    _enrich_opp_drtg(histories)
+
+    # Compute feature vectors for test-fold games only
+    feature_names = FEATURE_NAMES_ALL
+    X_norm_rows = []
+    y_list = []
+    game_ids = []
+
+    for game in test_eligible_games:
+        gid = game["game_id"]
+        if game_results.get(gid) is None:
+            continue
+        vec = _game_feature_vector(game, histories, config)
+        x_norm = _normalize_live(vec, feature_names, config)
+        X_norm_rows.append(x_norm)
+        y_list.append(int(game["home_win"]))
+        game_ids.append(gid)
+
+    X_norm = np.array(X_norm_rows, dtype=float)
+    y = np.array(y_list, dtype=int)
+
+    return X_norm, y, game_ids

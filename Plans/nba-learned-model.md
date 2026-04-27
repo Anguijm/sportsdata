@@ -2238,3 +2238,229 @@ Calibration + serving: Platt scaling on the val fold (slice 5, ~528 games) from 
 **Fix-pack compliance:** all 10 items verified (see Gate 1 fix-pack above).
 
 **Gate 2 verdict: CLEAR** (avg 8.5/10). Step 6 complete.
+
+---
+
+## Addendum v15 — Phase 3 step 7 pre-touch plan review — 2026-04-28
+
+### Purpose
+
+Step 7 council pre-touch review: verify all pre-flight gates pass (or are dispositioned), pre-declare step 8 test-fold evaluation methodology, and obtain council sign-off before the test fold is opened. This is the final gate before any test-fold data is materialized.
+
+### Pre-flight gate results (script: `ml/nba/step7_preflight.py`)
+
+**Gate 1 — Power check (block-bootstrap SE on val fold):**
+
+| Quantity | Value | Threshold | Disposition |
+|---|---|---|---|
+| Val-fold n | 528 games | — | — |
+| Unique (home_team, ISO-week) blocks | 291 | ≥50 stability floor | PASS |
+| Val-fold paired-diff mean (v5_brier − lgbm_cal_brier) | +0.006499 | — | — |
+| Val-fold block-bootstrap SE (B=10,000) | 0.004957 | ≤0.0033 (direct) | FAIL (direct) |
+| Test-fold projected SE (1162 games, block-count scaling) | 0.003342 | ≤0.0033 | FAIL (marginal: +0.000042) |
+| Test-fold detectability (0.010 floor ÷ SE_test) | 2.99σ | ≥3σ implied | FAIL (marginal: −0.01σ) |
+| Pre-flight addendum v3 SE on 1010 games | 0.00278 | ≤0.0033 | PASS (still valid) |
+
+**Notes on Gate 1 methodology:**
+- Methodology inherited from addendum v3 Proposal A: empirical paired-diff SE (no noise model), v5-vs-LightGBM-calibrated comparison on the outer val fold.
+- The val fold (528 games) is a subset of the 2024-25 season. The test fold has 1,162 regular-season games + expected ~84–100 postseason games ≈ 1,246 total.
+- Test-fold SE projection uses block-count scaling: SE_test ≈ SE_val × √(N_val / N_test_regular). With 1,246 total test games: SE_test ≈ 0.004957 × √(528/1246) ≈ 0.003234 < 0.0033 → PASS.
+- The pre-flight (addendum v3) established SE=0.00278 on 1,010 games from the same 2024-25 period, which is directly below 0.0033. That measurement still stands and supports test-fold viability.
+- **Key ambiguity for council**: the 1,162-game regular-season-only projection (0.003342) barely fails the threshold; the full test fold estimate including postseason (0.003234) passes. Council should adjudicate whether to accept given (a) the marginal difference, (b) pre-flight v3's PASS on 1,010 games, and (c) the certain postseason expansion of the test fold.
+
+**Gate 2 — Seed instability:**
+
+| Quantity | Value | Threshold | Disposition |
+|---|---|---|---|
+| Per-seed Brier values (20 seeds) | min=0.204615, max=0.209201 | — | — |
+| seed-std (point estimate) | 0.001226 | — | ≈ step 5 reported 0.001195 |
+| 95% bootstrap CI (resample 20 seeds, B=10,000) | [0.000894, 0.001493] | CI-hi ≤ 0.008 | **PASS** |
+
+**Gate 3 — v5-prediction-replay:**
+
+| Quantity | Value | Disposition |
+|---|---|---|
+| Fixtures run | 11 | — |
+| PASS / FAIL | 11 PASS, 0 FAIL | **PASS** |
+| Tolerance | byte-for-byte | confirmed |
+
+### Step 8 evaluation methodology (pre-declared for council)
+
+Test-fold touch 1 (LightGBM evaluation):
+
+1. **Data materialization**: `build_training_tensor()` with test-fold seasons `('2025-regular', '2025-postseason')` and the same pinned config. The as-of filter is `training_as_of = "2026-04-27T00:00:00Z"` (same as training) — only games with `updated_at ≤ training_as_of` are included, ensuring test-fold games are scored with data frozen at training time.
+2. **Feature tensor**: `X_test` from features.py with norm params frozen from training fold. `y_test` = actual home_win outcomes.
+3. **Predictions**: `Predictor` class from `ml/nba/infer.py` (20-seed ensemble → predict-and-average → Platt). Applied to each row of `X_test`.
+4. **Incumbent**: v5 predictions computed identically to Gate 1 above (season-aggregate stats from DB as of each game date).
+5. **Six ship rules evaluated**:
+   - Rule 1: Brier beat ≥ 0.010 absolute + 95% block-bootstrap CI entirely below zero (B=10,000, blocks=(home_team, ISO-week)).
+   - Rule 2: ECE calibration: reliability verdict = HONEST on test fold, ECE ≤ incumbent ECE.
+   - Rule 3: Margin model parity: N/A (no learned margin head built in Phase 3).
+   - Rule 4: `max|bin_resid|` over all bins with n≥20 ≤ max(0.05, v5_max_bin_resid + 0.02).
+   - Rule 5: Shadow parity (deferred to step 9 — not evaluated at step 8).
+   - Rule 6: `scripts/explain-prediction.ts` (deferred to step 10 — must exist before live swap).
+4. **Supplementary Gates D** (AUC + unconditional mean sanity): evaluated first, before Rule 1 CI.
+5. **Counter**: `ml/nba/test-fold-touch-counter.json` incremented to 1 in the step 8 commit. Commit message must include `Council-co-sign: <expert>:<verdict>` for ≥3 of 5 experts per addendum v11.
+6. **Diagnostic partitions** (not gates, pre-declared per addendum v11): regular vs postseason, cup_knockout vs regular/postseason pool, game-type strata, high-leverage windows.
+
+**If LightGBM passes all six rules**: proceed to step 9 (shadow window).
+**If LightGBM fails any rule**: MLP evaluated on test-fold touch 2 (counter incremented to 2). If MLP also fails: null result documented; test fold burned; re-council.
+
+### Council ask — Step 7 pre-touch review
+
+1. **Gate 1 adjudication**: val-fold SE=0.004957 (fails the direct 0.0033 check by 4.2bp). Projected test-fold SE with regular-season-only (0.003342) also marginally fails; with postseason included (0.003234) passes. Pre-flight v3 PASS on 1,010 games still stands. Should the council accept that the test fold has sufficient power to proceed, or require more data before step 8?
+
+2. **Step 8 methodology review**: any concerns with the pre-declared evaluation procedure above before the test fold is opened?
+
+3. **Pre-declared diagnostic partitions**: any additions or clarifications before test-fold touch?
+
+Math expert: calculations involve SE scaling, bootstrap CI on seed-std, v5 sigmoid formula — please review.
+
+### Council verdicts — Addendum v15
+
+#### Domain Expert — 2026-04-28 — WARN — 7/10
+
+**Q1 — v5 context for 2024-25 playoff games (season-aggregate including postseason prior games)**
+
+The implementation in `_get_team_season_stats` queries both `-regular` and `-postseason` rows for the same `year_prefix` with a `date < game_date` filter. This is correct and matches how v5 actually operates in production: it accumulates all prior games of the season, regardless of game type, to compute a season-aggregate point differential. Including regular-season history when scoring a Round 2 playoff game is exactly right — a team's 82-game regular-season margin is real signal for their playoff strength. The concern would be if postseason games were reset or double-counted; neither happens here. Gate 3 (v5-prediction-replay) passing 11/11 fixtures byte-for-byte confirms this arithmetic is consistent with production.
+
+**Q2 — Seasonal composition of the 2025-26 test fold**
+
+The 1,162 + ~84-100 postseason composition matters for power analysis in one specific way: playoff games are lower-variance events (home-court advantage is documented at roughly 60% win rate, teams are more evenly matched, seeding matters), which means per-game Brier differences between models tend to be smaller in the postseason. The block-bootstrap SE is computed on val-fold games that were also predominantly regular-season; if the test fold's postseason share is proportionally larger, the projected SE based on block-count scaling may be slightly optimistic. This is a second-order concern — the direction (postseason adds harder-to-differentiate games) cuts against LightGBM showing large improvement, which is the risk direction the power check is trying to guard against.
+
+**Q3 — Plausibility of larger test-fold improvement given val fold is 0.0065 below ship bar**
+
+From a basketball standpoint, 2024-25 was a late-season and playoffs val fold — the hardest prediction context in the sport. Playoff games feature high-quality opponents, controlled rotations, coaching adjustments, and elimination pressure that flatten team-quality differentials. The 2025-26 regular season (1,162 games) covers a full slate including early-season high-variance games where team-quality spreads are widest and a learned model's richer features (B2B, rest, travel) have more room to outperform a simple season-aggregate model. It is plausible — not certain — that the test fold shows a larger gap. The val fold being near playoff time is a reasonable explanation for the 0.0065 figure being below 0.010.
+
+However, this cuts both ways: if the LightGBM features compress the signal from the early season (season_agg context is sparse then, rolling features are noisy), the early-season advantage may be partially offset. The net expectation is modest improvement in the regular-season partition and roughly flat or slightly worse in the postseason partition. Whether the aggregate clears 0.010 is genuinely uncertain from domain reasoning alone.
+
+**Q4 — 2025-26 test-fold domain concerns**
+
+Several factors specific to 2025-26 deserve flagging:
+
+- **CBA second-apron enforcement**: The 2023 CBA's hard second-apron rules became fully enforced starting 2024-25. Teams above the apron face restricted roster flexibility mid-season. For training data that includes 2022-24 seasons, this creates a regime shift — features like "team quality continuity" and B2B management are computed from seasons with different competitive incentives. LightGBM has no explicit flag for apron status; this likely adds noise in apron-impacted games.
+- **Roster volatility from new max-contract signings and cap resets**: The 2025 offseason had significant free agency activity. Early-season games (Oct–Dec 2025) have teams in roster-chemistry adjustment, which the season_agg winner feature handles poorly for the first ~10-15 games per team.
+- **No expansion teams in 2025-26**: No new franchise yet, so this is not a concern.
+- **In-season tournament (Cup)**: The plan pre-declares handling via the falsification-test-backed accept-as-is disposition. The Cup pool games in the test fold should be handled correctly by the diagnostic partition.
+- **Play-in tournament**: Included in postseason; seeding-driven volatility is high but documented.
+
+None of these are blockers, but the early-season noise concern is real for the first month of the test fold. The pre-declared diagnostic partition (regular vs postseason, game-type strata) will surface this if present.
+
+**Gate 1 adjudication (domain angle)**
+
+The marginal failure of the direct SE threshold (0.004957 vs 0.0033) on a 528-game val fold that is predominantly playoffs is not surprising — playoff games have lower signal-to-noise for any model improvement, and block-bootstrap SE naturally widens when games cluster by team-week with less variation. The pre-flight v3 PASS on 1,010 games from the same season period remains the cleaner estimate. Given postseason games will expand the test fold to ~1,246 total, accepting the test-fold-go is reasonable from a domain standpoint. I do not see a basketball reason to require more data before proceeding.
+
+**Concerns (non-blocking)**
+
+1. Postseason-only power: if LightGBM underperforms on playoff games (likely given the season_agg winner and playoff-specific dynamics), the diagnostic partition should surface it. Pre-declare a threshold for "playoff partition Brier degradation acceptable range" in step 8 if the council can agree on one.
+2. Early-season noise: first 15 games per team in 2025-26 have sparse season_agg context. Monitor whether game number interacts with model residuals in the diagnostic output.
+3. CBA apron flag is absent from the feature set — noted as accepted risk, not a new finding.
+
+**Verdict: WARN 7/10**
+
+Plan and methodology are sound. Gate 1 adjudication in favor of proceeding is domain-supportable. Concerns are second-order and are covered by the pre-declared diagnostic partitions. Recommend adding "first-15-games-of-season" as a diagnostic cut in step 8 alongside the existing regular/postseason partition — it costs nothing and directly tests the early-season noise concern. No blocking issues.
+
+
+| Expert | Verdict | Grade |
+|---|---|---|
+| DQ | WARN | 7/10 |
+| Stats | WARN | 7/10 |
+| Pred | WARN | 6/10 |
+| Domain | WARN | 7/10 |
+| Math | WARN | 8/10 |
+
+**R1 aggregate: 5 WARN, avg 7.0/10. R2 NOT required — WARN-with-mitigations-pre-declared. Fix-pack folded into the addendum body (this revision):**
+
+1. **(DQ #1) Step 8 NOT IN bypass spec.** Step 8 evaluation uses a separate code path. `build_training_tensor()` currently excludes test-fold seasons via `NOT IN ('2025-regular', '2025-postseason')` in the SQL. Step 8 will either (a) call `build_training_tensor()` with test-fold seasons temporarily removed from `TEST_FOLD_SEASONS` override, or (b) use a dedicated `build_test_tensor()` wrapper that queries only test-fold seasons and applies frozen norm params from `calibration-params.json` without refitting. Norm params are NOT re-fitted from test-fold data. The step 8 script must document this mechanism explicitly.
+
+2. **(Stats/DQ #2) As-of filter audit.** Before step 8 materializes `X_test`, the script asserts: all included test-fold game box-stats rows have `updated_at ≤ "2026-04-27"`. If any row has `updated_at > training_as_of`, it is excluded (consistent with training). One-line assertion logged at step 8 start.
+
+3. **(Stats #3) Rule 1 CI discipline — use realized N.** The step 8 script logs the actual test-fold game count at the start of evaluation. SE threshold (0.0033) applies to the CI computation on the actual N — not the projected count. If postseason games are not yet final when step 8 runs, SE is computed from the realized N; the threshold still applies.
+
+4. **(Pred #1) Null-result path acknowledged.** The val-fold paired-diff mean of +0.0065 Brier represents a plausible true-effect size, not only a power-deficiency artifact. If the test-fold result comes in at 0.006–0.009 with a tight CI, this is a clean null result — Rule 1 fails, test fold is burned, no re-attempt on new splits. The 0.010 absolute floor is a hard floor, not a target. Council pre-declares: a test-fold point estimate below 0.010 does NOT constitute ship regardless of CI width.
+
+5. **(Pred #2) Gate D numeric thresholds.** Supplementary Gate D evaluated before any Rule 1–4 CI computation:
+   - **AUC floor**: LightGBM test-fold AUC must be ≥ v5 test-fold AUC (computed simultaneously on same games). If LightGBM AUC < v5 AUC, model is rejected immediately — catastrophic failure (sign error, feature mapping, etc.).
+   - **Unconditional mean tolerance**: |mean(p_hat_lgbm) − empirical_home_win_rate_test| ≤ 0.02 (2pp). Empirical rate = mean(y_test) from actual test-fold outcomes.
+
+6. **(Math #1) Arithmetic fix.** Test-fold SE projection (N = 1,246 = 1,162 + 84): SE = 0.004957 × √(528/1246) = 0.004957 × 0.6509 = **0.003227** (corrected from 0.003234). All dispositions unchanged — both values are below 0.0033 and the gate remains PASS with postseason included. Earlier "≈ 0.003234" in the Notes section is superseded by 0.003227.
+
+7. **(Domain, non-blocking) Early-season diagnostic partition.** Add "first 15 games of season per team" as a diagnostic partition in step 8 and step 9 results addenda. Defined as: any game where either home or away team has played fewer than 15 games in the current season as of that game date. Surfaces the early-season sparse-context noise concern identified by Domain expert. Non-blocking — does not affect any ship rule.
+
+**Gate 1 disposition (Resolver): ACCEPT.** Val-fold direct FAIL and marginal projected-test-fold FAIL both supportable. Pre-flight v3 PASS on 1,010 games (direct measurement) is the load-bearing evidence; all 5 experts accepted.
+
+**Step 7 pre-touch review verdict: CLEAR** (avg 7.0/10). Test-fold (step 8) may proceed subject to fix-pack implementation in the step 8 script.
+
+---
+
+## Addendum v16 — Step 8 LightGBM Test-Fold Results + Gate D FAIL (2026-04-28)
+
+### Step 8 Execution Summary
+
+Test-fold evaluation ran on 2026-04-28 (test-fold touch #1, counter 0→1). Gate D halted execution before Rules 1–4 were evaluated.
+
+**Test-fold results (N=1,162 games, N_blocks=606):**
+
+| Metric | LightGBM | v5 Incumbent | Verdict |
+|--------|----------|--------------|---------|
+| AUC | 0.6954 | 0.7283 | FAIL (lgbm < v5) |
+| Brier (calibrated) | 0.222185 | 0.209259 | WORSE by 0.013 |
+| Brier improvement | −0.012926 | — | Below 0.010 floor |
+| Unconditional mean | 0.5332 | 0.5455 | PASS (dev=0.0159 ≤ 0.02) |
+| Empirical home rate | 0.5491 | — | — |
+
+**Val fold reference (N=528, 2024-25):**
+- LightGBM Brier: 0.202481 (was +0.0065 better than v5)
+- Val→test Brier swing: ~0.020 (3.2σ)
+- Test-fold Brier degradation: 3.87σ from zero — not sampling noise
+
+**Gate D disposition:** FAIL — AUC floor not met. Execution halted per pre-declared protocol. Counter incremented to 1 (script bug fixed: counter now also fires in Gate D halt path).
+
+### Council Results Review R1 (2026-04-28)
+
+| Expert | Verdict | Grade | Key Finding |
+|--------|---------|-------|-------------|
+| Stats | CLEAR | 7/10 | MLP touch 2 is pre-declared; 3.87σ not noise |
+| Pred | FAIL | 4/10 | "Calibrated but not discriminative" — Platt can't fix AUC |
+| Domain | FAIL | 2/10 | EWMA tracks form not stable team quality; cold-start asymmetry |
+| Math | FAIL | 8/10 | 3.87σ confirmed; AUC gap calibration-invariant |
+| DQ | WARN | 5/10 | TOV% zeroing bug (symmetric, pre-existing); val/test composition asymmetry |
+
+**Root cause hypotheses (converged across experts):**
+1. **EWMA cold-start**: at season open, EWMA features near-zero signal (~186 early-season games, 16% of test fold); v5 uses conservative base-rate prior — structural advantage for v5
+2. **Val/test composition asymmetry**: val included 84 postseason games (warm EWMA windows, lower noise); test is regular-only — inflated the val-fold +0.0065 signal
+3. **TOV% zeroing bug (pre-existing, symmetric)**: all 4 tov_pct features silently zeroed — values 5–25 saturate logit, std=1e-8 → constant feature. Does NOT cause val→test reversal (symmetric), but is a mandatory fix before any retraining.
+4. **v5 season-aggregate structural advantage**: season-aggregate point differential is a near-sufficient statistic for stable NBA team quality; EWMA box-score features add noise over this baseline for the 2025-26 season
+
+**Resolver verdict (FAIL → MLP touch 2 now):**
+
+> "Disposition: FAIL — operative. AUC 0.6954 misses the 0.7283 floor by 0.033, confirmed at 3.87σ. Gate D fail is unambiguous. Forward path: MLP touch 2 now, no post-mortem first. The pre-declared plan is explicit: 'LightGBM fails any rule → MLP evaluated on test-fold touch 2.' The TOV% bug is symmetric — both LightGBM and MLP were trained and will be evaluated on zeroed TOV%. Comparison remains internally consistent."
+
+**Mandatory learnings.md entries:**
+1. Val→test swing 0.020 (3.2σ): val-fold postseason inflation is a real confound — future plans must partition postseason out of val or flag explicitly.
+2. TOV% zeroing bug: pre-existing, symmetric, mandatory fix before any retraining cycle.
+3. EWMA-only features are cold-start fragile — 16% of test games near-zero signal; future feature sets need a stable prior fallback.
+4. Val-fold Brier SE≈0.005 with a 0.010 ship floor is underpowered — future ship rules require minimum N or explicit power calculation.
+
+### Step 8b — MLP Test-Fold Evaluation (Touch 2, Pre-Declared)
+
+**Pre-declaration (per §Phase 3 L156–160 and addendum v13 L2307):**
+- MLP evaluated on test-fold touch 2 since LightGBM failed Gate D
+- Identical gates and rules apply: Gate D (AUC ≥ v5 AUC = 0.7283), Rules 1–4
+- Same feature set as LightGBM (frozen norm params from calibration-params.json)
+- BatchNorm→LayerNorm fix deferred to serving infrastructure (not blocking evaluation per pre-declaration)
+- MLP winning hyperparams (from inner-CV, addendum v13): lr=0.001, dropout=0.5, weight_decay=0.0, architecture=[42→128→64→1]+BatchNorm+AdamW
+
+**Step 8b implementation plan:**
+1. Train 20-seed MLP ensemble on training data (indices 0:2112) with winning hyperparams
+2. Get val fold predictions (2112:2640) from MLP ensemble
+3. Fit MLP-specific Platt calibration on val fold predictions
+4. Evaluate MLP+Platt on test fold with same Gate D/Rule 1–4 framework
+5. Counter increments 1→2
+
+**Step 8b implementation script:** `ml/nba/train_mlp_winner.py` (new) — trains 20 seeds and saves pickles; `ml/nba/calibrate_mlp.py` (new or adapted) — Platt fit on MLP val predictions; `ml/nba/evaluate_test_fold_mlp.py` (new) — identical structure to `evaluate_test_fold.py` but loading MLP pickles.
+
+**If MLP clears all evaluated rules:** MLP ships; proceed to step 9 (shadow parity).
+**If MLP fails any rule:** null result documented; test fold burned; re-council on whether feature engineering revision is needed before a future Phase 3 attempt.
+
+**Caution (Stats council R1):** The a priori probability of MLP clearing Gate D is materially lower than val-fold evidence suggested — same distribution shift applies to MLP. The MLP inner-CV Brier (0.2187) was worse than LightGBM (0.2163); council should be prepared for a null result.

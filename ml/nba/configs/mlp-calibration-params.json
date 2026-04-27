@@ -1,0 +1,336 @@
+{
+  "method": "platt",
+  "model_type": "mlp",
+  "plan_ref": "Plans/nba-learned-model.md addendum v16",
+  "feature_config": {
+    "feature_form": "ewma",
+    "window_size": 10,
+    "ewma_halflife": 21,
+    "training_as_of": "2026-04-27T00:00:00Z"
+  },
+  "feature_names": [
+    "home_ortg",
+    "home_drtg",
+    "home_net_rating",
+    "home_opp_adj_nrtg",
+    "home_opp_adj_def",
+    "home_efg_pct_off",
+    "home_efg_pct_def",
+    "home_tov_pct_off",
+    "home_tov_pct_def",
+    "home_oreb_pct",
+    "home_dreb_pct",
+    "home_three_p_rate_off",
+    "home_three_p_rate_def",
+    "home_ast_per_poss",
+    "home_stl_per_poss",
+    "home_blk_per_poss",
+    "home_rest_days",
+    "home_b2b",
+    "home_rest_days_in_last_7",
+    "home_win_rate_last_7",
+    "away_ortg",
+    "away_drtg",
+    "away_net_rating",
+    "away_opp_adj_nrtg",
+    "away_opp_adj_def",
+    "away_efg_pct_off",
+    "away_efg_pct_def",
+    "away_tov_pct_off",
+    "away_tov_pct_def",
+    "away_oreb_pct",
+    "away_dreb_pct",
+    "away_three_p_rate_off",
+    "away_three_p_rate_def",
+    "away_ast_per_poss",
+    "away_stl_per_poss",
+    "away_blk_per_poss",
+    "away_rest_days",
+    "away_b2b",
+    "away_rest_days_in_last_7",
+    "away_win_rate_last_7",
+    "is_denver_home",
+    "neutral_site"
+  ],
+  "norm_params": {
+    "home_ortg": {
+      "transform": "zscore",
+      "mean": 113.11315891828214,
+      "std": 4.44097194606351,
+      "eps": 0.0
+    },
+    "home_drtg": {
+      "transform": "zscore",
+      "mean": 110.79816358811857,
+      "std": 4.199647641887229,
+      "eps": 0.0
+    },
+    "home_net_rating": {
+      "transform": "zscore",
+      "mean": 2.3149953301635486,
+      "std": 6.44769238162992,
+      "eps": 0.0
+    },
+    "home_opp_adj_nrtg": {
+      "transform": "zscore",
+      "mean": -0.13902319963572773,
+      "std": 0.9557817565362406,
+      "eps": 0.0
+    },
+    "home_opp_adj_def": {
+      "transform": "zscore",
+      "mean": -0.04502308899627077,
+      "std": 0.9183829218870835,
+      "eps": 0.0
+    },
+    "home_efg_pct_off": {
+      "transform": "logit_zscore",
+      "mean": 0.19991495975110712,
+      "std": 0.09668488259813307,
+      "eps": 0.008251003066508828
+    },
+    "home_efg_pct_def": {
+      "transform": "logit_zscore",
+      "mean": 0.16025762259718554,
+      "std": 0.08604055741132546,
+      "eps": 0.008251003066508828
+    },
+    "home_tov_pct_off": {
+      "transform": "logit_zscore",
+      "mean": 4.789135271208153,
+      "std": 1e-08,
+      "eps": 0.008251003066508828
+    },
+    "home_tov_pct_def": {
+      "transform": "logit_zscore",
+      "mean": 4.789135271208153,
+      "std": 1e-08,
+      "eps": 0.008251003066508828
+    },
+    "home_oreb_pct": {
+      "transform": "logit_zscore",
+      "mean": -1.1258963902502677,
+      "std": 0.1546190709003788,
+      "eps": 0.008251003066508828
+    },
+    "home_dreb_pct": {
+      "transform": "logit_zscore",
+      "mean": 1.1488005923648548,
+      "std": 0.12051523831702371,
+      "eps": 0.008251003066508828
+    },
+    "home_three_p_rate_off": {
+      "transform": "logit_zscore",
+      "mean": -0.3936217410094636,
+      "std": 0.143024175584865,
+      "eps": 0.008251003066508828
+    },
+    "home_three_p_rate_def": {
+      "transform": "logit_zscore",
+      "mean": -0.41107556776159354,
+      "std": 0.1210100779094325,
+      "eps": 0.008251003066508828
+    },
+    "home_ast_per_poss": {
+      "transform": "zscore",
+      "mean": 0.26402017202108036,
+      "std": 0.020048921877996683,
+      "eps": 0.0
+    },
+    "home_stl_per_poss": {
+      "transform": "zscore",
+      "mean": 0.0754602986658331,
+      "std": 0.008919035220680662,
+      "eps": 0.0
+    },
+    "home_blk_per_poss": {
+      "transform": "zscore",
+      "mean": 0.05082678928248803,
+      "std": 0.009136301044158291,
+      "eps": 0.0
+    },
+    "home_rest_days": {
+      "transform": "log1p_zscore",
+      "mean": 1.140725439155327,
+      "std": 0.3231464975282298,
+      "eps": 0.0
+    },
+    "home_b2b": {
+      "transform": "passthrough",
+      "mean": 0.0,
+      "std": 1.0,
+      "eps": 0.0
+    },
+    "home_rest_days_in_last_7": {
+      "transform": "log1p_zscore",
+      "mean": 1.3458219055492346,
+      "std": 0.30707126602585794,
+      "eps": 0.0
+    },
+    "home_win_rate_last_7": {
+      "transform": "zscore",
+      "mean": 0.5006601731601731,
+      "std": 0.23707355214300804,
+      "eps": 0.0
+    },
+    "away_ortg": {
+      "transform": "zscore",
+      "mean": 110.99810842696169,
+      "std": 4.221187915654206,
+      "eps": 0.0
+    },
+    "away_drtg": {
+      "transform": "zscore",
+      "mean": 113.0009966903805,
+      "std": 3.757299707143339,
+      "eps": 0.0
+    },
+    "away_net_rating": {
+      "transform": "zscore",
+      "mean": -2.002888263418795,
+      "std": 5.69388613687177,
+      "eps": 0.0
+    },
+    "away_opp_adj_nrtg": {
+      "transform": "zscore",
+      "mean": -0.08273447338907021,
+      "std": 0.9261901354425371,
+      "eps": 0.0
+    },
+    "away_opp_adj_def": {
+      "transform": "zscore",
+      "mean": -0.15628381879177564,
+      "std": 0.8267258212341253,
+      "eps": 0.0
+    },
+    "away_efg_pct_off": {
+      "transform": "logit_zscore",
+      "mean": 0.1633149802547759,
+      "std": 0.0862459929539424,
+      "eps": 0.008251003066508828
+    },
+    "away_efg_pct_def": {
+      "transform": "logit_zscore",
+      "mean": 0.19757397619668815,
+      "std": 0.07993141652553516,
+      "eps": 0.008251003066508828
+    },
+    "away_tov_pct_off": {
+      "transform": "logit_zscore",
+      "mean": 4.789135271208153,
+      "std": 1e-08,
+      "eps": 0.008251003066508828
+    },
+    "away_tov_pct_def": {
+      "transform": "logit_zscore",
+      "mean": 4.789135271208153,
+      "std": 1e-08,
+      "eps": 0.008251003066508828
+    },
+    "away_oreb_pct": {
+      "transform": "logit_zscore",
+      "mean": -1.1516079285420109,
+      "std": 0.1588306765344637,
+      "eps": 0.008251003066508828
+    },
+    "away_dreb_pct": {
+      "transform": "logit_zscore",
+      "mean": 1.1214853065269117,
+      "std": 0.12020415355603987,
+      "eps": 0.008251003066508828
+    },
+    "away_three_p_rate_off": {
+      "transform": "logit_zscore",
+      "mean": -0.41042760706835507,
+      "std": 0.14837926341233296,
+      "eps": 0.008251003066508828
+    },
+    "away_three_p_rate_def": {
+      "transform": "logit_zscore",
+      "mean": -0.3936245828373399,
+      "std": 0.1195581622624674,
+      "eps": 0.008251003066508828
+    },
+    "away_ast_per_poss": {
+      "transform": "zscore",
+      "mean": 0.25543148480756467,
+      "std": 0.018880906600257985,
+      "eps": 0.0
+    },
+    "away_stl_per_poss": {
+      "transform": "zscore",
+      "mean": 0.07528826257050604,
+      "std": 0.009475134909250178,
+      "eps": 0.0
+    },
+    "away_blk_per_poss": {
+      "transform": "zscore",
+      "mean": 0.049501704417518756,
+      "std": 0.00880812613832203,
+      "eps": 0.0
+    },
+    "away_rest_days": {
+      "transform": "log1p_zscore",
+      "mean": 1.1247410135682128,
+      "std": 0.30824829445331076,
+      "eps": 0.0
+    },
+    "away_b2b": {
+      "transform": "passthrough",
+      "mean": 0.0,
+      "std": 1.0,
+      "eps": 0.0
+    },
+    "away_rest_days_in_last_7": {
+      "transform": "log1p_zscore",
+      "mean": 1.3495758450940625,
+      "std": 0.29064995032124813,
+      "eps": 0.0
+    },
+    "away_win_rate_last_7": {
+      "transform": "zscore",
+      "mean": 0.5082693001443002,
+      "std": 0.23808232329029513,
+      "eps": 0.0
+    },
+    "is_denver_home": {
+      "transform": "passthrough",
+      "mean": 0.0,
+      "std": 1.0,
+      "eps": 0.0
+    },
+    "neutral_site": {
+      "transform": "passthrough",
+      "mean": 0.0,
+      "std": 1.0,
+      "eps": 0.0
+    }
+  },
+  "platt": {
+    "A": 1.2941216864689884,
+    "B": 0.03734371524119922,
+    "formulation": "p_cal = sigmoid(A * logit(p_ensemble) + B)",
+    "sklearn_C": 1000000000.0
+  },
+  "ensemble": {
+    "n_seeds": 20,
+    "run_id": "mlp-winner",
+    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/mlp-winner/models",
+    "val_cutoff_idx": 2112
+  },
+  "val_diagnostics": {
+    "n_val": 528,
+    "brier_raw": 0.20703737795834593,
+    "brier_calibrated": 0.20493420380792068,
+    "brier_delta": -0.002103174150425241,
+    "unconditional_mean_raw": 0.5313625931739807,
+    "unconditional_mean_calibrated": 0.5454674959182739,
+    "empirical_home_win_rate": 0.5454545454545454,
+    "mean_divergence_post_cal": 1.2950463728511608e-05,
+    "season_breakdown": {
+      "2024-regular": 444,
+      "2024-postseason": 84
+    }
+  },
+  "data_hash_sha256": "21945a5283ce358f7ab60b1ef901e0b563e2c9e2d568f291d282c3cab112c5ce"
+}

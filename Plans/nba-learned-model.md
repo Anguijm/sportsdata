@@ -2464,3 +2464,49 @@ Test-fold evaluation ran on 2026-04-28 (test-fold touch #1, counter 0→1). Gate
 **If MLP fails any rule:** null result documented; test fold burned; re-council on whether feature engineering revision is needed before a future Phase 3 attempt.
 
 **Caution (Stats council R1):** The a priori probability of MLP clearing Gate D is materially lower than val-fold evidence suggested — same distribution shift applies to MLP. The MLP inner-CV Brier (0.2187) was worse than LightGBM (0.2163); council should be prepared for a null result.
+
+---
+
+## Addendum v17 — Step 8b MLP Results + Phase 3 Null Result (2026-04-28)
+
+### Step 8b Execution Summary
+
+MLP test-fold evaluation ran on 2026-04-28 (touch #2, counter 1→2). Gate D halted before Rules 1–4.
+
+**MLP results (N=1,162 games, touch #2):**
+
+| Metric | MLP | v5 Incumbent | vs LightGBM (touch #1) |
+|--------|-----|--------------|------------------------|
+| AUC | 0.7026 | 0.7283 | Better (+0.0072) |
+| Brier (calibrated) | 0.217956 | 0.209259 | Better (−0.004229) |
+| Brier improvement | −0.008697 | — | Better than LGBM |
+| Unconditional mean | 0.5428 | 0.5455 | PASS (dev=0.0062) |
+
+**Gate D: FAIL** — MLP AUC 0.7026 < v5 AUC 0.7283. Both families exhausted their pre-declared test-fold touches.
+
+**MLP Platt calibration:** A=1.294122, B=0.037344. Val Brier 0.207037→0.204934 (Δ−0.002103).
+
+### Council Results Review R1 (2026-04-28) — Compound Verdict
+
+**CLEAR — NULL RESULT CONFIRMED.** All 5 experts CLEAR. Both families fail Gate D. Neither ships.
+
+> "Both families exhausted their test-fold touches. The pre-declared rejection criterion is satisfied without ambiguity. Null result is statistically legitimate." — Stats
+> "MLP's marginal edge over LightGBM (AUC +0.0072, Brier −0.0042) is diagnostically meaningful: both families operating below v5's discrimination ceiling points to feature insufficiency rather than modeling error." — Pred
+> "Neither ships. Test fold is burned." — compound verdict
+
+### Phase 3 Null Result Disposition
+
+Per §Phase 3 L158: "If both fail, neither ships; null result documented in learnings.md." 
+
+**Test fold status: BURNED.** Counter = 2/2. No further touches permissible on 2025-26 test data.
+
+**No ship swap:** v5 remains the incumbent NBA prediction model. v6 (Phase 1 null result) and the Phase 3 LightGBM/MLP ensemble are not deployed.
+
+**Mandatory post-mortem scope before any future Phase 3 attempt:**
+1. Feature-gap audit: map Phase 3 EWMA box-score inputs against v5 point-differential signal; identify what v5 encodes that Phase 3 misses
+2. TOV% zeroing bug: fix pct-form values before any retraining (pre-existing, symmetric, but corrupts 4 of 42 features)
+3. Cold-start design: add warm-start fallback for first N games of season (either season-to-date base or explicit game-count flag)
+4. Val fold composition: use regular-season-only val fold OR explicitly stratify by game type for ship-floor estimation
+5. Re-council with new plan addendum before opening any future test fold
+
+**Phase 3 closed.** Next steps (if any future attempt): new plan addendum → council review → fresh inner-CV on updated features → new val fold evaluation → new pre-flight → new test-fold touch (counter resets with new plan).

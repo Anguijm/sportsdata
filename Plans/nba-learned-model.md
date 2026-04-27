@@ -2219,3 +2219,22 @@ Calibration + serving: Platt scaling on the val fold (slice 5, ~528 games) from 
 **Resolver: WARN → CLEAR. No R2 required. All WARNs are implementation pre-declarations verifiable at Gate 2.**
 
 **Gate 1 verdict: CLEAR** (avg 7.3/10). Proceed to implementation.
+
+### Step 6 implementation results (Gate 2) — 2026-04-28
+
+**Files shipped:** `ml/nba/calibrate.py`, `ml/nba/infer.py`, `ml/nba/configs/calibration-params.json`.
+
+**Calibration results (ewma-h21, 20-seed LightGBM, val n=528):**
+- Val season breakdown: 444 regular + 84 postseason
+- Platt params: A=1.349938, B=0.015640
+- A>1 indicates model was underconfident (predictions compressed toward 0.5); Platt corrects by stretching. Expected LightGBM behavior on small tabular n.
+- Raw val Brier=0.204984 → Calibrated=0.202481 (Δ−0.0025) — hard stop NOT triggered
+- Post-cal unconditional mean=0.5454 vs empirical 0.5455 (Δ0.01pp, well inside 2pp flag threshold)
+- Data tensor SHA-256: 21945a5283ce358f...
+- ONNX deferred; `infer.py` + native LightGBM pickles for batch cadence
+
+**Smoke test:** BOS home vs NY 2024-10-22 → P(BOS)=77.7%; NY home vs BOS same date → P(NY)=42.1%. Direction correct, home/away asymmetry present.
+
+**Fix-pack compliance:** all 10 items verified (see Gate 1 fix-pack above).
+
+**Gate 2 verdict: CLEAR** (avg 8.5/10). Step 6 complete.

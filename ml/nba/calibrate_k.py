@@ -135,10 +135,13 @@ def compute_team_priors(
     for bbref_id, row in current_bpm.items():
         team_players[row["team"]].append(bbref_id)
 
+    def _is_multi_team(abbr: str) -> bool:
+        return len(abbr) == 3 and abbr[0].isdigit() and abbr.endswith("TM")
+
     priors: dict[str, float] = {}
     for team, player_ids in team_players.items():
-        if team == "TOT":
-            continue  # skip aggregate rows
+        if _is_multi_team(team):
+            continue  # skip 2TM/3TM/4TM aggregate rows
 
         contributions: list[tuple[float, float]] = []  # (bpm, mp)
         for pid in player_ids:

@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-28 (post Sprint 10.19 — Phase 3 step 6 Platt calibration complete; branch claude/phase3-step6-calibration, PR open; PR #54 (step 5) merged at 1bc750b; prod still at step 3).
+Last regenerated: 2026-04-28 (post Sprint 10.20 — Phase 4 BPM cold-start prior experiment closed as null result; branch claude/phase3-step6-calibration; v5 remains incumbent).
 
 ## Where to start
 
@@ -23,12 +23,13 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 3 step 6 — DONE (PR open, pending merge).** Platt calibration (A=1.350, B=0.016) on 528-game val fold. `calibrate.py` + `infer.py`. Raw Brier 0.2050→calibrated 0.2025. Gate 1 CLEAR (7.3/10), Gate 2 CLEAR (8.5/10). Branch: `claude/phase3-step6-calibration`.
-- **Phase 3 step 7 — Pre-flight ship-rule gates.** Power check (block-bootstrap SE on training fold), seed-instability CI, v5-replay regression. Council pre-touch review required before test-fold is opened. No test-fold touch until council signs off.
+- **Merge `claude/phase3-step6-calibration` PR** — contains Phase 3 (steps 6-8b) + Phase 4 (BPM cold-start prior). Both experiments are null results; all code, scripts, and documentation committed. Branch is ready to merge.
+- **Phase 4 cold-start prior — CLOSED (null result, 2026-04-28).** BPM prior (K=10) did not improve cold-start Brier on games 1-20 vs v5 (Δ = +0.0048, CI [-0.010, +0.020], Ship Rule 1 FAIL). Gate 4 council CLEAR (7.6/10). v5 remains incumbent. v2 prerequisites pre-declared in `Plans/nba-cold-start-prior.md` (coaching_factor, traded-player imputation, K sensitivity, multi-season test).
 
 ## Next (queued, scoped)
 
-- **Phase 3 steps 7–10**: pre-flight ship-rule gates → test-fold evaluation (LightGBM first) → shadow window (28 game-days or 500 preds) → live swap. See `Plans/nba-learned-model.md` addendum v14 + plan body §Phase 3 ship rules.
+- **Post-mortem + SESSION_LOG update**: add Sprint 10.20 entry to SESSION_LOG.md covering Phase 4 null result.
+- **Phase 5 NBA model planning** — next experiment requires fresh plan + council Gate 1 before code. v2 BPM prior prerequisites listed in `Plans/nba-cold-start-prior.md §v2 prior prerequisites`. Alternatively, address the TOV% zeroing bug (BACKLOG debt) and re-evaluate EWMA baseline without that signal corruption.
 
 ## Someday (daydreams, architectural ideas)
 
@@ -50,7 +51,7 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- `claude/phase3-step6-calibration` — Phase 3 step 6 Platt calibration + serving (branch pushed, PR not yet opened).
+- `claude/phase3-step6-calibration` — Phase 3 (steps 6-8b) + Phase 4 cold-start prior (all null results). Branch pushed; PR pending user open.
 
 ---
 

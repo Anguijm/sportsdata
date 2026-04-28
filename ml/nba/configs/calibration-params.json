@@ -6,7 +6,7 @@
     "feature_form": "ewma",
     "window_size": 10,
     "ewma_halflife": 21,
-    "training_as_of": "2026-04-27T00:00:00Z"
+    "training_as_of": "2026-04-28T00:00:00Z"
   },
   "feature_names": [
     "home_ortg",
@@ -25,6 +25,7 @@
     "home_ast_per_poss",
     "home_stl_per_poss",
     "home_blk_per_poss",
+    "home_bpm_effective",
     "home_rest_days",
     "home_b2b",
     "home_rest_days_in_last_7",
@@ -45,6 +46,7 @@
     "away_ast_per_poss",
     "away_stl_per_poss",
     "away_blk_per_poss",
+    "away_bpm_effective",
     "away_rest_days",
     "away_b2b",
     "away_rest_days_in_last_7",
@@ -147,6 +149,12 @@
       "transform": "zscore",
       "mean": 0.05082678928248803,
       "std": 0.009136301044158291,
+      "eps": 0.0
+    },
+    "home_bpm_effective": {
+      "transform": "zscore",
+      "mean": -0.0553193187827641,
+      "std": 4.447581342316625,
       "eps": 0.0
     },
     "home_rest_days": {
@@ -269,6 +277,12 @@
       "std": 0.00880812613832203,
       "eps": 0.0
     },
+    "away_bpm_effective": {
+      "transform": "zscore",
+      "mean": -0.0012238005732908242,
+      "std": 4.468056820941098,
+      "eps": 0.0
+    },
     "away_rest_days": {
       "transform": "log1p_zscore",
       "mean": 1.1247410135682128,
@@ -307,30 +321,30 @@
     }
   },
   "platt": {
-    "A": 1.349937651515317,
-    "B": 0.015639627048171845,
+    "A": 1.3080267783154518,
+    "B": 0.038078431660571274,
     "formulation": "p_cal = sigmoid(A * logit(p_ensemble) + B)",
     "sklearn_C": 1000000000.0
   },
   "ensemble": {
     "n_seeds": 20,
-    "override_run_id": "20260427T104117-e39d20c0-override",
-    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/20260427T104117-e39d20c0-override/models",
+    "override_run_id": "20260428T123326-7b5b31c1",
+    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/20260428T123326-7b5b31c1/models",
     "val_cutoff_idx": 2112
   },
   "val_diagnostics": {
     "n_val": 528,
-    "brier_raw": 0.2049844492964109,
-    "brier_calibrated": 0.2024813832465473,
-    "brier_delta": -0.0025030660498636115,
-    "unconditional_mean_raw": 0.5344277290675077,
-    "unconditional_mean_calibrated": 0.5454422719323127,
+    "brier_raw": 0.20327857147952585,
+    "brier_calibrated": 0.2011763865417433,
+    "brier_delta": -0.002102184937782553,
+    "unconditional_mean_raw": 0.5316795331327663,
+    "unconditional_mean_calibrated": 0.5454371441233543,
     "empirical_home_win_rate": 0.5454545454545454,
-    "mean_divergence_post_cal": 1.2273522232764122e-05,
+    "mean_divergence_post_cal": 1.7401331191102543e-05,
     "season_breakdown": {
       "2024-regular": 444,
       "2024-postseason": 84
     }
   },
-  "data_hash_sha256": "21945a5283ce358f7ab60b1ef901e0b563e2c9e2d568f291d282c3cab112c5ce"
+  "data_hash_sha256": "f917edcb5edfd89ce7c3a3c6dd2f1ad39185bf68592c058161805e988dbcf03d"
 }

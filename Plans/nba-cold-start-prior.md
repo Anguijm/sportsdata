@@ -320,3 +320,63 @@ Calibration: seasons 2019–2023, cold-start window games 1–25.
 | Picks 15–30 BPM prior | −2.40 | |
 | Second round BPM prior | −2.60 | |
 | Undrafted BPM prior | −0.50 | contamination disclosed; veteran survivor bias |
+
+---
+
+## Addendum — Implementation council clarifications (2026-04-28)
+
+**Coaching_factor correction**: The plan addendum (K calibration, 2026-04-28) states "coaching_factor fixed at 0.70 during calibration." This is inaccurate. The calibration script (`calibrate_k.py`) never applied coaching_factor — it used flat `K_eff = K_base = 10` with no continuity or coaching adjustments. Similarly, the implementation (`features.py`, `bpm_prior.py`) uses flat `K = 10.0`. coaching_factor = 0.70 is a pre-declared v2 enhancement; it was not applied in either calibration or v1 implementation. The implementation and calibration are internally consistent on this point.
+
+**Traded-player exclusion**: bbref represents traded players via multi-team aggregate rows (2TM/3TM/4TM) with no single-team entry. These rows are excluded from team prior computation (~13–14% of active players per season). This is a known v1 limitation documented in `bpm_prior.py`. Teams that acquired high-impact players mid-season in the prior year may have underestimated prior strength.
+
+---
+
+## Addendum — Test-fold results (2026-04-28) — NULL RESULT
+
+### Ship rule evaluation — evaluate_cold_start.py
+
+Model: run 20260428T123326-7b5b31c1 (44 features, 20-seed ensemble, Platt A=1.308, B=0.038)
+Test fold: 2025-regular season, n=1162 games
+
+| Partition | n | LightGBM Brier | v5 Brier | Δ (lgbm−v5) |
+|---|---|---|---|---|
+| Cold-start (games 1-20) | 309 | 0.210309 | 0.205528 | **+0.004781** |
+| Late-season (games 21+) | 853 | 0.212503 | 0.210610 | +0.001893 |
+| All regular-season | 1162 | 0.211920 | 0.209259 | +0.002661 |
+
+Block-bootstrap 95% CI on cold-start Δ (B=10000, blocks = home_team × ISO-week):
+- Observed Δ: +0.004781
+- 95% CI: [−0.010219, +0.019839]
+
+| Ship Rule | Threshold | Result | Verdict |
+|---|---|---|---|
+| Rule 1 — Brier improvement games 1-20 | CI must exclude zero on improvement side | CI = [−0.010, +0.020], spans zero; Δ > 0 | **FAIL** |
+| Rule 2 — No degradation games 21+ | Δ ≤ +0.002 | Δ = +0.001893 | PASS |
+| Rule 3 — K calibrated on separate holdout | confirmed (calibrate_k.py) | K=10 on 2022-2024 seasons | PASS |
+
+**Overall: NULL RESULT. Ship Rules 1 FAIL. BPM cold-start prior v1 does not ship. v5 remains incumbent.**
+
+Context: Also evaluated at Gate D (evaluate_test_fold.py): AUC 0.7241 < v5 0.7283 (FAIL). Both evaluation frameworks independently reach null result.
+
+### Council Gate 4 (results review) — 2026-04-28
+
+All five experts CLEAR. Weighted score 7.6/10.
+
+**DQ — 8/10 — CLEAR**: Data pipeline verified against live DB. 309/1162 cold-start count confirmed exact. Metadata join 100% complete. Season label correct. v5 stat query confirmed no contamination. Minor deductions for undrafted-bin survivor bias (known v1 limitation) and mild `games` vs `nba_eligible_games` table asymmetry.
+
+**Stats — 8/10 — CLEAR**: Block-bootstrap design correct; CI width (~0.030 units) is honest given n=309 and game-level Brier variance. Null result clean — point estimate degradation with CI spanning zero. Two pre-declared tests, no alpha inflation.
+
+**Pred — 7/10 — CLEAR**: Null result internally consistent with overall AUC weakness. No leakage. BPM prior hypothesis falsified as large-effect claim; effects below 0.005 Brier unresolved given CI width. Ship null result.
+
+**Domain — 7/10 — CLEAR**: Null result domain-plausible. 2025-26 roster churn undermines prior-year BPM. Traded-player exclusion removes disproportionately high-BPM players. coaching_factor=0.70 not applied in v1 — inflates prior overconfidence. v5 base-rate fallback (0.57 for <5 games) is a stronger cold-start handler than expected. v2 path: apply coaching_factor, impute traded players, evaluate K ∈ {5, 7, 10}.
+
+**Math — 8/10 — CLEAR**: Platt calibration math correct. Block-bootstrap implementation correct (block-level resampling, percentile CI). min_game_n construction correct. Predict-and-average vs logit-space averaging is consistent modeling choice. Results correctly support Ship Rule 1 FAIL.
+
+**Resolver: CLEAR. Null result recorded. Experiment closed. v5 holds.**
+
+### v2 prior prerequisites (pre-declared before any future experiment)
+
+1. Apply `coaching_factor = 0.70` to discount priors when team context changes
+2. Impute traded players rather than excluding (13-14% exclusion disproportionately removes high-BPM players)
+3. Evaluate K sensitivity: K ∈ {5, 7, 10} — K=10 may decay too slowly given early-season information
+4. Expand to ≥2 test seasons to increase power (n=309 is underpowered for effects < 0.005 Brier)

@@ -75,6 +75,9 @@ class FeatureConfig:
     training_as_of: str = ""
     feature_names: list[str] = field(default_factory=list)
     norm_params: dict[str, NormParams] = field(default_factory=dict)
+    # Cold-start BPM prior index: {(team_id, season): prior_strength}
+    # Populated by build_training_tensor / build_test_fold_tensor from bpm_prior.py.
+    bpm_prior_index: dict[tuple[str, str], float] = field(default_factory=dict)
 
     def is_fitted(self) -> bool:
         return bool(self.norm_params)
@@ -426,6 +429,26 @@ def _rolling_feature_vector(
     result["opp_adj_nrtg"] = opp_adj_nrtg
     result["opp_adj_def"] = opp_adj_def
 
+    # Cold-start BPM prior blend: effective_strength = (K*prior + g*actual) / (K+g)
+    # K_BASE=10, prior in BPM units (~NRtg scale). Uses all-venue season games.
+    # NaN when no prior exists for (team, season); model imputes as training mean.
+    prior_val = config.bpm_prior_index.get((team_id, target_season), float("nan"))
+    if math.isnan(prior_val):
+        result["bpm_effective"] = float("nan")
+    else:
+        all_h = histories.get(team_id, {}).get("all", [])
+        season_games = [
+            g for g in all_h
+            if g["season"] == target_season and g["date"] < target_date
+        ]
+        g_count = len(season_games)
+        actual_diff = (
+            sum(g["net_rating"] for g in season_games) / g_count
+            if g_count > 0 else 0.0
+        )
+        _K = 10.0
+        result["bpm_effective"] = (_K * prior_val + g_count * actual_diff) / (_K + g_count)
+
     return result
 
 
@@ -638,6 +661,7 @@ ORDERED_STATS = [
     "oreb_pct", "dreb_pct",
     "three_p_rate_off", "three_p_rate_def",
     "ast_per_poss", "stl_per_poss", "blk_per_poss",
+    "bpm_effective",  # cold-start prior blend (Plans/nba-cold-start-prior.md)
 ]
 SITUATIONAL_STATS = ["rest_days", "b2b", "rest_days_in_last_7", "win_rate_last_7"]
 
@@ -704,6 +728,11 @@ def build_training_tensor(
     """
     if not config.training_as_of:
         raise ValueError("config.training_as_of must be set before calling build_training_tensor")
+
+    # Populate BPM prior index if not already loaded
+    if not config.bpm_prior_index:
+        from ml.nba.bpm_prior import build_prior_index  # lazy import
+        config.bpm_prior_index = build_prior_index()
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = None
@@ -809,6 +838,10 @@ def build_live_tensor(
     """
     if not config.is_fitted():
         raise ValueError("config must be fitted via build_training_tensor before build_live_tensor")
+
+    if not config.bpm_prior_index:
+        from ml.nba.bpm_prior import build_prior_index  # lazy import
+        config.bpm_prior_index = build_prior_index()
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = None
@@ -936,6 +969,10 @@ def build_test_fold_tensor(
         )
     if not config.training_as_of:
         raise ValueError("config.training_as_of must be set")
+
+    if not config.bpm_prior_index:
+        from ml.nba.bpm_prior import build_prior_index  # lazy import
+        config.bpm_prior_index = build_prior_index()
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = None

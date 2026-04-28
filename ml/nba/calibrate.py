@@ -48,7 +48,7 @@ from ml.nba.train_lightgbm import score_lgbm
 
 DB_PATH = REPO_ROOT / "data" / "sqlite" / "sportsdata.db"
 CONFIGS_DIR = REPO_ROOT / "ml" / "nba" / "configs"
-OVERRIDE_RUN_ID = "20260427T104117-e39d20c0-override"
+OVERRIDE_RUN_ID = "20260428T123326-7b5b31c1"  # nba-cold-start-prior v1 (44 features)
 MODELS_DIR = REPO_ROOT / "ml" / "nba" / "results" / OVERRIDE_RUN_ID / "models"
 OUTPUT_PATH = CONFIGS_DIR / "calibration-params.json"
 
@@ -56,7 +56,7 @@ PINNED_FEATURE_CONFIG = {
     "feature_form": "ewma",
     "window_size": 10,
     "ewma_halflife": 21,
-    "training_as_of": "2026-04-27T00:00:00Z",
+    "training_as_of": "2026-04-28T00:00:00Z",
 }
 VAL_CUTOFF_IDX = 2112  # int(2640 * 0.8) — matches _build_ensemble in cv_runner.py
 N_SEEDS = 20

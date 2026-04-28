@@ -4,7 +4,7 @@
     {
       "timestamp": "2026-04-28T00:00:00Z",
       "touch": 1,
-      "description": "step8 LightGBM test-fold evaluation \u2014 Gate D FAIL (AUC 0.6954 < v5 0.7283; Brier +0.013 worse)",
+      "description": "step8 LightGBM test-fold evaluation — Gate D FAIL (AUC 0.6954 < v5 0.7283; Brier +0.013 worse)",
       "council_co_sign": "Stats:WARN-CLEAR DQ:WARN-CLEAR Pred:WARN-CLEAR Domain:WARN-CLEAR Math:WARN-CLEAR",
       "results_summary": {
         "gate_d_pass": false,
@@ -13,7 +13,7 @@
         "lgbm_cal_brier": 0.222185,
         "v5_test_brier": 0.209259,
         "brier_improvement": -0.012926,
-        "note": "Gate D halt \u2014 script exited before counter increment; manually recorded. Script fixed for future runs."
+        "note": "Gate D halt — script exited before counter increment; manually recorded. Script fixed for future runs."
       }
     },
     {
@@ -28,7 +28,48 @@
         "mlp_cal_brier": 0.217956,
         "v5_test_brier": 0.209259,
         "brier_improvement": -0.008697,
-        "note": "Gate D halt \u2014 MLP AUC below v5 floor; null result"
+        "note": "Gate D halt — MLP AUC below v5 floor; null result"
+      }
+    },
+    {
+      "timestamp": "2026-04-28T12:40:00Z",
+      "touch": "COUNTER_RESET",
+      "description": "Counter reset to 0 for Phase 4 cold-start prior evaluation. Previous two touches were Phase 3 null results (unfeaturized LightGBM + MLP). New model: 44 features (42 base + home_bpm_effective + away_bpm_effective), run 20260428T123326-7b5b31c1. This is a new training run under Plans/nba-cold-start-prior.md, not a re-test of the Phase 3 model.",
+      "council_co_sign": "DQ:WARN-resolved DQ:CLEAR/7 Stats:CLEAR/8 Pred:CLEAR/8 Domain:CLEAR/8 Math:CLEAR/9 (Gate 2 implementation review — avg 8.0/10)"
+    },
+    {
+      "timestamp": "2026-04-28T12:38:24.353209Z",
+      "touch": 1,
+      "description": "step8 LightGBM test-fold evaluation",
+      "council_co_sign": "Stats:WARN-CLEAR DQ:WARN-CLEAR Pred:WARN-CLEAR Domain:WARN-CLEAR Math:WARN-CLEAR",
+      "results_summary": {
+        "gate_d_pass": false,
+        "gate_d_lgbm_auc": 0.7241,
+        "gate_d_v5_auc": 0.7283,
+        "lgbm_cal_brier": 0.21192,
+        "v5_test_brier": 0.209259,
+        "brier_improvement": -0.002661,
+        "note": "Gate D halt — AUC below v5 floor"
+      }
+    },
+    {
+      "timestamp": "2026-04-28T13:30:00Z",
+      "touch": 2,
+      "description": "cold-start ship-rule evaluation (evaluate_cold_start.py) — Ship Rule 1 FAIL (games 1-20 Brier +0.0048 worse than v5; CI [-0.0102, +0.0198] spans zero); Ship Rule 2 PASS (games 21+ delta +0.0019 ≤ +0.002)",
+      "council_co_sign": "DQ:CLEAR/8 Stats:CLEAR/8 Pred:CLEAR/7 Domain:CLEAR/7 Math:CLEAR/8 (Gate 4 results review — avg 7.6/10 — CLEAR)",
+      "results_summary": {
+        "ship_rule_1_pass": false,
+        "ship_rule_2_pass": true,
+        "ship_rule_3_pass": true,
+        "cold_start_lgbm_brier": 0.210309,
+        "cold_start_v5_brier": 0.205528,
+        "cold_start_delta": 0.004781,
+        "cold_start_ci_lo": -0.010219,
+        "cold_start_ci_hi": 0.019839,
+        "late_season_delta": 0.001893,
+        "n_cold_start": 309,
+        "n_late_season": 853,
+        "note": "Null result — cold-start prior did not improve model on games 1-20 vs v5 incumbent"
       }
     }
   ]

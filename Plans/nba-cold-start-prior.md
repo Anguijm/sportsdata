@@ -266,3 +266,57 @@ Calibrated on draft classes 2010–2021 (≥500 MP filter). Validated on draft c
 Validation consistent with calibration set — drafted rookies slightly worse in recent classes (−3.1 vs −2.4 at picks 15–30), consistent with increased international competition for spots. Undrafted bin stable (−0.30 vs −0.50). High-pick IQRs are wide: a lottery pick's BPM swings from −4 to +0, confirming the variance argument for using median over mean.
 
 **These are the committed plan values. K_base calibration next.**
+
+---
+
+## Addendum — K_base calibration results (2026-04-28)
+
+### Off-by-one fix
+
+`calibrate_k.py` had an incorrect year-mapping assumption (`N-regular` was treated as the season *ending* in year N, but the DB convention is `N-regular` = season *starting* in year N). Fixed before running calibration: `prior_year = season_year` (bbref year N = the N-1/N prior season) and `current_proxy_year = season_year + 1`. Validation reduced to `["2024-regular"]` since bbref year 2026 (2025-26 season) is not yet published.
+
+### Grid search results
+
+Calibration: seasons 2019–2023, cold-start window games 1–25.
+
+| K_base | Cal Brier  | Notes                        |
+|--------|-----------|------------------------------|
+| 3      | 0.226788  |                              |
+| 5      | 0.225803  | within noise of K=10         |
+| **10** | **0.225783** | **chosen — marginal edge** |
+| 15     | 0.226590  |                              |
+| 20     | 0.227486  |                              |
+| 30     | 0.229069  |                              |
+
+- Baseline (no prior, K≈0): 0.234256
+- **Prior improvement: +0.0085 Brier on cold-start games 1–25** (≈1–2 SE above zero; directional signal confirmed by monotone improvement across all K>0)
+- Validation Brier at K=10: 0.212016 (val better than cal — consistent with one-season noise, not overfit)
+- coaching_factor fixed at 0.70 during calibration (not re-optimized; pre-declared value held)
+
+**K flat-region note (council-required):** K=5 and K=10 differ by 0.000020 Brier — well below any reasonable standard error (~0.005–0.010 for this data size). K=10 is chosen for marginal empirical edge; K=5 is within noise; any value in [5, 15] produces equivalent results under current evidence. **Do not treat K=10 as a precisely calibrated value** — it is a reasonable choice in a flat region.
+
+### Council results review — 2026-04-28 (4 CLEAR, 1 WARN)
+
+**DQ — 8/10 — CLEAR**: Calibration dataset well-documented. Undrafted-bin contamination (N=2240 includes pre-2010 veterans) disclosed. Downstream impact argued negligible if veteran undrafted players have low effective weight in team priors. Monitoring obligation named: future calibration pass should filter undrafted bin to players whose first NBA season falls within the calibration window.
+
+**Stats — 7/10 — WARN (resolved by documentation)**: K=5 and K=10 are statistically indistinguishable (0.000020 Brier difference << SE ≈ 0.005–0.010). K grid is flat across [5, 15]. Main finding is "any prior beats no prior" not "K=10 is the precise optimum." Val/cal delta −0.0138 noted — val better than cal, consistent with one holdout season variance. Documentation fix above satisfies this WARN.
+
+**Pred — 8/10 — CLEAR**: Main finding sound. +0.008 Brier is directional improvement in target window. coaching_factor fixed at 0.70 (confirmed, not re-optimized). Prior-calibration as probability feature not assessed here — acceptable at K-calibration step; diagnostic (top/bottom 20% flip rate) should run at test-fold evaluation.
+
+**Domain — 8/10 — CLEAR**: Rookie bin values domain-plausible. Recent-cohort drift (2022–2024 classes ~0.7 BPM more negative than historical medians in picks 15–30) is real. Watch item: recalibrate bins if 2025 draft class continues the trend.
+
+**Math — 8/10 — CLEAR**: +0.008473 Brier improvement ≈ 1–2 SE for N≈700 cold-start games under independence assumption. Appropriate evidence level for calibration step; ship gate uses block-bootstrap on holdout. K flat-region confirmed mathematically. No formula errors.
+
+**Overall: CLEAR. Proceed to implementation.**
+
+### Committed plan values
+
+| Parameter | Value | Notes |
+|---|---|---|
+| K_base | 10 | flat region [5, 15]; K=5 equivalent |
+| coaching_factor | 0.70 | pre-declared; not re-optimized at calibration |
+| Picks 1–5 BPM prior | −2.25 | |
+| Picks 6–14 BPM prior | −2.05 | |
+| Picks 15–30 BPM prior | −2.40 | |
+| Second round BPM prior | −2.60 | |
+| Undrafted BPM prior | −0.50 | contamination disclosed; veteran survivor bias |

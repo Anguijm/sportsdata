@@ -50,7 +50,7 @@ MAX_COLD_GAMES = 25   # the cold-start window
 
 # Calibration seasons (prior-season BPM: year-1; game data: year)
 CAL_SEASONS = ["2019-regular", "2020-regular", "2021-regular", "2022-regular", "2023-regular"]
-VAL_SEASONS  = ["2024-regular", "2025-regular"]
+VAL_SEASONS  = ["2024-regular"]  # 2025-regular needs bbref year 2026 (not yet available)
 
 
 def sigmoid(x: float) -> float:
@@ -106,22 +106,25 @@ def compute_team_priors(
 ) -> dict[str, float]:
     """
     Compute prior_strength for each team at the start of season_label.
-    Uses prior-season BPM (season_label year - 1).
+    Uses prior-season BPM (bbref year = season_label year, which is the N-1/N season).
 
     Returns {team_id: prior_strength} where prior_strength is in BPM units.
     """
-    # bbref year = the ending year of the season (e.g. "2023-regular" → year 2023)
+    # "N-regular" = season starting in year N (e.g. "2023-regular" = 2023-24 season).
+    # bbref year = ending year of the season (e.g. 2023-24 = bbref year 2024).
+    # Prior season for "N-regular" = N-1/N season = bbref year N.
     season_year = int(season_label.split("-")[0])
-    prior_year = season_year - 1  # prior season's BPM
+    prior_year = season_year          # bbref year N = the N-1/N season (prior to this one)
+    current_proxy_year = season_year + 1  # bbref year N+1 = the N/N+1 season (roster proxy)
 
     prior_bpm = load_bpm(prior_year)
-    current_bpm = load_bpm(season_year)  # to know who played in the current season (roster proxy)
+    current_bpm = load_bpm(current_proxy_year)  # to know who played in the current season (roster proxy)
 
     if not prior_bpm:
         print(f"  WARNING: no BPM data for prior year {prior_year}")
         return {}
     if not current_bpm:
-        print(f"  WARNING: no BPM data for current year {season_year} (roster proxy)")
+        print(f"  WARNING: no BPM data for current year {current_proxy_year} (roster proxy)")
         return {}
 
     # For each team in the current season, find players on that team.
@@ -301,7 +304,9 @@ def evaluate_k(
 
 def check_prerequisites() -> bool:
     ok = True
-    for year in range(2018, 2025):
+    # Cal seasons 2019-2023 need prior bbref years 2019-2023 and proxy years 2020-2024.
+    # Val season 2024 needs prior bbref year 2024 and proxy year 2025.
+    for year in range(2019, 2026):
         if not (BPM_DIR / f"{year}.json").exists():
             print(f"  MISSING: data/bbref-player-bpm/{year}.json")
             ok = False

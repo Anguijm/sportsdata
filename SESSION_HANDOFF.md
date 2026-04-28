@@ -4,42 +4,41 @@
 
 ---
 
-## Start here next session — 2026-04-28 (Sprint 10.20 — Phase 3 null result closed)
+## Start here next session — 2026-04-28 (Sprint 10.20 — Phase 4 BPM cold-start prior closed)
 
-**Current branch:** `claude/phase3-step6-calibration` (2 commits pushed `785a7d1`→`ee05ab4`; open PR to merge).
-**Production state (Fly):** v5 remains incumbent. Phase 3 null result — nothing ships.
+**Current branch:** `claude/nba-cold-start-prior-plan` (pushed `561cce0`; no PR yet — branch includes all Phase 3 + Phase 4 work).
+**Production state (Fly):** v5 remains incumbent. Both Phase 3 and Phase 4 are null results.
+
+**Phase 4 BPM cold-start prior — CLOSED (null result, 2026-04-28):**
+- Hypothesis: MP-weighted prior-year BPM (K=10) reduces Brier on games 1-20 vs v5
+- Result: cold-start Δ = +0.0048 (worse), CI [-0.010, +0.020] spans zero → Ship Rule 1 FAIL
+- Late-season (games 21+): Δ = +0.0019 ≤ +0.002 → Ship Rule 2 PASS
+- Gate 4 council CLEAR (7.6/10). Null result accepted. v5 holds.
+- Root causes: 2025-26 roster churn, traded-player exclusion (~13-14%), coaching_factor not applied in v1
 
 **Phase 3 — CLOSED (null result, 2026-04-28):**
-- Step 7 pre-flight: CLEAR (addendum v15, `step7_preflight.py`, Gate 1/2 pass)
-- Step 8 LightGBM: Gate D FAIL — AUC 0.6954 < v5 0.7283; Brier −0.013 degradation
-- Step 8b MLP: Gate D FAIL — AUC 0.7026 < v5 0.7283; Brier −0.009 degradation
-- Test fold burned (counter = 2/2). Neither family ships. v5 remains incumbent.
-- Root causes: EWMA cold-start fragility, val/test composition asymmetry, TOV% zeroing bug (4/42 features silently zeroed), v5 season-aggregate structural advantage
-
-**Phase 3 steps 5 — MERGED:** PR #54 squash-merged to main at `1bc750b`.
-**Phase 3 steps 6–8b — pending merge** via `claude/phase3-step6-calibration`.
+- LightGBM: AUC 0.6954 < v5 0.7283; MLP: AUC 0.7026 < v5 0.7283
+- With BPM features (Phase 4): AUC improved to 0.7241, still below v5 0.7283
+- Root causes: EWMA cold-start fragility, TOV% zeroing bug, val/test composition asymmetry
 
 **Next actions (in order):**
-1. **Open PR and merge** `claude/phase3-step6-calibration` → main (all step 6–8b artifacts).
-2. **Phase 3 post-mortem (before any future attempt):**
-   - Fix TOV% bug: divide pct-form values by 100 before logit_zscore transform
-   - Add cold-start fallback for first N games of season
-   - Hybrid feature design: season-aggregate base + EWMA adjustment
-   - Regular-season-only val fold (remove postseason inflation)
-   - New plan addendum + council review before any new test-fold touch
+1. **Open PR** for `claude/nba-cold-start-prior-plan` → main (all Phase 3 + Phase 4 null-result artifacts).
+2. **Session LOG update** — add Sprint 10.20 entry to SESSION_LOG.md.
+3. **Phase 5 planning** — fresh plan + council Gate 1 before any new experiment. v2 BPM prior prerequisites in `Plans/nba-cold-start-prior.md §v2 prior prerequisites` or address TOV% bug and redesign features per Phase 3 post-mortem.
 
-**Key artifacts on branch:**
-- `ml/nba/features.py`: `build_test_fold_tensor()` (NOT IN bypass)
-- `ml/nba/step7_preflight.py`, `ml/nba/evaluate_test_fold.py`, `ml/nba/evaluate_test_fold_mlp.py`
-- `ml/nba/train_mlp_winner.py`, `ml/nba/calibrate_mlp.py`
-- `ml/nba/configs/calibration-params.json`: LightGBM Platt (A=1.3499, B=0.0156)
-- `ml/nba/configs/mlp-calibration-params.json`: MLP Platt (A=1.2941, B=0.0373)
-- `ml/nba/test-fold-touch-counter.json`: counter=2
+**Key artifacts on branch (beyond Phase 3):**
+- `ml/nba/bpm_prior.py`: prior index builder (bbref BPM → team priors)
+- `ml/nba/evaluate_cold_start.py`: cold-start ship-rule evaluation script
+- `ml/nba/calibrate_k.py`: K=10 calibration (season label bug fixed)
+- `ml/nba/features.py`: bpm_effective (44 features, was 42)
+- `ml/nba/configs/calibration-params.json`: Phase 4 Platt (A=1.308, B=0.038)
+- `ml/nba/test-fold-touch-counter.json`: counter=2, Gate 4 council signed
+- `Plans/nba-cold-start-prior.md`: complete with Gate 4 results addendum
 
 **Pre-session context to read:**
 1. This file.
-2. `Plans/nba-learned-model.md` addendum v16 + v17 (null result + post-mortem scope).
-3. `learnings.md` last 3 sections.
+2. `Plans/nba-cold-start-prior.md` (full plan + Gate 4 null result addendum).
+3. `learnings.md` last 2 sections.
 
 ---
 

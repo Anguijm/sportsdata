@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-28 (post Sprint 10.20 — Phase 4 BPM cold-start prior experiment closed as null result; branch claude/phase3-step6-calibration; v5 remains incumbent).
+Last regenerated: 2026-04-29 (post Sprint 10.21 — Phase 5 TOV%/val-fold bug-fix experiment closed as null result; Phase 6 planning next; branch claude/nba-cold-start-prior-plan; v5 remains incumbent).
 
 ## Where to start
 
@@ -15,7 +15,7 @@ Fresh session? Read in this order:
 1. `SESSION_HANDOFF.md` — tight "Start here next session" block at the top.
 2. `CLAUDE.md` — durable operating rules.
 3. This file — priority queue + open-debts snapshot.
-4. Any `Plans/*.md` referenced by the active priorities (Phase 3: addendum v11 in `Plans/nba-learned-model.md`).
+4. `Plans/nba-phase6-season-aggregate.md` — Phase 6 plan (draft + council Gate 1 needed).
 
 If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, regenerate it from `git log origin/main..HEAD` + the latest sprint entry in `SESSION_LOG.md`.
 
@@ -23,13 +23,14 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Merge `claude/phase3-step6-calibration` PR** — contains Phase 3 (steps 6-8b) + Phase 4 (BPM cold-start prior). Both experiments are null results; all code, scripts, and documentation committed. Branch is ready to merge.
-- **Phase 4 cold-start prior — CLOSED (null result, 2026-04-28).** BPM prior (K=10) did not improve cold-start Brier on games 1-20 vs v5 (Δ = +0.0048, CI [-0.010, +0.020], Ship Rule 1 FAIL). Gate 4 council CLEAR (7.6/10). v5 remains incumbent. v2 prerequisites pre-declared in `Plans/nba-cold-start-prior.md` (coaching_factor, traded-player imputation, K sensitivity, multi-season test).
+- **Phase 5 — CLOSED (null result, 2026-04-29).** TOV% fraction fix + regular-season val fold filter. Gate D FAIL: AUC 0.7221 < v5 0.7283. Gate 2 council CLEAR (7.6/10). v5 remains incumbent. Code + docs on `claude/nba-cold-start-prior-plan`.
+- **Open PR** for `claude/nba-cold-start-prior-plan` → main (all Phase 3 + Phase 4 + Phase 5 null results; everything committed).
+- **Phase 6 planning** — draft `Plans/nba-phase6-season-aggregate.md` + council Gate 1 before any implementation. Feature target: `home_season_net_rating` + `away_season_net_rating` alongside existing 44 EWMA features.
 
 ## Next (queued, scoped)
 
-- **Post-mortem + SESSION_LOG update**: add Sprint 10.20 entry to SESSION_LOG.md covering Phase 4 null result.
-- **Phase 5 NBA model planning** — next experiment requires fresh plan + council Gate 1 before code. v2 BPM prior prerequisites listed in `Plans/nba-cold-start-prior.md §v2 prior prerequisites`. Alternatively, address the TOV% zeroing bug (BACKLOG debt) and re-evaluate EWMA baseline without that signal corruption.
+- **Implement Phase 6** (after Gate 1 CLEAR): add two season-aggregate features to `features.py`, retrain, recalibrate, evaluate.
+- **SESSION_LOG update**: add Sprint 10.21 entry covering Phase 5 null result.
 
 ## Someday (daydreams, architectural ideas)
 

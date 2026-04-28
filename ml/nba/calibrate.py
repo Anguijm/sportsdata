@@ -1,33 +1,31 @@
 #!/usr/bin/env python3
 """
-Phase 3 step 6 — Platt calibration for the 20-seed LightGBM ensemble.
+Phase 5 — Platt calibration for the 20-seed LightGBM ensemble.
 
-Loads the council-override run's 20-seed models
-(ml/nba/results/20260427T104117-e39d20c0-override/models/),
-fits Platt scaling on the val fold (last 528 games of 2640 training games),
-and saves ml/nba/configs/calibration-params.json.
+Loads the Phase 5 training run's 20-seed models, fits Platt scaling on the
+regular-season portion of the val fold, and saves calibration-params.json.
 
-Regeneration note: if model pickles are missing, run:
-  /usr/bin/python3 ml/nba/cv_runner.py --winner-override ewma-h21
-with pinned config ml/nba/configs/20260427T104117-e39d20c0-override.json.
-Models are deterministic (fixed seeds, subsample, colsample).
+Phase 5 fixes applied here (Plans/nba-phase5-bug-fixes.md):
+  - TOV% features are now fractions (0.05-0.25), not percentages. This is
+    handled by features.py Change 1; the norm_params fitted here will reflect
+    the corrected values automatically.
+  - Platt fitting uses regular-season val games only (not postseason), so the
+    calibration domain matches the test fold domain. See _regular_season_mask.
 
-Fix-pack compliance (addendum v14, Gate 1):
+Regeneration: if model pickles are missing, run:
+  python3 ml/nba/cv_runner.py --winner-override ewma-h21
+Models are deterministic (fixed seeds, subsample, colsample_bytree).
+
+Fix-pack compliance (inherited from addendum v14):
   #1  Platt in logit space, LogisticRegression(C=1e9)
   #2  LightGBM: predict-and-average (weight-averaging inapplicable to trees)
   #3  Platt applied to 20-seed mean, not per-seed
-  #5  Regeneration recipe above
-  #6  Runtime assertions: val size, season breakdown, post-cal unconditional mean
+  #6  Runtime assertions: val size, regular-season count, unconditional mean
   #7  Hard stop: calibrated Brier must be <= raw Brier
   #8  Epsilon-clip p_ensemble to [1e-7, 1-1e-7] before logit
-  #9  ONNX deferred; native pickles + infer.py for twice-daily batch cadence
   #10 Data tensor SHA-256 logged to output JSON
 
-MLP BatchNorm→LayerNorm forward-declared (fix-pack #4): if LightGBM fails
-ship rules at step 8 and MLP is needed, train_mlp.py must be updated
-BatchNorm→LayerNorm before any ONNX export. Not a step 6 blocker.
-
-Invoke as: /usr/bin/python3 ml/nba/calibrate.py
+Invoke as: python3 ml/nba/calibrate.py
 """
 
 import hashlib
@@ -48,7 +46,10 @@ from ml.nba.train_lightgbm import score_lgbm
 
 DB_PATH = REPO_ROOT / "data" / "sqlite" / "sportsdata.db"
 CONFIGS_DIR = REPO_ROOT / "ml" / "nba" / "configs"
-OVERRIDE_RUN_ID = "20260428T123326-7b5b31c1"  # nba-cold-start-prior v1 (44 features)
+# Update OVERRIDE_RUN_ID after running cv_runner.py --winner-override ewma-h21.
+# The run ID is printed at the start of the cv_runner output and appears as the
+# directory name under ml/nba/results/.
+OVERRIDE_RUN_ID = "20260428T200859-c93c6bad"  # Phase 5 run (TOV% fix + reg-season val)
 MODELS_DIR = REPO_ROOT / "ml" / "nba" / "results" / OVERRIDE_RUN_ID / "models"
 OUTPUT_PATH = CONFIGS_DIR / "calibration-params.json"
 
@@ -56,7 +57,7 @@ PINNED_FEATURE_CONFIG = {
     "feature_form": "ewma",
     "window_size": 10,
     "ewma_halflife": 21,
-    "training_as_of": "2026-04-28T00:00:00Z",
+    "training_as_of": "2026-04-29T00:00:00Z",
 }
 VAL_CUTOFF_IDX = 2112  # int(2640 * 0.8) — matches _build_ensemble in cv_runner.py
 N_SEEDS = 20
@@ -92,6 +93,37 @@ def _val_season_breakdown(val_game_ids: list[str], db_path: str) -> dict[str, in
     return breakdown
 
 
+def _regular_season_mask(val_game_ids: list[str], db_path: str) -> "np.ndarray":
+    """Return a boolean array: True where the game_id belongs to a regular-season game.
+
+    The val fold's final ~84 games are 2024-25 postseason (the training window ends
+    April 2026, games are sorted by date, so the last 20% includes the postseason tail).
+    Postseason EWMA features are artificially warm — teams have 60-70 games of history
+    by the playoffs, so rolling stats are stable and predictions look good. The test fold
+    is regular-season only, so postseason games inflate val Brier in a way that doesn't
+    reflect actual test-time difficulty.
+
+    We use this mask to fit Platt calibration AND compute val Brier on regular-season
+    games only, keeping the fitting domain consistent with the evaluation domain.
+    Postseason games remain in the training split (they help the model learn) — we
+    just exclude them from metrics.
+
+    Phase 5 fix — Plans/nba-phase5-bug-fixes.md Change 2.
+    """
+    conn = sqlite3.connect(db_path)
+    ph = ",".join("?" * len(val_game_ids))
+    rows = conn.execute(
+        f"SELECT game_id, season FROM nba_game_box_stats"
+        f" WHERE game_id IN ({ph}) GROUP BY game_id",
+        val_game_ids,
+    ).fetchall()
+    conn.close()
+    season_by_id = {r[0]: r[1] for r in rows}
+    # Season labels are like "2024-regular" or "2024-postseason".
+    # Any game_id not found in the DB is excluded (treated as non-regular).
+    return np.array([season_by_id.get(gid, "").endswith("-regular") for gid in val_game_ids])
+
+
 def main() -> None:
     print("=" * 60)
     print("Phase 3 step 6 — Platt calibration")
@@ -113,10 +145,14 @@ def main() -> None:
     data_hash = hashlib.sha256(X.tobytes()).hexdigest()
     print(f"  Data tensor SHA-256: {data_hash[:16]}...")
 
-    # 2. Val split — same formula as _build_ensemble in cv_runner.py
+    # 2. Val split — same formula as _build_ensemble in cv_runner.py.
+    # Positional alignment check: game_ids must match X/y row-for-row.
+    assert len(game_ids) == len(X) == len(y), (
+        f"Alignment broken: game_ids={len(game_ids)}, X={len(X)}, y={len(y)}"
+    )
     X_val = X[VAL_CUTOFF_IDX:]
     y_val = y[VAL_CUTOFF_IDX:]
-    val_game_ids = game_ids[VAL_CUTOFF_IDX:]
+    val_game_ids = list(game_ids[VAL_CUTOFF_IDX:])
     n_val = len(y_val)
 
     # Fix-pack #6: val size assertion — determines Platt vs isotonic
@@ -129,40 +165,58 @@ def main() -> None:
     breakdown = _val_season_breakdown(val_game_ids, str(DB_PATH))
     print(f"  Season breakdown: {breakdown}")
 
+    # Regular-season mask (Phase 5 fix). Platt fitting and Brier computation both use
+    # regular-season val games only, so the fitting domain matches the evaluation domain.
+    # See _regular_season_mask docstring for full rationale.
+    reg_mask = _regular_season_mask(val_game_ids, str(DB_PATH))
+    n_reg = int(reg_mask.sum())
+    assert n_reg > 50, f"Too few regular-season val games ({n_reg}) — check training data"
+    print(f"  Regular-season val games (used for Platt + Brier): {n_reg} of {n_val}")
+
     # 3. Load 20-seed models
     print(f"\nLoading {N_SEEDS}-seed LightGBM ensemble from {OVERRIDE_RUN_ID}/models/...")
     models = _load_models()
     print(f"  Loaded {len(models)} models")
 
-    # 4. Predict-and-average (fix-pack #2/#3): average first, calibrate the mean
+    # 4. Predict-and-average (fix-pack #2/#3): average first, calibrate the mean.
+    # We score on the full val fold first (for raw Brier reference), then apply the
+    # regular-season mask before Platt fitting so the calibrator learns from the
+    # same distribution it will be evaluated on at test time.
     seed_preds = np.stack([score_lgbm(m, X_val) for m in models], axis=0)  # (20, n_val)
     p_ensemble = seed_preds.mean(axis=0)                                    # (n_val,)
-    brier_raw = float(np.mean((p_ensemble - y_val) ** 2))
-    raw_mean = float(p_ensemble.mean())
-    empirical_rate = float(y_val.mean())
 
-    print(f"\nRaw ensemble val Brier:           {brier_raw:.6f}")
-    print(f"  Unconditional predicted mean:   {raw_mean:.4f}")
-    print(f"  Empirical val home-win rate:    {empirical_rate:.4f}")
+    # Raw Brier reported on regular-season val only (consistent with Phase 5 plan)
+    brier_raw = float(np.mean((p_ensemble[reg_mask] - y_val[reg_mask]) ** 2))
+    raw_mean = float(p_ensemble[reg_mask].mean())
+    empirical_rate = float(y_val[reg_mask].mean())
 
-    # 5. Platt scaling in logit space (fix-pack #1)
-    p_clipped = np.clip(p_ensemble, 1e-7, 1 - 1e-7)  # fix-pack #8
+    print(f"\nRaw ensemble val Brier (reg-season only): {brier_raw:.6f}")
+    print(f"  Unconditional predicted mean:            {raw_mean:.4f}")
+    print(f"  Empirical val home-win rate:             {empirical_rate:.4f}")
+
+    # 5. Platt scaling in logit space (fix-pack #1), fit on regular-season val only.
+    # Using regular-season rows keeps the fitting domain consistent with the Brier
+    # metric and the test fold — postseason games have warmer EWMA features and
+    # would bias the calibration toward that easier-to-predict regime.
+    p_reg = p_ensemble[reg_mask]
+    y_reg = y_val[reg_mask]
+    p_clipped = np.clip(p_reg, 1e-7, 1 - 1e-7)  # fix-pack #8: avoid log(0)
     logit_p = np.log(p_clipped / (1 - p_clipped))
 
     platt = LogisticRegression(C=1e9, solver="lbfgs", max_iter=1000)
-    platt.fit(logit_p.reshape(-1, 1), y_val)
+    platt.fit(logit_p.reshape(-1, 1), y_reg)
     A = float(platt.coef_[0, 0])
     B = float(platt.intercept_[0])
 
     p_cal_logit = A * logit_p + B
     p_cal = 1.0 / (1.0 + np.exp(-p_cal_logit))
-    brier_cal = float(np.mean((p_cal - y_val) ** 2))
+    brier_cal = float(np.mean((p_cal - y_reg) ** 2))
     cal_mean = float(p_cal.mean())
 
     print(f"\nPlatt params: A={A:.6f}, B={B:.6f}")
-    print(f"Calibrated val Brier:             {brier_cal:.6f}")
-    print(f"  Delta vs raw:                   {brier_cal - brier_raw:+.6f}")
-    print(f"  Post-cal unconditional mean:    {cal_mean:.4f}")
+    print(f"Calibrated val Brier (reg-season only):   {brier_cal:.6f}")
+    print(f"  Delta vs raw:                           {brier_cal - brier_raw:+.6f}")
+    print(f"  Post-cal unconditional mean:            {cal_mean:.4f}")
 
     # Fix-pack #7: hard stop if calibration hurts Brier on the fold it was fit on
     if brier_cal > brier_raw:
@@ -193,11 +247,15 @@ def main() -> None:
 
     output = {
         "method": "platt",
-        "plan_ref": "Plans/nba-learned-model.md addendum v14",
+        "plan_ref": "Plans/nba-phase5-bug-fixes.md",
         "onnx_status": (
             "deferred — native LightGBM pickles + infer.py for twice-daily batch cadence"
             " (fix-pack #9, addendum v14)"
         ),
+        "phase5_fixes": {
+            "tov_pct_scaling": "fixed — stored as fraction (not percent); features.py Change 1",
+            "val_fold_domain": "regular-season only for Platt fit and Brier; Change 2",
+        },
         "feature_config": PINNED_FEATURE_CONFIG,
         "feature_names": config.feature_names,
         "norm_params": norm_params_serializable,
@@ -206,6 +264,7 @@ def main() -> None:
             "B": B,
             "formulation": "p_cal = sigmoid(A * logit(p_ensemble) + B)",
             "sklearn_C": 1e9,
+            "fit_domain": "regular-season val games only",
         },
         "ensemble": {
             "n_seeds": N_SEEDS,
@@ -214,7 +273,8 @@ def main() -> None:
             "val_cutoff_idx": VAL_CUTOFF_IDX,
         },
         "val_diagnostics": {
-            "n_val": n_val,
+            "n_val_total": n_val,
+            "n_val_regular_season": n_reg,
             "brier_raw": brier_raw,
             "brier_calibrated": brier_cal,
             "brier_delta": brier_cal - brier_raw,
@@ -223,6 +283,7 @@ def main() -> None:
             "empirical_home_win_rate": empirical_rate,
             "mean_divergence_post_cal": mean_divergence,
             "season_breakdown": breakdown,
+            "note": "All Brier/Platt metrics computed on regular-season val games only (Phase 5 fix)",
         },
         "data_hash_sha256": data_hash,
     }

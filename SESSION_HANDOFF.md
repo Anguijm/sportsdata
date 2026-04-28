@@ -4,41 +4,40 @@
 
 ---
 
-## Start here next session — 2026-04-28 (Sprint 10.20 — Phase 4 BPM cold-start prior closed)
+## Start here next session — 2026-04-29 (Sprint 10.21 — Phase 5 bug-fix experiment closed)
 
-**Current branch:** `claude/nba-cold-start-prior-plan` (pushed `561cce0`; no PR yet — branch includes all Phase 3 + Phase 4 work).
-**Production state (Fly):** v5 remains incumbent. Both Phase 3 and Phase 4 are null results.
+**Current branch:** `claude/nba-cold-start-prior-plan` (local only; needs push + PR). All Phase 3 + Phase 4 + Phase 5 code and docs are here.
+**Production state (Fly):** v5 remains incumbent. Phases 3, 4, and 5 are all null results.
 
-**Phase 4 BPM cold-start prior — CLOSED (null result, 2026-04-28):**
-- Hypothesis: MP-weighted prior-year BPM (K=10) reduces Brier on games 1-20 vs v5
-- Result: cold-start Δ = +0.0048 (worse), CI [-0.010, +0.020] spans zero → Ship Rule 1 FAIL
-- Late-season (games 21+): Δ = +0.0019 ≤ +0.002 → Ship Rule 2 PASS
-- Gate 4 council CLEAR (7.6/10). Null result accepted. v5 holds.
-- Root causes: 2025-26 roster churn, traded-player exclusion (~13-14%), coaching_factor not applied in v1
+**Phase 5 bug fixes — CLOSED (null result, 2026-04-29):**
+- Hypothesis: TOV% fraction fix + regular-season-only val fold removes two bugs inflating Phase 3–4 gap
+- Result: Gate D FAIL — AUC 0.7221 < v5 0.7283 (gap 0.0062). Brier +0.002714 worse.
+- Gate 2 council CLEAR (7.6/10). Null result accepted. v5 holds.
+- Diagnosis: the AUC gap is structural — EWMA features don't encode season-aggregate point differential, which is v5's core signal
 
-**Phase 3 — CLOSED (null result, 2026-04-28):**
-- LightGBM: AUC 0.6954 < v5 0.7283; MLP: AUC 0.7026 < v5 0.7283
-- With BPM features (Phase 4): AUC improved to 0.7241, still below v5 0.7283
-- Root causes: EWMA cold-start fragility, TOV% zeroing bug, val/test composition asymmetry
+**Phase 6 — PLANNED (ready to draft):**
+- Approach: add `home_season_net_rating` + `away_season_net_rating` (cumulative net pt diff / games) as explicit features alongside existing 44 EWMA features
+- This gives the model direct access to v5's core signal; AUC gap should close
+- Status: user approved approach; plan NOT yet written; Gate 1 council needed before implementation
 
 **Next actions (in order):**
-1. **Open PR** for `claude/nba-cold-start-prior-plan` → main (all Phase 3 + Phase 4 null-result artifacts).
-2. **Session LOG update** — add Sprint 10.20 entry to SESSION_LOG.md.
-3. **Phase 5 planning** — fresh plan + council Gate 1 before any new experiment. v2 BPM prior prerequisites in `Plans/nba-cold-start-prior.md §v2 prior prerequisites` or address TOV% bug and redesign features per Phase 3 post-mortem.
+1. **Push + open PR** for `claude/nba-cold-start-prior-plan` → main.
+2. **Draft `Plans/nba-phase6-season-aggregate.md`** with pre-declared ship rules (Gate D + Rule 1 Δ≥0.001 + CI + Rule 2 + Rule 3).
+3. **Council Gate 1** on Phase 6 plan before any code.
+4. **Implement**: add two features to `features.py`, retrain ewma-h21, recalibrate, evaluate.
 
-**Key artifacts on branch (beyond Phase 3):**
-- `ml/nba/bpm_prior.py`: prior index builder (bbref BPM → team priors)
-- `ml/nba/evaluate_cold_start.py`: cold-start ship-rule evaluation script
-- `ml/nba/calibrate_k.py`: K=10 calibration (season label bug fixed)
-- `ml/nba/features.py`: bpm_effective (44 features, was 42)
-- `ml/nba/configs/calibration-params.json`: Phase 4 Platt (A=1.308, B=0.038)
-- `ml/nba/test-fold-touch-counter.json`: counter=2, Gate 4 council signed
-- `Plans/nba-cold-start-prior.md`: complete with Gate 4 results addendum
+**Key artifacts on this branch (Phase 5):**
+- `ml/nba/features.py`: TOV% as fraction (÷100 removed); extensive comment block explaining the logit_zscore clip issue
+- `ml/nba/cv_runner.py`: `_regular_season_mask()` + alignment assertion + reg-season-only val Brier
+- `ml/nba/calibrate.py`: Phase 5 — Platt fit on reg-season val only (A=1.266233, B=0.065834)
+- `ml/nba/configs/calibration-params.json`: Phase 5 Platt params; val Brier 0.196248 (reg-season)
+- `ml/nba/test-fold-touch-counter.json`: counter=1, Gate 2 council signed (7.6/10 CLEAR)
+- `Plans/nba-phase5-bug-fixes.md`: complete with Gate 1 + Gate 2 addenda
 
 **Pre-session context to read:**
 1. This file.
-2. `Plans/nba-cold-start-prior.md` (full plan + Gate 4 null result addendum).
-3. `learnings.md` last 2 sections.
+2. `Plans/nba-phase5-bug-fixes.md` (Gate 1 + Gate 2 addenda — understand what Phase 5 tried and why it failed).
+3. `learnings.md` last section (phase5-tov-fix-plus-reg-season-val).
 
 ---
 

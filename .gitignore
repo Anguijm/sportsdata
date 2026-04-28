@@ -14,3 +14,5 @@ data/bbref-draft/*.json
 data/.thirdsource-cache/
 data/snapshots/*.db
 __pycache__/
+ml/nba/results/*/models/
+data/sportsdata.db

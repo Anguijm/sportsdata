@@ -273,11 +273,21 @@ def _per_game_derived(r: dict) -> dict[str, float]:
     efg_off = (r["fgm"] + 0.5 * r["fg3m"]) / fga
     efg_def = (r["opp_fgm"] + 0.5 * r["opp_fg3m"]) / opp_fga
 
-    # TOV% = 100 * TOV / (FGA + 0.44*FTA + TOV)  [Oliver formula]
+    # TOV% = TOV / (FGA + 0.44*FTA + TOV)  [Oliver formula, stored as a fraction 0.0–1.0]
+    #
+    # IMPORTANT: do NOT multiply by 100 here. tov_pct_off/def are in _RATE_FEATURES,
+    # which routes them through logit_zscore normalization. That transform clips values
+    # to [eps, 1-eps] before taking logit — eps is roughly 0.008 for ewma-h21.
+    # A percentage value like 12.5 would clip to 1-eps every single game, producing
+    # the same logit for every observation. Std collapses to ~0, z-score becomes 0
+    # for all games, and the feature carries zero information. Storing as a fraction
+    # (0.12 instead of 12) keeps values inside [eps, 1-eps] so logit works correctly.
+    # efg_pct, oreb_pct, dreb_pct are all fractions for exactly this reason.
+    # Phase 5 bug fix — Plans/nba-phase5-bug-fixes.md Change 1.
     tov_denom_off = fga + 0.44 * fta + tov
-    tov_pct_off = 100.0 * tov / max(tov_denom_off, 1.0)
+    tov_pct_off = tov / max(tov_denom_off, 1.0)
     tov_denom_def = opp_fga + 0.44 * opp_fta + opp_tov
-    tov_pct_def = 100.0 * opp_tov / max(tov_denom_def, 1.0)
+    tov_pct_def = opp_tov / max(tov_denom_def, 1.0)
 
     # OREB% = OREB / (OREB + opp_DREB)
     oreb_pct = r["oreb"] / max(r["oreb"] + r["opp_dreb"], 1)

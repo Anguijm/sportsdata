@@ -1,6 +1,6 @@
 {
   "method": "platt",
-  "plan_ref": "Plans/nba-phase5-bug-fixes.md",
+  "plan_ref": "Plans/nba-phase6-season-aggregate.md",
   "onnx_status": "deferred \u2014 native LightGBM pickles + infer.py for twice-daily batch cadence (fix-pack #9, addendum v14)",
   "phase5_fixes": {
     "tov_pct_scaling": "fixed \u2014 stored as fraction (not percent); features.py Change 1",
@@ -30,6 +30,7 @@
     "home_stl_per_poss",
     "home_blk_per_poss",
     "home_bpm_effective",
+    "home_season_net_rating",
     "home_rest_days",
     "home_b2b",
     "home_rest_days_in_last_7",
@@ -51,6 +52,7 @@
     "away_stl_per_poss",
     "away_blk_per_poss",
     "away_bpm_effective",
+    "away_season_net_rating",
     "away_rest_days",
     "away_b2b",
     "away_rest_days_in_last_7",
@@ -159,6 +161,12 @@
       "transform": "zscore",
       "mean": -0.0553193187827641,
       "std": 4.447581342316625,
+      "eps": 0.0
+    },
+    "home_season_net_rating": {
+      "transform": "zscore",
+      "mean": 0.1168296278571872,
+      "std": 6.52753501311336,
       "eps": 0.0
     },
     "home_rest_days": {
@@ -287,6 +295,12 @@
       "std": 4.468056820941098,
       "eps": 0.0
     },
+    "away_season_net_rating": {
+      "transform": "zscore",
+      "mean": 0.23803969208097686,
+      "std": 6.5106123791563615,
+      "eps": 0.0
+    },
     "away_rest_days": {
       "transform": "log1p_zscore",
       "mean": 1.1247410135682128,
@@ -325,33 +339,33 @@
     }
   },
   "platt": {
-    "A": 1.2662331366643826,
-    "B": 0.06583434412016081,
+    "A": 1.2576930727855264,
+    "B": 0.06685223396995983,
     "formulation": "p_cal = sigmoid(A * logit(p_ensemble) + B)",
     "sklearn_C": 1000000000.0,
     "fit_domain": "regular-season val games only"
   },
   "ensemble": {
     "n_seeds": 20,
-    "override_run_id": "20260428T200859-c93c6bad",
-    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/20260428T200859-c93c6bad/models",
+    "override_run_id": "20260428T204443-640e0cac",
+    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/20260428T204443-640e0cac/models",
     "val_cutoff_idx": 2112
   },
   "val_diagnostics": {
     "n_val_total": 528,
     "n_val_regular_season": 444,
-    "brier_raw": 0.19805978451005027,
-    "brier_calibrated": 0.1962482673624417,
-    "brier_delta": -0.0018115171476085767,
-    "unconditional_mean_raw": 0.5243517259339417,
-    "unconditional_mean_calibrated": 0.5405053392534683,
+    "brier_raw": 0.19851529621255598,
+    "brier_calibrated": 0.196712330917898,
+    "brier_delta": -0.0018029652946579822,
+    "unconditional_mean_raw": 0.5241604088947315,
+    "unconditional_mean_calibrated": 0.5405080229460516,
     "empirical_home_win_rate": 0.5405405405405406,
-    "mean_divergence_post_cal": 3.520128707223957e-05,
+    "mean_divergence_post_cal": 3.251759448896774e-05,
     "season_breakdown": {
       "2024-regular": 444,
       "2024-postseason": 84
     },
     "note": "All Brier/Platt metrics computed on regular-season val games only (Phase 5 fix)"
   },
-  "data_hash_sha256": "670ce6a5a544b03cc835dc8228ec49bf1f7b05cf385119a8c3e2d5df9696c484"
+  "data_hash_sha256": "52f0e4dae3f6936591f0a7fd92ef540a524816aaa3e94a174a920886a21254c4"
 }

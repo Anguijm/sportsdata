@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Phase 5 — Platt calibration for the 20-seed LightGBM ensemble.
+Phase 6 — Platt calibration for the 20-seed LightGBM ensemble.
 
 Loads the Phase 5 training run's 20-seed models, fits Platt scaling on the
 regular-season portion of the val fold, and saves calibration-params.json.
 
-Phase 5 fixes applied here (Plans/nba-phase5-bug-fixes.md):
+Phase 6 feature addition (Plans/nba-phase6-season-aggregate.md):
+  - home_season_net_rating and away_season_net_rating added to features.py.
+    46 features total (was 44).
+
+Phase 5 fixes retained here (Plans/nba-phase5-bug-fixes.md):
   - TOV% features are now fractions (0.05-0.25), not percentages. This is
     handled by features.py Change 1; the norm_params fitted here will reflect
     the corrected values automatically.
@@ -49,7 +53,7 @@ CONFIGS_DIR = REPO_ROOT / "ml" / "nba" / "configs"
 # Update OVERRIDE_RUN_ID after running cv_runner.py --winner-override ewma-h21.
 # The run ID is printed at the start of the cv_runner output and appears as the
 # directory name under ml/nba/results/.
-OVERRIDE_RUN_ID = "20260428T200859-c93c6bad"  # Phase 5 run (TOV% fix + reg-season val)
+OVERRIDE_RUN_ID = "20260428T204443-640e0cac"  # Phase 6 run (+ season_net_rating features)
 MODELS_DIR = REPO_ROOT / "ml" / "nba" / "results" / OVERRIDE_RUN_ID / "models"
 OUTPUT_PATH = CONFIGS_DIR / "calibration-params.json"
 
@@ -247,7 +251,7 @@ def main() -> None:
 
     output = {
         "method": "platt",
-        "plan_ref": "Plans/nba-phase5-bug-fixes.md",
+        "plan_ref": "Plans/nba-phase6-season-aggregate.md",
         "onnx_status": (
             "deferred — native LightGBM pickles + infer.py for twice-daily batch cadence"
             " (fix-pack #9, addendum v14)"

@@ -4,6 +4,12 @@
     {
       "timestamp": "2026-04-29T00:00:00Z",
       "touch": "COUNTER_RESET",
+      "description": "Counter reset to 0 for Phase 6. Previous Phase 5 touches: LightGBM Gate D FAIL (AUC 0.7221, Gate 2 council CLEAR 7.6/10). Phase 6 model: 46 features (44 Phase 5 + home_season_net_rating + away_season_net_rating). Run 20260428T204443-640e0cac. Gate 1 council CLEAR 8.0/10. Gate 2 implementation review CLEAR 8.4/10.",
+      "council_co_sign": "DQ:CLEAR/9 Stats:CLEAR/8 Pred:CLEAR/8 Domain:CLEAR/8 Math:CLEAR/9 (Gate 2 implementation review \u2014 avg 8.4/10 \u2014 CLEAR)"
+    },
+    {
+      "timestamp": "2026-04-29T00:00:00Z",
+      "touch": "COUNTER_RESET",
       "description": "Counter reset to 0 for Phase 5. Previous Phase 3+4 touches: LightGBM Gate D FAIL, MLP Gate D FAIL (Phase 3), LightGBM Gate D FAIL + cold-start Ship Rule 1 FAIL (Phase 4). Phase 5 model: same 44-feature ewma-h21 architecture with two bug fixes \u2014 TOV% stored as fraction (not percent), and Platt/val Brier computed on regular-season val games only. Run 20260428T200859-c93c6bad.",
       "council_co_sign": "DQ:WARN/7 Stats:WARN/6 Pred:CLEAR/7 Domain:CLEAR/8 Math:WARN/7 (Gate 1 plan review \u2014 avg 7.6/10 \u2192 fix-pack applied \u2192 CLEAR)"
     },
@@ -95,6 +101,26 @@
         "platt_A": 1.266233,
         "platt_B": 0.065834,
         "note": "Gate D halt \u2014 AUC below v5 floor. Phase 5 null result. v5 remains incumbent."
+      }
+    },
+    {
+      "timestamp": "2026-04-28T20:48:00.509814Z",
+      "touch": 1,
+      "description": "step8 LightGBM test-fold evaluation \u2014 Phase 6 (+ season_net_rating). Gate D FAIL (AUC 0.7237 < v5 0.7283; Brier +0.0021 worse). season_net_rating features helped marginally (+0.0016 AUC vs Phase 5) but did not close the gap. EWMA features appear to dilute the season-aggregate signal.",
+      "council_co_sign": "DQ:CLEAR/8 Stats:CLEAR/7 Pred:CLEAR/7 Domain:CLEAR/7 Math:CLEAR/8 (Gate 2 results review \u2014 avg 7.4/10 \u2014 CLEAR)",
+      "results_summary": {
+        "gate_d_pass": false,
+        "gate_d_lgbm_auc": 0.7237,
+        "gate_d_v5_auc": 0.7283,
+        "lgbm_cal_brier": 0.211391,
+        "v5_test_brier": 0.209259,
+        "brier_improvement": -0.002132,
+        "val_brier_calibrated": 0.196712,
+        "val_brier_raw": 0.198515,
+        "platt_A": 1.257693,
+        "platt_B": 0.066852,
+        "auc_improvement_vs_phase5": 0.0016,
+        "note": "Gate D halt \u2014 AUC below v5 floor. Phase 6 null result. v5 remains incumbent."
       }
     }
   ]

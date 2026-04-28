@@ -459,6 +459,25 @@ def _rolling_feature_vector(
         _K = 10.0
         result["bpm_effective"] = (_K * prior_val + g_count * actual_diff) / (_K + g_count)
 
+    # Season-to-date mean Net Rating (ORtg − DRtg, per 100 possessions).
+    # This is the ML analogue of v5's (pts_for − pts_against) / games — giving the
+    # model direct access to the season-aggregate quality signal that v5 is built on.
+    # Filter: g["season"] == target_season ensures only current regular-season games
+    # are included (e.g. "2025-regular"), not postseason (e.g. "2025-postseason").
+    # NaN for games where the team has no completed season games yet (early-season);
+    # the normalization pipeline imputes NaN → 0.0 (= training mean).
+    # Phase 6 addition — Plans/nba-phase6-season-aggregate.md.
+    all_season_games = [
+        g for g in histories.get(team_id, {}).get("all", [])
+        if g["season"] == target_season and g["date"] < target_date
+    ]
+    if all_season_games:
+        result["season_net_rating"] = (
+            sum(g["net_rating"] for g in all_season_games) / len(all_season_games)
+        )
+    else:
+        result["season_net_rating"] = float("nan")
+
     return result
 
 
@@ -671,7 +690,8 @@ ORDERED_STATS = [
     "oreb_pct", "dreb_pct",
     "three_p_rate_off", "three_p_rate_def",
     "ast_per_poss", "stl_per_poss", "blk_per_poss",
-    "bpm_effective",  # cold-start prior blend (Plans/nba-cold-start-prior.md)
+    "bpm_effective",     # cold-start prior blend (Plans/nba-cold-start-prior.md)
+    "season_net_rating", # season-to-date mean Net Rating — v5's core signal (Phase 6)
 ]
 SITUATIONAL_STATS = ["rest_days", "b2b", "rest_days_in_last_7", "win_rate_last_7"]
 

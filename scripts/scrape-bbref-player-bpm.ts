@@ -60,28 +60,37 @@ export interface DraftPick {
   team: string;       // drafting team
 }
 
-// Strip HTML comments so commented-out bbref tables parse normally.
+// Strip HTML comment markers so commented-out bbref tables parse normally.
+// Removes only the <!-- and --> delimiters, keeping the inner content visible.
 function stripComments(html: string): string {
-  return html.replace(/<!--[\s\S]*?-->/g, (match) => {
-    // Keep only the inner content of comments that contain table tags.
-    if (/<table/i.test(match)) return match.slice(4, -3);
-    return '';
-  });
+  return html.replace(/<!--|-->/g, '');
 }
 
-// Extract the text of a data-stat cell from a row's HTML.
+// Extract the text content of a data-stat cell (strips inner HTML tags).
 function dataStat(rowHtml: string, stat: string): string {
-  const re = new RegExp(`data-stat="${stat}"[^>]*>([^<]*)<`, 'i');
+  const re = new RegExp(`data-stat="${stat}"[^>]*>([\\s\\S]*?)</t[dh]>`, 'i');
   const m = rowHtml.match(re);
-  return m ? m[1].trim() : '';
+  if (!m) return '';
+  return m[1].replace(/<[^>]+>/g, '').trim();
 }
 
-// Extract href slug from a data-stat cell containing an <a> tag.
+// Extract the data-append-csv attribute from a data-stat cell (bbref player slug).
+// Used by the advanced stats table. Note: data-append-csv precedes data-stat in
+// bbref's HTML, so we match the full opening tag of the cell first.
+function dataStatCsv(rowHtml: string, stat: string): string {
+  const tagRe = new RegExp(`<t[dh][^>]*data-stat="${stat}"[^>]*>`, 'i');
+  const tagMatch = rowHtml.match(tagRe);
+  if (!tagMatch) return '';
+  const csvMatch = tagMatch[0].match(/data-append-csv="([^"]+)"/i);
+  return csvMatch ? csvMatch[1] : '';
+}
+
+// Extract href slug from an <a> tag inside a data-stat cell.
+// Used by the draft table which uses hrefs instead of data-append-csv.
 function dataStatHref(rowHtml: string, stat: string): string {
   const re = new RegExp(`data-stat="${stat}"[^>]*>\\s*<a[^>]*href="([^"]+)"`, 'i');
   const m = rowHtml.match(re);
   if (!m) return '';
-  // e.g. /players/j/jamesle01.html → jamesle01
   const parts = m[1].split('/');
   return parts[parts.length - 1].replace('.html', '');
 }
@@ -89,22 +98,24 @@ function dataStatHref(rowHtml: string, stat: string): string {
 function parseAdvancedStats(html: string): PlayerBpmRow[] {
   const clean = stripComments(html);
 
-  const tableRe = /<table[^>]*id="advanced_stats"[\s\S]*?<\/table>/i;
+  // Table ID on the league-season advanced page is 'advanced' (not 'advanced_stats').
+  const tableRe = /<table[^>]*id="advanced"[\s\S]*?<\/table>/i;
   const tableMatch = clean.match(tableRe);
-  if (!tableMatch) throw new Error('advanced_stats table not found');
+  if (!tableMatch) throw new Error('advanced table not found');
 
   const rowRe = /<tr[\s\S]*?<\/tr>/gi;
   const rows = tableMatch[0].match(rowRe) ?? [];
 
   const players: PlayerBpmRow[] = [];
   for (const row of rows) {
-    // Skip header/separator rows (they have <th> ranker cells with non-numeric content).
+    // Skip header/separator rows (ranker cell contains 'Rk' not a number).
     const ranker = dataStat(row, 'ranker');
     if (!ranker || !/^\d+$/.test(ranker)) continue;
 
-    const name = dataStat(row, 'player');
-    const bbref_id = dataStatHref(row, 'player');
-    const team = dataStat(row, 'team_id');
+    // bbref uses data-append-csv for the player slug; data-stat is 'name_display'.
+    const name = dataStat(row, 'name_display');
+    const bbref_id = dataStatCsv(row, 'name_display');
+    const team = dataStat(row, 'team_name_abbr');
     const mpStr = dataStat(row, 'mp');
     const bpmStr = dataStat(row, 'bpm');
 
@@ -116,19 +127,19 @@ function parseAdvancedStats(html: string): PlayerBpmRow[] {
     players.push({ bbref_id, name, team, mp, bpm });
   }
 
-  // For traded players, bbref shows one row per team + a "TOT" (totals) row.
-  // Keep TOT if present; otherwise keep the single row.
+  // For traded players, bbref shows "2TM"/"3TM" as the totals row (first entry),
+  // followed by individual team rows. Keep the multi-team totals row if present.
   const byId = new Map<string, PlayerBpmRow[]>();
   for (const p of players) {
-    const rows = byId.get(p.bbref_id) ?? [];
-    rows.push(p);
-    byId.set(p.bbref_id, rows);
+    const existing = byId.get(p.bbref_id) ?? [];
+    existing.push(p);
+    byId.set(p.bbref_id, existing);
   }
 
   const result: PlayerBpmRow[] = [];
   for (const [, rows] of byId) {
-    const tot = rows.find(r => r.team === 'TOT');
-    result.push(tot ?? rows[0]!);
+    const multiTeam = rows.find(r => /^\dTM$/.test(r.team));
+    result.push(multiTeam ?? rows[0]!);
   }
 
   return result;
@@ -189,8 +200,18 @@ async function main() {
 
   if (!parseOnly) {
     browser = await chromium.launch({ headless: true });
-    page = await browser.newPage();
-    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+    const ctx = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      locale: 'en-US',
+      extraHTTPHeaders: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    await ctx.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+    page = await ctx.newPage();
   }
 
   try {

@@ -37,11 +37,11 @@ DB_PATH = REPO_ROOT / "data" / "sqlite" / "sportsdata.db"
 # Median BPM and projected MPG by draft bin (calibration set values).
 # Set to None until calibrate_rookie_prior.py has been run.
 ROOKIE_BPM_PRIOR: dict[str, dict] = {
-    "picks_1_5":    {"median_bpm": None, "projected_mpg": None},
-    "picks_6_14":   {"median_bpm": None, "projected_mpg": None},
-    "picks_15_30":  {"median_bpm": None, "projected_mpg": None},
-    "second_round": {"median_bpm": None, "projected_mpg": None},
-    "undrafted":    {"median_bpm": None, "projected_mpg": None},
+    "picks_1_5":    {"median_bpm": -2.25, "projected_mpg": 22.2},
+    "picks_6_14":   {"median_bpm": -2.05, "projected_mpg": 17.5},
+    "picks_15_30":  {"median_bpm": -2.40, "projected_mpg": 13.4},
+    "second_round": {"median_bpm": -2.60, "projected_mpg": 10.9},
+    "undrafted":    {"median_bpm": -0.50, "projected_mpg": 18.3},
 }
 
 K_GRID = [3, 5, 10, 15, 20, 30]

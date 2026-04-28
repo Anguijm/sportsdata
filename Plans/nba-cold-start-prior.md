@@ -236,3 +236,33 @@ Track cases where `prior_strength` places a team in the top or bottom 20% of the
 **Domain — 8/10 — CLEAR**: Coaching change factor added (0.70 damping for new coaches, revisited at K calibration). Rookie calibration uses median. BPM context-dependence pre-declared as known limitation. International prospect gap noted and accepted as v1 limitation.
 
 **Math — 9/10 — CLEAR**: Normalizer bug fixed — actual contributing MP used, fractions sum to 1. Rookie integration formula correct. K_eff formula maps inputs to sensible ranges. Minimum-minutes filter (≥500 MP) specified for rookie calibration to exclude injury-shortened seasons.
+
+---
+
+## Addendum — Rookie BPM calibration results (2026-04-28)
+
+Calibrated on draft classes 2010–2021 (≥500 MP filter). Validated on draft classes 2022–2024.
+
+### Calibration set (commit values)
+
+| Draft range     | N   | Median BPM | IQR BPM         | Projected MPG |
+|-----------------|-----|-----------|-----------------|---------------|
+| Picks 1–5       |  54 |      −2.25 | [−4.2, +0.2]   |          22.2 |
+| Picks 6–14      |  92 |      −2.05 | [−3.3, −0.9]   |          17.5 |
+| Picks 15–30     |  94 |      −2.40 | [−3.5, −1.1]   |          13.4 |
+| Second round    |  77 |      −2.60 | [−4.0, −1.6]   |          10.9 |
+| Undrafted       |2240 |      −0.50 | [−1.9, +1.2]   |          18.3 |
+
+### Validation set (2022–2024 draft classes)
+
+| Draft range     | N   | Median BPM | IQR BPM         | Projected MPG |
+|-----------------|-----|-----------|-----------------|---------------|
+| Picks 1–5       |  14 |      −2.80 | [−3.3, −1.5]   |          24.1 |
+| Picks 6–14      |  22 |      −3.05 | [−4.2, −0.8]   |          16.0 |
+| Picks 15–30     |  30 |      −3.20 | [−4.8, −1.7]   |          16.5 |
+| Second round    |  25 |      −3.10 | [−3.6, −2.0]   |           9.9 |
+| Undrafted       | 912 |      −0.30 | [−1.8, +1.3]   |          18.9 |
+
+Validation consistent with calibration set — drafted rookies slightly worse in recent classes (−3.1 vs −2.4 at picks 15–30), consistent with increased international competition for spots. Undrafted bin stable (−0.30 vs −0.50). High-pick IQRs are wide: a lottery pick's BPM swings from −4 to +0, confirming the variance argument for using median over mean.
+
+**These are the committed plan values. K_base calibration next.**

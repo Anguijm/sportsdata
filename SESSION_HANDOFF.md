@@ -4,40 +4,42 @@
 
 ---
 
-## Start here next session — 2026-04-29 (Sprint 10.21 — Phase 5 bug-fix experiment closed)
+## Start here next session — 2026-04-29 (Sprint 10.22 — Phase 6 season_net_rating null result)
 
-**Current branch:** `claude/nba-cold-start-prior-plan` (local only; needs push + PR). All Phase 3 + Phase 4 + Phase 5 code and docs are here.
-**Production state (Fly):** v5 remains incumbent. Phases 3, 4, and 5 are all null results.
+**Current branch:** `claude/nba-cold-start-prior-plan` (pushed `625c594`; no PR open yet).
+**Production state (Fly):** v5 remains incumbent. Phases 3, 4, 5, and 6 are all null results.
 
-**Phase 5 bug fixes — CLOSED (null result, 2026-04-29):**
-- Hypothesis: TOV% fraction fix + regular-season-only val fold removes two bugs inflating Phase 3–4 gap
-- Result: Gate D FAIL — AUC 0.7221 < v5 0.7283 (gap 0.0062). Brier +0.002714 worse.
-- Gate 2 council CLEAR (7.6/10). Null result accepted. v5 holds.
-- Diagnosis: the AUC gap is structural — EWMA features don't encode season-aggregate point differential, which is v5's core signal
+**Phase 6 season-aggregate features — CLOSED (null result, 2026-04-29):**
+- Hypothesis: adding season-to-date mean Net Rating (home/away) gives model v5's core signal
+- Result: Gate D FAIL — AUC 0.7237 < v5 0.7283 (gap 0.0046). Only +0.0016 AUC improvement.
+- Gate 2 council CLEAR (7.4/10). Null result accepted. v5 holds.
+- Diagnosis: EWMA features dilute the season-aggregate signal at n=2640 + LightGBM
 
-**Phase 6 — PLANNED (ready to draft):**
-- Approach: add `home_season_net_rating` + `away_season_net_rating` (cumulative net pt diff / games) as explicit features alongside existing 44 EWMA features
-- This gives the model direct access to v5's core signal; AUC gap should close
-- Status: user approved approach; plan NOT yet written; Gate 1 council needed before implementation
+**AUC trajectory (all four phases):**
+- Phase 3: 0.6954 (42 EWMA, unfeaturized)
+- Phase 4: 0.7241 (44 EWMA + BPM prior)
+- Phase 5: 0.7221 (44 EWMA + BPM, bugs fixed)
+- Phase 6: 0.7237 (46 features, season_net_rating added)
 
 **Next actions (in order):**
-1. **Push + open PR** for `claude/nba-cold-start-prior-plan` → main.
-2. **Draft `Plans/nba-phase6-season-aggregate.md`** with pre-declared ship rules (Gate D + Rule 1 Δ≥0.001 + CI + Rule 2 + Rule 3).
-3. **Council Gate 1** on Phase 6 plan before any code.
-4. **Implement**: add two features to `features.py`, retrain ewma-h21, recalibrate, evaluate.
+1. **Open PR** for `claude/nba-cold-start-prior-plan` → main (Phase 3–6 null result history).
+2. **Plan Phase 7** — options:
+   a. Linear model (logistic regression) on the 46-feature set — far more sample-efficient than LightGBM
+   b. Drop EWMA entirely — use only season-aggregate + BPM prior features
+   c. More training data (add prior seasons to training window)
+   See `Plans/nba-phase6-season-aggregate.md §If Gate D fails` for full context.
 
-**Key artifacts on this branch (Phase 5):**
-- `ml/nba/features.py`: TOV% as fraction (÷100 removed); extensive comment block explaining the logit_zscore clip issue
-- `ml/nba/cv_runner.py`: `_regular_season_mask()` + alignment assertion + reg-season-only val Brier
-- `ml/nba/calibrate.py`: Phase 5 — Platt fit on reg-season val only (A=1.266233, B=0.065834)
-- `ml/nba/configs/calibration-params.json`: Phase 5 Platt params; val Brier 0.196248 (reg-season)
-- `ml/nba/test-fold-touch-counter.json`: counter=1, Gate 2 council signed (7.6/10 CLEAR)
-- `Plans/nba-phase5-bug-fixes.md`: complete with Gate 1 + Gate 2 addenda
+**Key artifacts on this branch:**
+- `ml/nba/features.py`: 46 features — season_net_rating added (`ORDERED_STATS`, `_rolling_feature_vector`)
+- `ml/nba/calibrate.py`: Phase 6 run `20260428T204443-640e0cac`; Platt A=1.258, B=0.067
+- `ml/nba/configs/calibration-params.json`: Phase 6 Platt params; val Brier 0.196712
+- `ml/nba/test-fold-touch-counter.json`: counter=1, Gate 2 council CLEAR 7.4/10
+- `Plans/nba-phase6-season-aggregate.md`: complete with Gate 1 + Gate 2 addenda
 
 **Pre-session context to read:**
 1. This file.
-2. `Plans/nba-phase5-bug-fixes.md` (Gate 1 + Gate 2 addenda — understand what Phase 5 tried and why it failed).
-3. `learnings.md` last section (phase5-tov-fix-plus-reg-season-val).
+2. `Plans/nba-phase6-season-aggregate.md §If Gate D fails` — Phase 7 direction options.
+3. `learnings.md` last two sections (phase5 + phase6).
 
 ---
 

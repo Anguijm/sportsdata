@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-29 (post Sprint 10.21 — Phase 5 TOV%/val-fold bug-fix experiment closed as null result; Phase 6 planning next; branch claude/nba-cold-start-prior-plan; v5 remains incumbent).
+Last regenerated: 2026-04-29 (post Sprint 10.22 — Phase 6 season_net_rating experiment closed as null result; Phase 7 planning next; branch claude/nba-cold-start-prior-plan pushed, PR not yet open; v5 remains incumbent).
 
 ## Where to start
 
@@ -15,7 +15,7 @@ Fresh session? Read in this order:
 1. `SESSION_HANDOFF.md` — tight "Start here next session" block at the top.
 2. `CLAUDE.md` — durable operating rules.
 3. This file — priority queue + open-debts snapshot.
-4. `Plans/nba-phase6-season-aggregate.md` — Phase 6 plan (draft + council Gate 1 needed).
+4. `Plans/nba-phase6-season-aggregate.md §If Gate D fails` — Phase 7 direction options.
 
 If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, regenerate it from `git log origin/main..HEAD` + the latest sprint entry in `SESSION_LOG.md`.
 
@@ -23,14 +23,17 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 5 — CLOSED (null result, 2026-04-29).** TOV% fraction fix + regular-season val fold filter. Gate D FAIL: AUC 0.7221 < v5 0.7283. Gate 2 council CLEAR (7.6/10). v5 remains incumbent. Code + docs on `claude/nba-cold-start-prior-plan`.
-- **Open PR** for `claude/nba-cold-start-prior-plan` → main (all Phase 3 + Phase 4 + Phase 5 null results; everything committed).
-- **Phase 6 planning** — draft `Plans/nba-phase6-season-aggregate.md` + council Gate 1 before any implementation. Feature target: `home_season_net_rating` + `away_season_net_rating` alongside existing 44 EWMA features.
+- **Phase 6 — CLOSED (null result, 2026-04-29).** Season-aggregate net rating features (46 total) added. Gate D FAIL: AUC 0.7237 < v5 0.7283 (+0.0016 improvement over Phase 5 — not enough). Gate 2 CLEAR (7.4/10). v5 remains incumbent. All code + docs committed and pushed on `claude/nba-cold-start-prior-plan`.
+- **Open PR** for `claude/nba-cold-start-prior-plan` → main (Phase 3–6 complete null result chain; 8 commits ahead of main).
+- **Phase 7 planning** — three options in `Plans/nba-phase6-season-aggregate.md §If Gate D fails`:
+  (a) Linear model (logistic regression) on 46-feature set — most sample-efficient, likely to clear Gate D
+  (b) Drop EWMA entirely, use only season-aggregate + BPM prior features
+  (c) More training data (add prior seasons to training window)
 
 ## Next (queued, scoped)
 
-- **Implement Phase 6** (after Gate 1 CLEAR): add two season-aggregate features to `features.py`, retrain, recalibrate, evaluate.
-- **SESSION_LOG update**: add Sprint 10.21 entry covering Phase 5 null result.
+- **Draft `Plans/nba-phase7-*.md`** with pre-declared ship rules + council Gate 1 before implementation.
+- **SESSION_LOG update**: add Sprint 10.22 entry covering Phase 6 null result.
 
 ## Someday (daydreams, architectural ideas)
 

@@ -1,0 +1,22 @@
+{
+  "run_id": "mlp-winner",
+  "timestamp": "2026-04-27T21:43:47.773686Z",
+  "plan_ref": "Plans/nba-learned-model.md addendum v16",
+  "hparams": {
+    "learning_rate": 0.001,
+    "dropout": 0.5,
+    "weight_decay": 0.0
+  },
+  "val_cutoff_idx": 2112,
+  "n_train": 2112,
+  "n_val": 528,
+  "n_seeds": 20,
+  "mean_val_brier": 0.209158,
+  "seed_std": 0.001902,
+  "feature_config": {
+    "feature_form": "ewma",
+    "window_size": 10,
+    "ewma_halflife": 21,
+    "training_as_of": "2026-04-27T00:00:00Z"
+  }
+}

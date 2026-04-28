@@ -4,44 +4,64 @@
 
 ---
 
-## Start here next session — 2026-04-27 (Sprint 10.18 — Phase 3 step 5)
+## Start here next session — 2026-04-28 (Sprint 10.20 — Phase 3 null result closed)
 
-**Current branch:** `claude/phase3-step5-cv-training` (PR open, pending merge).
-**Production state (Fly):** Phase 3 step 3 SHIPPED — `nba_neutral_site_games` table live, `nba_eligible_games` view updated, 6 neutral-site rows backfilled. API healthy.
+**Current branch:** `claude/phase3-step6-calibration` (2 commits pushed `785a7d1`→`ee05ab4`; open PR to merge).
+**Production state (Fly):** v5 remains incumbent. Phase 3 null result — nothing ships.
 
-**Phase 3 step 5 — COMPLETE (pending merge):**
-- Branch: `claude/phase3-step5-cv-training`
-- `ml/nba/cv_runner.py`: 10-candidate feature-form inner CV, Phase 1 (K=10 order-statistic gate) + Phase 2 (18-config hyperparameter grid), 20-seed ensemble
-- `ml/nba/train_lightgbm.py`: LightGBM fit/score, subsample=0.8/colsample=0.8 for seed diversity
-- `ml/nba/train_mlp.py`: MLP [42→128→64→1] + BatchNorm + AdamW + early stopping
-- `requirements-ml.txt`: lightgbm>=4.6.0, scikit-learn>=1.8.0, torch>=2.0.0
-- `ml/nba/test-fold-touch-counter.json`: `{"counter": 0, "history": []}`
-- **CV results**: ewma-h21 wins Phase 1 in both CV runs (segment-stable, rank 1,1,2). Bias gate FAILED (σ_inner=0.151 vs planned 0.095 — planning estimate off 1.6×). Council override: proceed with ewma-h21.
-- **Pinned config**: ewma halflife=21, LightGBM {num_leaves=31, min_child=200, reg_alpha=1.0}, MLP {lr=0.001, dropout=0.5, wd=0}
-- **Ensemble**: val Brier=0.2065, seed-std=0.0012, gate PASS
-- **Run config**: `ml/nba/configs/20260427T104117-e39d20c0-override.json`
-- Gate 1 CLEAR (avg 7.2/10); Gate 2 CLEAR (avg 7.6/10, council override documented)
+**Phase 3 — CLOSED (null result, 2026-04-28):**
+- Step 7 pre-flight: CLEAR (addendum v15, `step7_preflight.py`, Gate 1/2 pass)
+- Step 8 LightGBM: Gate D FAIL — AUC 0.6954 < v5 0.7283; Brier −0.013 degradation
+- Step 8b MLP: Gate D FAIL — AUC 0.7026 < v5 0.7283; Brier −0.009 degradation
+- Test fold burned (counter = 2/2). Neither family ships. v5 remains incumbent.
+- Root causes: EWMA cold-start fragility, val/test composition asymmetry, TOV% zeroing bug (4/42 features silently zeroed), v5 season-aggregate structural advantage
 
-**Next action:**
+**Phase 3 steps 5 — MERGED:** PR #54 squash-merged to main at `1bc750b`.
+**Phase 3 steps 6–8b — pending merge** via `claude/phase3-step6-calibration`.
 
-**Phase 3 step 6 — Calibration + serving.** Platt scaling on val fold (last 20% of training pool ≈ 528 games). ONNX export of 20-seed ensemble. See addendum v13 §"Phase 3 implementation sequence" (steps 6–10). **Council plan review required first.**
+**Next actions (in order):**
+1. **Open PR and merge** `claude/phase3-step6-calibration` → main (all step 6–8b artifacts).
+2. **Phase 3 post-mortem (before any future attempt):**
+   - Fix TOV% bug: divide pct-form values by 100 before logit_zscore transform
+   - Add cold-start fallback for first N games of season
+   - Hybrid feature design: season-aggregate base + EWMA adjustment
+   - Regular-season-only val fold (remove postseason inflation)
+   - New plan addendum + council review before any new test-fold touch
 
-**Known limitations forwarded from steps 4–5:**
-- `cup_pool` overincludes. No model impact.
-- `play_in`: 2 confirmed IDs. Non-blocking.
-- Injury features absent by design (step 8 forward item).
-- num_leaves non-binding at n=2640 (min_child_samples is the active constraint).
+**Key artifacts on branch:**
+- `ml/nba/features.py`: `build_test_fold_tensor()` (NOT IN bypass)
+- `ml/nba/step7_preflight.py`, `ml/nba/evaluate_test_fold.py`, `ml/nba/evaluate_test_fold_mlp.py`
+- `ml/nba/train_mlp_winner.py`, `ml/nba/calibrate_mlp.py`
+- `ml/nba/configs/calibration-params.json`: LightGBM Platt (A=1.3499, B=0.0156)
+- `ml/nba/configs/mlp-calibration-params.json`: MLP Platt (A=1.2941, B=0.0373)
+- `ml/nba/test-fold-touch-counter.json`: counter=2
 
-**Pre-session context to read** (in order):
-1. This file (you're already here).
-2. `BACKLOG.md` "Now" section.
-3. `Plans/nba-learned-model.md` addendum v13 §"Phase 3 implementation sequence" (steps 6–10).
+**Pre-session context to read:**
+1. This file.
+2. `Plans/nba-learned-model.md` addendum v16 + v17 (null result + post-mortem scope).
+3. `learnings.md` last 3 sections.
 
 ---
 
 ## Historical session log
 
 Older session-end states are preserved below. Most recent at top.
+
+### 2026-04-28 — Sprint 10.19 — Phase 3 step 6 (Platt calibration + serving)
+
+**What shipped:**
+- `ml/nba/calibrate.py`: Platt fit on val fold (n=528); A=1.350, B=0.016; raw Brier 0.2050→calibrated 0.2025. All 10 fix-pack items from addendum v14 Gate 1 verified.
+- `ml/nba/infer.py`: `Predictor` class for serving — loads 20 LightGBM pickles + Platt params; predict-and-average → apply Platt to mean.
+- `ml/nba/configs/calibration-params.json`: full calibration artifact (Platt params, norm_params, feature_names, diagnostics, data hash).
+- addendum v14 appended to `Plans/nba-learned-model.md` (Gate 1 CLEAR avg 7.3/10, Gate 2 CLEAR avg 8.5/10).
+- PR #54 (step 5) merged to main at `1bc750b`.
+- Branch: `claude/phase3-step6-calibration` (PR open).
+
+**Lessons codified:**
+- LightGBM raw ensemble outputs are underconfident (A=1.35>1 in Platt); expect this behavior for GBMs on small tabular n.
+- Platt calibration: logit space + `C=1e9` (not sklearn default); apply to ensemble mean, not per-seed.
+- For LightGBM, weight-averaging is inapplicable — predict-and-average is the correct ensemble serving strategy.
+- Model pickles gitignored but must have a documented regeneration recipe in the script's module docstring.
 
 ### 2026-04-27 — Sprint 10.18 — Phase 3 step 5 (inner-CV training infrastructure)
 

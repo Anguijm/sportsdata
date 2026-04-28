@@ -9,6 +9,8 @@ web/dist/
 .playwright-cli/
 mobile-audit/
 data/.bbref-cache/
+data/bbref-player-bpm/*.json
+data/bbref-draft/*.json
 data/.thirdsource-cache/
 data/snapshots/*.db
 __pycache__/

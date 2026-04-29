@@ -22,7 +22,7 @@ Read all council expert reviews, identify convergence and conflicts, and produce
 
 ### Verdict: [FAIL | WARN | CLEAR]
 
-**Score:** [weighted average, 1-10]
+**Score:** [holistic synthesized score, 1-10]
 
 **Convergence:**
 - [Points where multiple experts agree]

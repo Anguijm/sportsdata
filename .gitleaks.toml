@@ -1,0 +1,24 @@
+# Gitleaks configuration for sportsdata.
+# PR diffs are sent to Gemini for council review; this scan runs first
+# to prevent accidental exfiltration of secrets or PII.
+
+title = "sportsdata gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowed false positives"
+paths = [
+  # Council personas contain prose that mentions placeholder env var names.
+  '''\.harness/council/.*\.md''',
+  '''\.harness/scripts/requirements\.txt''',
+  # Documentation files.
+  '''CLAUDE\.md''',
+  '''README\.md''',
+  '''SESSION_LOG\.md''',
+  '''SESSION_HANDOFF\.md''',
+  '''BACKLOG\.md''',
+  '''Plans/.*\.md''',
+  '''learnings\.md''',
+]

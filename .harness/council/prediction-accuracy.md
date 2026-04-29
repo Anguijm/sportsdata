@@ -15,6 +15,10 @@ Evaluate whether predictions are well-calibrated, honestly uncertain, and backed
 - **Source Corroboration**: How many independent sources support the underlying data?
 - **Edge Cases**: How does the model handle unusual situations? (neutral-site games, COVID seasons, expansion teams)
 
+## Abstain rule
+
+**Abstain on changes with no prediction logic.** If the diff contains only infrastructure, CI/CD, tooling, UI, refactors, or documentation — and no changes to model code, probability outputs, calibration, or feature engineering — issue a brief abstain note instead of a score or verdict. Do not invent prediction concerns where none exist.
+
 ## Grading
 
 - **1-10 scale** (10 = well-calibrated, honest uncertainty, strong backtesting)

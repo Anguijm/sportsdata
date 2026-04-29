@@ -811,6 +811,11 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
   const ciBot = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95[1])}`).reverse();
   const ciBand = [...ciTop, ...ciBot].join(' ');
 
+  // Train CI band (debt #10: shaded region for train fold)
+  const trainCiTop = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95[0])}`);
+  const trainCiBot = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95[1])}`).reverse();
+  const trainCiBand = [...trainCiTop, ...trainCiBot].join(' ');
+
   const iterationRows = iterations.map((it, i) => {
     const delta = it.deltaVsPrevious
       ? `${it.deltaVsPrevious.brier > 0 ? '+' : ''}${it.deltaVsPrevious.brier.toFixed(4)}`
@@ -854,7 +859,9 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
 
     <div class="chart">
       <svg viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="xMidYMid meet">
-        <!-- CI band -->
+        <!-- Train CI band (debt #10) -->
+        <polygon points="${trainCiBand}" fill="#888888" fill-opacity="0.12" />
+        <!-- Test CI band -->
         <polygon points="${ciBand}" fill="#64d2ff" fill-opacity="0.15" />
         <!-- Train line -->
         <polyline points="${trainLine}" fill="none" stroke="#666" stroke-width="2" stroke-dasharray="4,4" />

@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-28 (post Sprint 10.19 — Phase 3 step 6 Platt calibration complete; branch claude/phase3-step6-calibration, PR open; PR #54 (step 5) merged at 1bc750b; prod still at step 3).
+Last regenerated: 2026-04-29 (post Sprint 10.22 debt-resolution sweep — debts #4/#5/#6/#7/#9/#10/#12/#15/#16/#17/#22/#23/#30 all resolved via PRs #57–#63 + branch claude/debt-16-position-weighted-injury; Phase 3 remains at step 6).
 
 ## Where to start
 
@@ -51,6 +51,15 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 ## In flight (branches not yet merged)
 
 - `claude/phase3-step6-calibration` — Phase 3 step 6 Platt calibration + serving (branch pushed, PR not yet opened).
+- `claude/nba-cold-start-prior-plan` (PR #56) — Phases 3–6 null-result chain; open, not merged.
+- `claude/debt-12-sigmoid-scale` (PR #57) — v5 sigmoid scale CV.
+- `claude/debt-17-23-30-misc` (PR #58) — min-impact threshold + hook false-positive fix.
+- `claude/debt-7-ece-refactor` (PR #59) — computeECE shared helper.
+- `claude/debt-5-6-10-cosmetic` (PR #60) — media query, name wrap, train CI band.
+- `claude/debt-9-v2-stability-test` (PR #61) — seed-stability test.
+- `claude/debt-4-vegas-frontend` (PR #62) — Vegas odds on upcoming cards.
+- `claude/debt-15-injury-consistency` (PR #63) — injury consistency + streak calibration (debts #15 + #22).
+- `claude/debt-16-position-weighted-injury` — position-weighted injury multipliers (no PR yet).
 
 ---
 
@@ -63,30 +72,18 @@ See `SESSION_LOG.md` "Council Debts (Open)" table for full descriptions and sour
 | 1 | canonical_game_id schema migration | P0-deferred | Sprint 8.5 |
 | 2 | MLB doubleheader handling | Pre-generalize | Sprint 8.5 |
 | 3 | Test fixture covering both ID shapes | With #1 | |
-| 4 | Vegas frontend rendering | Quick win | Sprint 8 deferred |
-| 5 | Ratchet media query consolidation | Low | cosmetic |
-| 6 | Player name line-wrap in ranked list | Low | cosmetic |
-| 7 | eceHighConfOnly → shared computeECE helper | Low | refactor |
 | 8 | Disable stale Cloudflare direct-git deploy source | Low | dashboard only |
-| 9 | Seed-stability test for v2 winning margin | Low | |
-| 10 | Train/test shaded regions on ratchet chart | Low | |
-| 12 | v5 sigmoid scale CV on held-out data | HIGH | |
-| 15 | v5↔v4-spread injury consistency check | Medium | |
-| 16 | Position-weighted injury impact (QB 3x, star 1.5x, bench 0.5x) | Medium | biggest quality win |
-| 17 | Min-impact threshold (skip < 2 units) | Low | refinement |
-| 18 | Fit INJURY_COMPENSATION separately for margin vs winprob | Gated on N≥200 | |
+| 18 | Fit INJURY_COMPENSATION separately for margin vs winprob | Gated on N≥200 | follow-up after #16 |
 | 19 | Second injury data provider | HELD | trigger met |
 | 20 | Historical odds ingest | HIGH | unblocks ATS backtest |
-| 22 | v4-spread streak adjustments not empirically calibrated | Medium | |
-| 23 | Brier clamp for NHL/soccer | Low | |
 | 24 | Dixon-Coles τ low-score correction | LOW | math-proven zero margin impact |
 | 25 | Dixon-Coles ξ time-decay + MLE | HIGH | blocked on #26 |
 | 26 | Pre-2024 soccer match scrape | HIGH | gating soccer-v2 |
 | 29 | Ternary reliability for soccer Poisson | Low | gated on 1X2 |
-| 30 | check-branch-not-merged false positive on chained commit+push | Low | workaround exists |
 | 32 | Shadow-analysis CLI / endpoint | HIGH | gated on N≥30 pairs |
 
 Closed (recent): #11 (Sprint 10.8), #13 (PR #28), #14 (PR #38), #27 (PR #34), #28 (PR #36), #31 (PR #44), #33 (PRs #42/#43/#45), #34 (Sprint 10.13), **#35 (Sprint 10.14, option-b after v10 forward-and-rollback)**.
+Sprint 10.22 sweep (2026-04-29): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7** (PR #59), **#9** (PR #61), **#12** (PR #57), **#15/#22** (PR #63), **#16** (branch claude/debt-16-position-weighted-injury), **#17/#30** (PR #58), **#23** (already satisfied — clamp existed for all sports).
 
 ## Plans (active)
 

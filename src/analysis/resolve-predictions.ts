@@ -553,6 +553,8 @@ export interface PredictionWithGame {
   game_status: string;
   /** MLB probable pitchers JSON, if available */
   pitchers_json: string | null;
+  /** Vegas odds JSON (spread + moneyline + over/under), if available */
+  odds_json: string | null;
 }
 
 export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWithGame[] {
@@ -567,7 +569,7 @@ export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWith
            p.predicted_prob, p.reasoning_text, p.made_at, p.resolved_at,
            p.actual_winner, p.was_correct, p.brier_score, p.low_confidence,
            g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status,
-           g.pitchers_json
+           g.pitchers_json, g.odds_json
     FROM predictions p
     JOIN games g ON p.game_id = g.id
     WHERE p.sport = ? AND p.model_version = 'v5' AND p.resolved_at IS NULL

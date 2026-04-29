@@ -75,6 +75,9 @@ class FeatureConfig:
     training_as_of: str = ""
     feature_names: list[str] = field(default_factory=list)
     norm_params: dict[str, NormParams] = field(default_factory=dict)
+    # Cold-start BPM prior index: {(team_id, season): prior_strength}
+    # Populated by build_training_tensor / build_test_fold_tensor from bpm_prior.py.
+    bpm_prior_index: dict[tuple[str, str], float] = field(default_factory=dict)
 
     def is_fitted(self) -> bool:
         return bool(self.norm_params)
@@ -270,11 +273,21 @@ def _per_game_derived(r: dict) -> dict[str, float]:
     efg_off = (r["fgm"] + 0.5 * r["fg3m"]) / fga
     efg_def = (r["opp_fgm"] + 0.5 * r["opp_fg3m"]) / opp_fga
 
-    # TOV% = 100 * TOV / (FGA + 0.44*FTA + TOV)  [Oliver formula]
+    # TOV% = TOV / (FGA + 0.44*FTA + TOV)  [Oliver formula, stored as a fraction 0.0–1.0]
+    #
+    # IMPORTANT: do NOT multiply by 100 here. tov_pct_off/def are in _RATE_FEATURES,
+    # which routes them through logit_zscore normalization. That transform clips values
+    # to [eps, 1-eps] before taking logit — eps is roughly 0.008 for ewma-h21.
+    # A percentage value like 12.5 would clip to 1-eps every single game, producing
+    # the same logit for every observation. Std collapses to ~0, z-score becomes 0
+    # for all games, and the feature carries zero information. Storing as a fraction
+    # (0.12 instead of 12) keeps values inside [eps, 1-eps] so logit works correctly.
+    # efg_pct, oreb_pct, dreb_pct are all fractions for exactly this reason.
+    # Phase 5 bug fix — Plans/nba-phase5-bug-fixes.md Change 1.
     tov_denom_off = fga + 0.44 * fta + tov
-    tov_pct_off = 100.0 * tov / max(tov_denom_off, 1.0)
+    tov_pct_off = tov / max(tov_denom_off, 1.0)
     tov_denom_def = opp_fga + 0.44 * opp_fta + opp_tov
-    tov_pct_def = 100.0 * opp_tov / max(tov_denom_def, 1.0)
+    tov_pct_def = opp_tov / max(tov_denom_def, 1.0)
 
     # OREB% = OREB / (OREB + opp_DREB)
     oreb_pct = r["oreb"] / max(r["oreb"] + r["opp_dreb"], 1)
@@ -425,6 +438,45 @@ def _rolling_feature_vector(
     )
     result["opp_adj_nrtg"] = opp_adj_nrtg
     result["opp_adj_def"] = opp_adj_def
+
+    # Cold-start BPM prior blend: effective_strength = (K*prior + g*actual) / (K+g)
+    # K_BASE=10, prior in BPM units (~NRtg scale). Uses all-venue season games.
+    # NaN when no prior exists for (team, season); model imputes as training mean.
+    prior_val = config.bpm_prior_index.get((team_id, target_season), float("nan"))
+    if math.isnan(prior_val):
+        result["bpm_effective"] = float("nan")
+    else:
+        all_h = histories.get(team_id, {}).get("all", [])
+        season_games = [
+            g for g in all_h
+            if g["season"] == target_season and g["date"] < target_date
+        ]
+        g_count = len(season_games)
+        actual_diff = (
+            sum(g["net_rating"] for g in season_games) / g_count
+            if g_count > 0 else 0.0
+        )
+        _K = 10.0
+        result["bpm_effective"] = (_K * prior_val + g_count * actual_diff) / (_K + g_count)
+
+    # Season-to-date mean Net Rating (ORtg − DRtg, per 100 possessions).
+    # This is the ML analogue of v5's (pts_for − pts_against) / games — giving the
+    # model direct access to the season-aggregate quality signal that v5 is built on.
+    # Filter: g["season"] == target_season ensures only current regular-season games
+    # are included (e.g. "2025-regular"), not postseason (e.g. "2025-postseason").
+    # NaN for games where the team has no completed season games yet (early-season);
+    # the normalization pipeline imputes NaN → 0.0 (= training mean).
+    # Phase 6 addition — Plans/nba-phase6-season-aggregate.md.
+    all_season_games = [
+        g for g in histories.get(team_id, {}).get("all", [])
+        if g["season"] == target_season and g["date"] < target_date
+    ]
+    if all_season_games:
+        result["season_net_rating"] = (
+            sum(g["net_rating"] for g in all_season_games) / len(all_season_games)
+        )
+    else:
+        result["season_net_rating"] = float("nan")
 
     return result
 
@@ -638,6 +690,8 @@ ORDERED_STATS = [
     "oreb_pct", "dreb_pct",
     "three_p_rate_off", "three_p_rate_def",
     "ast_per_poss", "stl_per_poss", "blk_per_poss",
+    "bpm_effective",     # cold-start prior blend (Plans/nba-cold-start-prior.md)
+    "season_net_rating", # season-to-date mean Net Rating — v5's core signal (Phase 6)
 ]
 SITUATIONAL_STATS = ["rest_days", "b2b", "rest_days_in_last_7", "win_rate_last_7"]
 
@@ -704,6 +758,11 @@ def build_training_tensor(
     """
     if not config.training_as_of:
         raise ValueError("config.training_as_of must be set before calling build_training_tensor")
+
+    # Populate BPM prior index if not already loaded
+    if not config.bpm_prior_index:
+        from ml.nba.bpm_prior import build_prior_index  # lazy import
+        config.bpm_prior_index = build_prior_index()
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = None
@@ -809,6 +868,10 @@ def build_live_tensor(
     """
     if not config.is_fitted():
         raise ValueError("config must be fitted via build_training_tensor before build_live_tensor")
+
+    if not config.bpm_prior_index:
+        from ml.nba.bpm_prior import build_prior_index  # lazy import
+        config.bpm_prior_index = build_prior_index()
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = None
@@ -936,6 +999,10 @@ def build_test_fold_tensor(
         )
     if not config.training_as_of:
         raise ValueError("config.training_as_of must be set")
+
+    if not config.bpm_prior_index:
+        from ml.nba.bpm_prior import build_prior_index  # lazy import
+        config.bpm_prior_index = build_prior_index()
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = None

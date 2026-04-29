@@ -161,6 +161,32 @@ def _per_game_brier(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
     return (y_pred - y_true) ** 2
 
 
+def _regular_season_mask(game_ids: list[str], db_path: str) -> "np.ndarray":
+    """Return a boolean array: True where the game_id belongs to a regular-season game.
+
+    The val fold's last ~16% of games (by date) are 2024-25 postseason. EWMA features
+    are warm in the postseason because teams have 60-70 games of history by then, making
+    val Brier look artificially good. The test fold is regular-season only. Computing val
+    Brier on regular-season games here aligns the val metric with what we actually care
+    about at test time. Postseason games stay in the training split — they're useful for
+    teaching the model; we just don't use them to measure performance.
+
+    Phase 5 fix — Plans/nba-phase5-bug-fixes.md Change 2.
+    """
+    conn = sqlite3.connect(db_path)
+    ph = ",".join("?" * len(game_ids))
+    rows = conn.execute(
+        f"SELECT game_id, season FROM nba_game_box_stats"
+        f" WHERE game_id IN ({ph}) GROUP BY game_id",
+        game_ids,
+    ).fetchall()
+    conn.close()
+    season_by_id = {r[0]: r[1] for r in rows}
+    # A season label ends in "-regular" for the regular season (e.g. "2024-regular")
+    # and "-postseason" for the playoffs. Anything not found defaults to excluded.
+    return np.array([season_by_id.get(gid, "").endswith("-regular") for gid in game_ids])
+
+
 # ── Phase 1: feature-form selection ───────────────────────────────────────
 
 def _phase1_form_selection(
@@ -396,10 +422,29 @@ def _build_ensemble(
     )
     X, y, game_ids = build_training_tensor(config, str(DB_PATH))
 
-    # Use last 20% as early stopping set for final ensemble
+    # Positional alignment check: game_ids must be in the same order as X and y rows.
+    # build_training_tensor guarantees this (games are appended in a single loop ordered
+    # by date), but we assert it here because the regular-season filter below depends on it.
+    assert len(game_ids) == len(X) == len(y), (
+        f"Alignment broken: game_ids={len(game_ids)}, X={len(X)}, y={len(y)}"
+    )
+
+    # Use last 20% as the val set. LightGBM uses X_val/y_val for early stopping during
+    # training, so the full val fold (including postseason) is passed to fit_lgbm.
     cutoff = int(len(y) * 0.8)
     X_train, y_train = X[:cutoff], y[:cutoff]
     X_val, y_val = X[cutoff:], y[cutoff:]
+    val_game_ids = list(game_ids[cutoff:])
+
+    # Regular-season mask for val Brier reporting. The last ~16% of val games are
+    # 2024-25 postseason — EWMA features are warm there (60-70 games of history),
+    # so postseason val Brier overstates expected performance on early regular-season
+    # test games. We compute and report Brier on regular-season val games only.
+    # LightGBM's early stopping still uses the full val fold (more signal is better there).
+    reg_mask = _regular_season_mask(val_game_ids, str(DB_PATH))
+    n_reg = int(reg_mask.sum())
+    print(f"  Val fold: {len(val_game_ids)} total games, {n_reg} regular-season (used for Brier)")
+    assert n_reg > 50, f"Too few regular-season val games ({n_reg}) — check training data"
 
     models_dir = RESULTS_DIR / run_id / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
@@ -410,7 +455,8 @@ def _build_ensemble(
         params = dict(best_lgbm_params, seed=seed, random_state=seed)
         model = fit_lgbm(X_train, y_train, X_val, y_val, params=params)
         preds = score_lgbm(model, X_val)
-        seed_brier = _pooled_brier(y_val, preds)
+        # Brier on regular-season val games only (Phase 5 fix)
+        seed_brier = _pooled_brier(y_val[reg_mask], preds[reg_mask])
         seed_briers.append(seed_brier)
         model_path = models_dir / f"lgbm-seed-{seed:02d}.pkl"
         with open(model_path, "wb") as f:
@@ -430,6 +476,7 @@ def _build_ensemble(
         "models_dir": str(models_dir),
         "val_cutoff_idx": cutoff,
         "val_n_games": len(y) - cutoff,
+        "val_n_regular_season": n_reg,
     }
 
 

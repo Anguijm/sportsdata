@@ -1,0 +1,131 @@
+{
+  "run_id": "20260429T081216-d5a074d2",
+  "timestamp": "20260429T081216",
+  "feature_config": {
+    "feature_form": "ewma",
+    "window_size": 10,
+    "ewma_halflife": 21,
+    "training_as_of": "2026-04-29T00:00:00Z"
+  },
+  "data_hash": "25fb263f918ef98d",
+  "n_train": 2112,
+  "n_val": 528,
+  "n_val_regular": 444,
+  "val_cutoff_idx": 2112,
+  "inner_cv": {
+    "0.0001": {
+      "mean_auc": 0.6774446184828821,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.24206997492941068
+    },
+    "0.0003": {
+      "mean_auc": 0.6773103602595659,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.23387800098601014
+    },
+    "0.001": {
+      "mean_auc": 0.676862832848512,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.22747338417873947
+    },
+    "0.003": {
+      "mean_auc": 0.6762362944730365,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.2264380896178693
+    },
+    "0.01": {
+      "mean_auc": 0.675162228686507,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.22796146113130958
+    },
+    "0.03": {
+      "mean_auc": 0.6748265831282166,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.22992882028962178
+    },
+    "0.1": {
+      "mean_auc": 0.6733497426717387,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.23151163953112655
+    },
+    "0.3": {
+      "mean_auc": 0.6733049899306333,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.23215163056969979
+    },
+    "1.0": {
+      "mean_auc": 0.6739091519355562,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.23236362462300003
+    },
+    "3.0": {
+      "mean_auc": 0.6742000447527412,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.23254175010956146
+    },
+    "10.0": {
+      "mean_auc": 0.6742671738643993,
+      "sigma_auc": 0.0,
+      "inner_brier": 0.23258990788643388
+    }
+  },
+  "best_C": 0.003,
+  "at_boundary": false,
+  "sigma_warning": false,
+  "val_auc": 0.757251,
+  "val_brier": 0.202859,
+  "val_mean": 0.535209,
+  "empirical_rate": 0.540541,
+  "v5_auc_floor": 0.7283,
+  "v5_val_brier_ceiling": 0.2093,
+  "gate_d_pass": true,
+  "rule_1_pass": true,
+  "rule_3_pass": true,
+  "top10_coef": [
+    [
+      "home_bpm_effective",
+      0.145769
+    ],
+    [
+      "away_bpm_effective",
+      -0.136975
+    ],
+    [
+      "away_season_net_rating",
+      -0.101605
+    ],
+    [
+      "home_net_rating",
+      0.090958
+    ],
+    [
+      "home_ortg",
+      0.079195
+    ],
+    [
+      "home_season_net_rating",
+      0.077055
+    ],
+    [
+      "home_efg_pct_off",
+      0.072884
+    ],
+    [
+      "home_win_rate_last_7",
+      0.072352
+    ],
+    [
+      "away_tov_pct_off",
+      0.06461
+    ],
+    [
+      "home_rest_days",
+      0.058742
+    ]
+  ],
+  "cold_start": {
+    "n_cold": 0,
+    "cold_brier": null,
+    "late_brier": null
+  }
+}

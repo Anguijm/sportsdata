@@ -276,12 +276,16 @@ export function predictWithInjuries(
   const scale = SIGMOID_SCALE[game.sport] ?? 0.10;
   const homeAdv = SPORT_HOME_ADVANTAGE[game.sport] ?? 3.0;
 
-  // Injury adjustment: reduce team's effective differential
+  // Injury adjustment: reduce team's effective differential.
+  // debt #17: skip if net impact < 2 units (noise threshold).
   let injuryAdj = 0;
   if (injuries) {
     // homeOutImpact > 0 means home team is WEAKER → subtract from home's favor
     // awayOutImpact > 0 means away team is WEAKER → add to home's favor
-    injuryAdj = (injuries.awayOutImpact - injuries.homeOutImpact) * INJURY_COMPENSATION;
+    const netImpact = injuries.awayOutImpact - injuries.homeOutImpact;
+    if (Math.abs(netImpact) >= 2) {
+      injuryAdj = netImpact * INJURY_COMPENSATION;
+    }
   }
 
   const x = scale * ((homeDiff - awayDiff) + homeAdv + injuryAdj);
@@ -374,8 +378,10 @@ export function predictMargin(
   // as if the player is playing → stale edge → wrong ATS pick when it
   // matters most (key player out).
   if (injuries) {
-    const injuryAdj = (injuries.awayOutImpact - injuries.homeOutImpact) * INJURY_COMPENSATION;
-    margin += injuryAdj;
+    const netImpact = injuries.awayOutImpact - injuries.homeOutImpact;
+    if (Math.abs(netImpact) >= 2) {
+      margin += netImpact * INJURY_COMPENSATION;
+    }
   }
 
   return Math.max(-clamp, Math.min(clamp, margin));

@@ -1,0 +1,4 @@
+# Pinned to an exact version (supply-chain guard).
+# PyPI version slots are immutable, so a pin to ==1.73.1 prevents
+# auto-upgrade to a malicious release.
+google-genai==1.73.1

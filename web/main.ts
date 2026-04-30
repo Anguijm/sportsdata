@@ -342,6 +342,9 @@ interface PredictionRow {
   home_team_id: string;
   away_team_id: string;
   game_status: string;
+  pitchers_json?: string | null;
+  odds_json?: string | null;
+  game_updated_at?: string | null;
 }
 
 interface TrackRecordCohort {
@@ -476,9 +479,9 @@ function renderPredictions(
         const dateLabel = formatGameDate(p.game_date);
         // MLB pitcher display
         let pitcherHtml = '';
-        if (currentSport === 'mlb' && (p as unknown as { pitchers_json: string | null }).pitchers_json) {
+        if (currentSport === 'mlb' && p.pitchers_json) {
           try {
-            const pitchers = JSON.parse((p as unknown as { pitchers_json: string }).pitchers_json) as {
+            const pitchers = JSON.parse(p.pitchers_json) as {
               home?: { name: string; era: number; record?: string };
               away?: { name: string; era: number; record?: string };
             };
@@ -490,6 +493,47 @@ function renderPredictions(
                 <span class="pitcher-vs">vs</span>
                 ${hp ? `<span class="pitcher">${esc(hp.name)} (${hp.era.toFixed(2)} ERA)</span>` : ''}
               </div>`;
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Vegas odds display (debt #4)
+        let oddsHtml = '';
+        if (p.odds_json) {
+          try {
+            const raw = JSON.parse(p.odds_json);
+            // Runtime shape validation — skip silently if malformed
+            const odds = (raw && typeof raw === 'object') ? raw as {
+              spread?: { favorite: string; line: number };
+              moneyline?: { home: number; away: number };
+              overUnder?: number;
+            } : null;
+            if (odds) {
+              const parts: string[] = [];
+              if (odds.spread && typeof odds.spread.favorite === 'string' && typeof odds.spread.line === 'number') {
+                const favAbbr = odds.spread.favorite.split(':')[1] ?? odds.spread.favorite;
+                parts.push(`${esc(favAbbr)} ${odds.spread.line > 0 ? '+' : ''}${odds.spread.line.toFixed(1)}`);
+              }
+              if (odds.moneyline && typeof odds.moneyline.home === 'number' && typeof odds.moneyline.away === 'number') {
+                const ml = odds.moneyline;
+                const homeML = ml.home > 0 ? `+${ml.home}` : `${ml.home}`;
+                const awayML = ml.away > 0 ? `+${ml.away}` : `${ml.away}`;
+                parts.push(`${homeAbbr} ${homeML} / ${awayAbbr} ${awayML}`);
+              }
+              if (typeof odds.overUnder === 'number') {
+                parts.push(`o/u ${odds.overUnder.toFixed(1)}`);
+              }
+              if (parts.length > 0) {
+                const updatedAt = p.game_updated_at ? new Date(p.game_updated_at) : null;
+                const ageHours = updatedAt ? (Date.now() - updatedAt.getTime()) / 3600000 : null;
+                const stale = ageHours !== null && ageHours > 4;
+                const ageLabel = updatedAt
+                  ? `as of ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : '';
+                oddsHtml = `<div class="prediction-odds${stale ? ' odds-stale' : ''}">
+                  Vegas: ${parts.join(' · ')}${ageLabel ? ` <span class="odds-age">(${esc(ageLabel)}${stale ? ' — may be stale' : ''})</span>` : ''}
+                </div>`;
+              }
             }
           } catch { /* ignore */ }
         }
@@ -506,6 +550,7 @@ function renderPredictions(
               <div class="matchup-team ${winnerAbbr === homeAbbr ? 'pick' : ''}">${homeAbbr}</div>
             </div>
             ${pitcherHtml}
+            ${oddsHtml}
             <div class="prediction-pick">
               <div class="pick-text">Model pick: <strong>${winnerAbbr}</strong></div>
               <div class="pick-confidence">${confidence}%</div>

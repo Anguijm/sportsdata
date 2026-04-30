@@ -809,6 +809,21 @@ body {
   font-size: 10px;
 }
 
+.prediction-odds {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 4px 0;
+  letter-spacing: 0.02em;
+}
+.prediction-odds.odds-stale {
+  color: #ff9f0a;
+}
+.odds-age {
+  opacity: 0.7;
+}
+
 .prediction-reasoning {
   font-size: 12px;
   color: var(--text-secondary);

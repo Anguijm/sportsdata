@@ -1,0 +1,413 @@
+{
+  "run_id": "20260428T123326-7b5b31c1",
+  "training_as_of": "2026-04-28T00:00:00Z",
+  "timestamp": "2026-04-28T12:35:15.268567Z",
+  "plan_ref": "Plans/nba-learned-model.md addendum v13",
+  "phase1": {
+    "n_candidates": 10,
+    "n_pooled_planned": 8120,
+    "n_pooled_realized": 2112,
+    "threshold_planned": 0.00226,
+    "threshold_realized": 0.007086486131436254,
+    "sigma_inner": 0.15175920970659243,
+    "estimator_path": "bootstrap(B=2000)",
+    "gate_passed": false,
+    "segment_stable": false,
+    "winner_label": "ewma-h14",
+    "winner_brier": 0.2144734401176877,
+    "median_brier": 0.2167676773213671,
+    "gap": 0.0022942372036793834,
+    "segment_ranks": {
+      "early": {
+        "rank": 2,
+        "top3": [
+          "rolling-10",
+          "ewma-h14",
+          "rolling-5"
+        ]
+      },
+      "middle": {
+        "rank": 1,
+        "top3": [
+          "ewma-h14",
+          "ewma-h7",
+          "ewma-h21"
+        ]
+      },
+      "late": {
+        "rank": 6,
+        "top3": [
+          "rolling-20",
+          "ewma-h7",
+          "rolling-10"
+        ]
+      }
+    },
+    "candidate_scores": [
+      {
+        "label": "ewma-h14",
+        "pooled_brier": 0.2144734401176877
+      },
+      {
+        "label": "ewma-h7",
+        "pooled_brier": 0.21519620840629863
+      },
+      {
+        "label": "rolling-10",
+        "pooled_brier": 0.2161281636205806
+      },
+      {
+        "label": "rolling-20",
+        "pooled_brier": 0.21621510289464163
+      },
+      {
+        "label": "ewma-h21",
+        "pooled_brier": 0.21641625863774855
+      },
+      {
+        "label": "ewma-h3",
+        "pooled_brier": 0.21711909600498563
+      },
+      {
+        "label": "rolling-15",
+        "pooled_brier": 0.21743591350144084
+      },
+      {
+        "label": "rolling-5",
+        "pooled_brier": 0.21776301696533432
+      },
+      {
+        "label": "rolling-30",
+        "pooled_brier": 0.21788659146272255
+      },
+      {
+        "label": "season-agg",
+        "pooled_brier": 0.21959292601965047
+      }
+    ]
+  },
+  "effective_winner": {
+    "label": "ewma-h21",
+    "selection_note": "council override: ewma-h21 (Gate 2 decision 2026-04-27; Plans/nba-learned-model.md addendum v13 \u00a7Gate 2)",
+    "feature_form": "ewma",
+    "window_size": 10,
+    "ewma_halflife": 21
+  },
+  "phase2_lgbm": {
+    "best_hparams": {
+      "num_leaves": 31,
+      "min_child_samples": 200,
+      "reg_alpha": 1.0
+    },
+    "best_brier": 0.21556118556247275,
+    "all_results": [
+      {
+        "hparams": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21556118556247275
+      },
+      {
+        "hparams": {
+          "num_leaves": 63,
+          "min_child_samples": 200,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21556118556247275
+      },
+      {
+        "hparams": {
+          "num_leaves": 127,
+          "min_child_samples": 200,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21556118556247275
+      },
+      {
+        "hparams": {
+          "num_leaves": 31,
+          "min_child_samples": 100,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.2155957994258828
+      },
+      {
+        "hparams": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.2155957994258828
+      },
+      {
+        "hparams": {
+          "num_leaves": 127,
+          "min_child_samples": 100,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.2155957994258828
+      },
+      {
+        "hparams": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.21572932698673247
+      },
+      {
+        "hparams": {
+          "num_leaves": 63,
+          "min_child_samples": 200,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.21572932698673247
+      },
+      {
+        "hparams": {
+          "num_leaves": 127,
+          "min_child_samples": 200,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.21572932698673247
+      },
+      {
+        "hparams": {
+          "num_leaves": 31,
+          "min_child_samples": 50,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21594281886306008
+      },
+      {
+        "hparams": {
+          "num_leaves": 63,
+          "min_child_samples": 50,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21594281886306008
+      },
+      {
+        "hparams": {
+          "num_leaves": 127,
+          "min_child_samples": 50,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21594281886306008
+      },
+      {
+        "hparams": {
+          "num_leaves": 31,
+          "min_child_samples": 50,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.21629604449230316
+      },
+      {
+        "hparams": {
+          "num_leaves": 63,
+          "min_child_samples": 50,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.21629604449230316
+      },
+      {
+        "hparams": {
+          "num_leaves": 127,
+          "min_child_samples": 50,
+          "reg_alpha": 0
+        },
+        "pooled_brier": 0.21629604449230316
+      },
+      {
+        "hparams": {
+          "num_leaves": 31,
+          "min_child_samples": 100,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21673276354377624
+      },
+      {
+        "hparams": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21673276354377624
+      },
+      {
+        "hparams": {
+          "num_leaves": 127,
+          "min_child_samples": 100,
+          "reg_alpha": 1.0
+        },
+        "pooled_brier": 0.21673276354377624
+      }
+    ]
+  },
+  "phase2_mlp": {
+    "best_hparams": {
+      "learning_rate": 0.001,
+      "dropout": 0.5,
+      "weight_decay": 0.0
+    },
+    "best_brier": 0.21639050691319156,
+    "all_results": [
+      {
+        "hparams": {
+          "learning_rate": 0.001,
+          "dropout": 0.5,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.21639050691319156
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.001,
+          "dropout": 0.5,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.21643331806278351
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.01,
+          "dropout": 0.3,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.2171399579905192
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.01,
+          "dropout": 0.3,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.2171440043294835
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.0001,
+          "dropout": 0.5,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.21721559590189057
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.0001,
+          "dropout": 0.5,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.21721875328946705
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.01,
+          "dropout": 0.5,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.21728171224354448
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.01,
+          "dropout": 0.5,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.21739694382544325
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.001,
+          "dropout": 0.3,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.21803286905863495
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.001,
+          "dropout": 0.3,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.21808963264792355
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.0001,
+          "dropout": 0.3,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.21928720185320058
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.0001,
+          "dropout": 0.3,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.21929146776724046
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.001,
+          "dropout": 0.0,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.22226091925913075
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.001,
+          "dropout": 0.0,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.22226220415254216
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.01,
+          "dropout": 0.0,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.22233491305256775
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.01,
+          "dropout": 0.0,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.22237616201408109
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.0001,
+          "dropout": 0.0,
+          "weight_decay": 0.01
+        },
+        "pooled_brier": 0.2226341411398047
+      },
+      {
+        "hparams": {
+          "learning_rate": 0.0001,
+          "dropout": 0.0,
+          "weight_decay": 0.0
+        },
+        "pooled_brier": 0.22263657911516085
+      }
+    ]
+  },
+  "ensemble": {
+    "n_seeds": 20,
+    "mean_val_brier": 0.20457150218494208,
+    "seed_std": 0.0015082248330515477,
+    "seed_instability_gate_passed": true,
+    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/20260428T123326-7b5b31c1/models",
+    "val_cutoff_idx": 2112,
+    "val_n_games": 528
+  }
+}

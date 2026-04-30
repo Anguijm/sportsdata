@@ -1,6 +1,18 @@
 {
-  "counter": 2,
+  "counter": 1,
   "history": [
+    {
+      "timestamp": "2026-04-29T00:00:00Z",
+      "touch": "COUNTER_RESET",
+      "description": "Counter reset to 0 for Phase 6. Previous Phase 5 touches: LightGBM Gate D FAIL (AUC 0.7221, Gate 2 council CLEAR 7.6/10). Phase 6 model: 46 features (44 Phase 5 + home_season_net_rating + away_season_net_rating). Run 20260428T204443-640e0cac. Gate 1 council CLEAR 8.0/10. Gate 2 implementation review CLEAR 8.4/10.",
+      "council_co_sign": "DQ:CLEAR/9 Stats:CLEAR/8 Pred:CLEAR/8 Domain:CLEAR/8 Math:CLEAR/9 (Gate 2 implementation review \u2014 avg 8.4/10 \u2014 CLEAR)"
+    },
+    {
+      "timestamp": "2026-04-29T00:00:00Z",
+      "touch": "COUNTER_RESET",
+      "description": "Counter reset to 0 for Phase 5. Previous Phase 3+4 touches: LightGBM Gate D FAIL, MLP Gate D FAIL (Phase 3), LightGBM Gate D FAIL + cold-start Ship Rule 1 FAIL (Phase 4). Phase 5 model: same 44-feature ewma-h21 architecture with two bug fixes \u2014 TOV% stored as fraction (not percent), and Platt/val Brier computed on regular-season val games only. Run 20260428T200859-c93c6bad.",
+      "council_co_sign": "DQ:WARN/7 Stats:WARN/6 Pred:CLEAR/7 Domain:CLEAR/8 Math:WARN/7 (Gate 1 plan review \u2014 avg 7.6/10 \u2192 fix-pack applied \u2192 CLEAR)"
+    },
     {
       "timestamp": "2026-04-28T00:00:00Z",
       "touch": 1,
@@ -29,6 +41,86 @@
         "v5_test_brier": 0.209259,
         "brier_improvement": -0.008697,
         "note": "Gate D halt \u2014 MLP AUC below v5 floor; null result"
+      }
+    },
+    {
+      "timestamp": "2026-04-28T12:40:00Z",
+      "touch": "COUNTER_RESET",
+      "description": "Counter reset to 0 for Phase 4 cold-start prior evaluation. Previous two touches were Phase 3 null results (unfeaturized LightGBM + MLP). New model: 44 features (42 base + home_bpm_effective + away_bpm_effective), run 20260428T123326-7b5b31c1. This is a new training run under Plans/nba-cold-start-prior.md, not a re-test of the Phase 3 model.",
+      "council_co_sign": "DQ:WARN-resolved DQ:CLEAR/7 Stats:CLEAR/8 Pred:CLEAR/8 Domain:CLEAR/8 Math:CLEAR/9 (Gate 2 implementation review \u2014 avg 8.0/10)"
+    },
+    {
+      "timestamp": "2026-04-28T12:38:24.353209Z",
+      "touch": 1,
+      "description": "step8 LightGBM test-fold evaluation",
+      "council_co_sign": "Stats:WARN-CLEAR DQ:WARN-CLEAR Pred:WARN-CLEAR Domain:WARN-CLEAR Math:WARN-CLEAR",
+      "results_summary": {
+        "gate_d_pass": false,
+        "gate_d_lgbm_auc": 0.7241,
+        "gate_d_v5_auc": 0.7283,
+        "lgbm_cal_brier": 0.21192,
+        "v5_test_brier": 0.209259,
+        "brier_improvement": -0.002661,
+        "note": "Gate D halt \u2014 AUC below v5 floor"
+      }
+    },
+    {
+      "timestamp": "2026-04-28T13:30:00Z",
+      "touch": 2,
+      "description": "cold-start ship-rule evaluation (evaluate_cold_start.py) \u2014 Ship Rule 1 FAIL (games 1-20 Brier +0.0048 worse than v5; CI [-0.0102, +0.0198] spans zero); Ship Rule 2 PASS (games 21+ delta +0.0019 \u2264 +0.002)",
+      "council_co_sign": "DQ:CLEAR/8 Stats:CLEAR/8 Pred:CLEAR/7 Domain:CLEAR/7 Math:CLEAR/8 (Gate 4 results review \u2014 avg 7.6/10 \u2014 CLEAR)",
+      "results_summary": {
+        "ship_rule_1_pass": false,
+        "ship_rule_2_pass": true,
+        "ship_rule_3_pass": true,
+        "cold_start_lgbm_brier": 0.210309,
+        "cold_start_v5_brier": 0.205528,
+        "cold_start_delta": 0.004781,
+        "cold_start_ci_lo": -0.010219,
+        "cold_start_ci_hi": 0.019839,
+        "late_season_delta": 0.001893,
+        "n_cold_start": 309,
+        "n_late_season": 853,
+        "note": "Null result \u2014 cold-start prior did not improve model on games 1-20 vs v5 incumbent"
+      }
+    },
+    {
+      "timestamp": "2026-04-28T20:13:04.337957Z",
+      "touch": 1,
+      "description": "step8 LightGBM test-fold evaluation \u2014 Phase 5 (TOV% fix + reg-season val fold). Gate D FAIL (AUC 0.7221 < v5 0.7283; Brier +0.0027 worse). Bug fixes were real but did not close AUC gap; structural deficit confirmed.",
+      "council_co_sign": "DQ:CLEAR/8 Stats:CLEAR/8 Pred:CLEAR/7 Domain:CLEAR/7 Math:CLEAR/8 (Gate 2 results review \u2014 avg 7.6/10 \u2014 CLEAR)",
+      "results_summary": {
+        "gate_d_pass": false,
+        "gate_d_lgbm_auc": 0.7221,
+        "gate_d_v5_auc": 0.7283,
+        "lgbm_cal_brier": 0.211973,
+        "v5_test_brier": 0.209259,
+        "brier_improvement": -0.002714,
+        "val_brier_calibrated": 0.196248,
+        "val_brier_raw": 0.199433,
+        "platt_A": 1.266233,
+        "platt_B": 0.065834,
+        "note": "Gate D halt \u2014 AUC below v5 floor. Phase 5 null result. v5 remains incumbent."
+      }
+    },
+    {
+      "timestamp": "2026-04-28T20:48:00.509814Z",
+      "touch": 1,
+      "description": "step8 LightGBM test-fold evaluation \u2014 Phase 6 (+ season_net_rating). Gate D FAIL (AUC 0.7237 < v5 0.7283; Brier +0.0021 worse). season_net_rating features helped marginally (+0.0016 AUC vs Phase 5) but did not close the gap. EWMA features appear to dilute the season-aggregate signal.",
+      "council_co_sign": "DQ:CLEAR/8 Stats:CLEAR/7 Pred:CLEAR/7 Domain:CLEAR/7 Math:CLEAR/8 (Gate 2 results review \u2014 avg 7.4/10 \u2014 CLEAR)",
+      "results_summary": {
+        "gate_d_pass": false,
+        "gate_d_lgbm_auc": 0.7237,
+        "gate_d_v5_auc": 0.7283,
+        "lgbm_cal_brier": 0.211391,
+        "v5_test_brier": 0.209259,
+        "brier_improvement": -0.002132,
+        "val_brier_calibrated": 0.196712,
+        "val_brier_raw": 0.198515,
+        "platt_A": 1.257693,
+        "platt_B": 0.066852,
+        "auc_improvement_vs_phase5": 0.0016,
+        "note": "Gate D halt \u2014 AUC below v5 floor. Phase 6 null result. v5 remains incumbent."
       }
     }
   ]

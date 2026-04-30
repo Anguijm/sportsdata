@@ -215,8 +215,8 @@ const SPORT_HOME_ADVANTAGE: Record<string, number> = {
 const SIGMOID_SCALE: Record<string, number> = {
   nba: 0.10,
   nfl: 0.10,
-  mlb: 0.30,   // revised: was 0.25, theoretical ≈ 0.30 from σ_eff ≈ 6 runs
-  nhl: 0.45,   // revised: was 0.50, theoretical ≈ 0.45 from σ_eff ≈ 4 goals
+  mlb: 0.26,   // debt #12: was 0.30, empirically calibrated on held-out data (ECE 0.0162→0.0110, sR −0.011→−0.002)
+  nhl: 0.40,   // debt #12: was 0.45, empirically calibrated on held-out data (ECE 0.0140→0.0103, sR −0.008→−0.001)
   mls: 0.80,   // debt #28: was 0.60, empirically calibrated (SHY→HONEST at signedResid ≈ 0)
   epl: 0.90,   // debt #28: was 0.60, empirically calibrated (SHY→HONEST at signedResid ≈ 0)
 };
@@ -356,8 +356,11 @@ export function predictMargin(
   const awayHotStreak = ctx.away.lastNResults.length >= 3 &&
     ctx.away.lastNResults.slice(-3).every(r => r);
 
-  if (homeColdStreak) margin -= homeAdv * 0.5; // halve home advantage when cold
-  if (awayHotStreak) margin -= homeAdv * 0.3;  // further reduce for hot visitor
+  // debt #22: empirically calibrated on 8699 NBA games (scripts/validate-debt22.py).
+  // NBA cold_coef empirical = 0.92 (council review pending before raising from 0.5).
+  // hot_coef empirical = 0.38 — within ±0.15 tolerance of current 0.3.
+  if (homeColdStreak) margin -= homeAdv * 0.5;
+  if (awayHotStreak) margin -= homeAdv * 0.3;
 
   // MLB pitcher ERA differential: lower ERA = better pitcher.
   // Council review (Statistical Validity + Domain Expert convergence):

@@ -696,7 +696,10 @@ export function writeOddsToGames(sport: string, oddsEvents: Array<{
 
   for (const event of oddsEvents) {
     if (!event.odds) continue;
-    if (!isValidOddsShape(event.odds)) continue;
+    if (!isValidOddsShape(event.odds)) {
+      console.warn('[writeOddsToGames] skipping malformed odds event:', JSON.stringify(event.odds).slice(0, 200));
+      continue;
+    }
     const homeId = resolveTeamId(event.homeTeam);
     const awayId = resolveTeamId(event.awayTeam);
     if (!homeId || !awayId) continue;

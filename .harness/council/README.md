@@ -14,7 +14,7 @@ For durable session context see also `CLAUDE.md` §"Council discipline".
 | Pred | `prediction-accuracy.md` | Prediction accuracy — model behaviour, calibration, leakage |
 | Domain | `domain-expert.md` | Basketball domain — convention correctness, sport-specific edge cases |
 | Math | `mathematics.md` | Numerical correctness — calculation review; **abstains on non-calculation reviews** |
-| Resolver | `resolver.md` | Synthesis and verdict — reads all four expert reviews, resolves conflicts, issues final verdict. **Not a voter**; contributes no independent opinion of its own. |
+| Lead Architect | `lead-architect.md` | Synthesis and verdict — reads all expert reviews, resolves conflicts, issues final verdict. **Not a voter**; run by Gemini via `.github/workflows/council.yml` on every PR. |
 
 ---
 
@@ -61,9 +61,9 @@ Skipping any gate is a CRITICAL process failure. The user must never be the firs
 
 ---
 
-## Resolver hard rules
+## Lead Architect hard rules
 
-The Resolver applies these non-negotiable verdicts regardless of other expert scores:
+The Lead Architect applies these non-negotiable verdicts regardless of other expert scores:
 
 | Condition | Resolver verdict |
 |---|---|

@@ -1873,9 +1873,7 @@ body {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .player-name .meta {
@@ -1909,12 +1907,6 @@ body {
   font-family: 'JetBrains Mono', 'SF Mono', monospace;
 }
 
-@media (max-width: 720px) {
-  .player-row { grid-template-columns: 32px 1fr auto; padding: 12px; }
-  .player-name .name { font-size: 14px; }
-  .stat-value { font-size: 16px; }
-}
-
 /* Footer */
 .footer {
   padding: 80px 0;
@@ -1929,7 +1921,11 @@ body {
   text-decoration: none;
 }
 
+/* debt #5: merged adjacent 720px blocks (player list + hero/sections) */
 @media (max-width: 720px) {
+  .player-row { grid-template-columns: 32px 1fr auto; padding: 12px; }
+  .player-name .name { font-size: 14px; }
+  .stat-value { font-size: 16px; }
   .hero h1 { font-size: 42px; word-break: break-word; }
   .hero p { font-size: 17px; }
   .big-stats { grid-template-columns: repeat(2, 1fr); }

@@ -777,9 +777,9 @@ interface RatchetArtifact {
 interface RatchetScore {
   sampleSize: number;
   brier: number;
-  brierCI95: [number, number];
+  brierCI95?: [number, number];
   accuracy: number;
-  accuracyCI95: [number, number];
+  accuracyCI95?: [number, number];
   homeWinRate: number;
 }
 
@@ -795,7 +795,10 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
   const plotW = chartWidth - margin.left - margin.right;
   const plotH = chartHeight - margin.top - margin.bottom;
 
-  const allBriers = iterations.flatMap(i => [i.train.brier, i.test.brier, i.train.brierCI95[0], i.train.brierCI95[1], i.test.brierCI95[0], i.test.brierCI95[1]]);
+  const allBriers = iterations.flatMap(i => [
+    i.train.brier, i.test.brier,
+    ...(i.train.brierCI95 ?? []), ...(i.test.brierCI95 ?? []),
+  ]);
   const maxBrier = Math.max(...allBriers) * 1.05;
   const minBrier = Math.max(0, Math.min(...allBriers) * 0.95);
 
@@ -806,15 +809,23 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
   const testLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brier)}`).join(' ');
   const trainLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brier)}`).join(' ');
 
-  // Test CI band
-  const ciTop = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95[0])}`);
-  const ciBot = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95[1])}`).reverse();
-  const ciBand = [...ciTop, ...ciBot].join(' ');
+  // Test CI band — omit if data is absent
+  const hasCI = iterations.every(it => it.test.brierCI95);
+  const ciBand = hasCI
+    ? [
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95![0])}`),
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95![1])}`).reverse(),
+      ].join(' ')
+    : null;
 
-  // Train CI band (debt #10: shaded region for train fold)
-  const trainCiTop = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95[0])}`);
-  const trainCiBot = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95[1])}`).reverse();
-  const trainCiBand = [...trainCiTop, ...trainCiBot].join(' ');
+  // Train CI band (debt #10: shaded region for train fold) — omit if data is absent
+  const hasTrainCI = iterations.every(it => it.train.brierCI95);
+  const trainCiBand = hasTrainCI
+    ? [
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95![0])}`),
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95![1])}`).reverse(),
+      ].join(' ')
+    : null;
 
   const iterationRows = iterations.map((it, i) => {
     const delta = it.deltaVsPrevious
@@ -860,9 +871,9 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
     <div class="chart">
       <svg viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="xMidYMid meet">
         <!-- Train CI band (debt #10) -->
-        <polygon points="${trainCiBand}" fill="#888888" fill-opacity="0.12" />
+        ${trainCiBand ? `<polygon points="${trainCiBand}" fill="#888888" fill-opacity="0.12" />` : ''}
         <!-- Test CI band -->
-        <polygon points="${ciBand}" fill="#64d2ff" fill-opacity="0.15" />
+        ${ciBand ? `<polygon points="${ciBand}" fill="#64d2ff" fill-opacity="0.15" />` : ''}
         <!-- Train line -->
         <polyline points="${trainLine}" fill="none" stroke="#666" stroke-width="2" stroke-dasharray="4,4" />
         <!-- Test line -->

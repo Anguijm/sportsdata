@@ -676,11 +676,27 @@ export function writeOddsToGames(sport: string, oddsEvents: Array<{
       AND odds_json IS NULL
   `);
 
+  function isValidOddsShape(o: unknown): o is Record<string, unknown> {
+    if (!o || typeof o !== 'object') return false;
+    const obj = o as Record<string, unknown>;
+    if (obj.spread !== undefined) {
+      const s = obj.spread as Record<string, unknown>;
+      if (typeof s.favorite !== 'string' || typeof s.line !== 'number') return false;
+    }
+    if (obj.moneyline !== undefined) {
+      const ml = obj.moneyline as Record<string, unknown>;
+      if (typeof ml.home !== 'number' || typeof ml.away !== 'number') return false;
+    }
+    if (obj.overUnder !== undefined && typeof obj.overUnder !== 'number') return false;
+    return true;
+  }
+
   let matched = 0;
   const now = new Date().toISOString();
 
   for (const event of oddsEvents) {
     if (!event.odds) continue;
+    if (!isValidOddsShape(event.odds)) continue;
     const homeId = resolveTeamId(event.homeTeam);
     const awayId = resolveTeamId(event.awayTeam);
     if (!homeId || !awayId) continue;

@@ -344,6 +344,7 @@ interface PredictionRow {
   game_status: string;
   pitchers_json?: string | null;
   odds_json?: string | null;
+  game_updated_at?: string | null;
 }
 
 interface TrackRecordCohort {
@@ -500,27 +501,39 @@ function renderPredictions(
         let oddsHtml = '';
         if (p.odds_json) {
           try {
-            const odds = JSON.parse(p.odds_json) as {
+            const raw = JSON.parse(p.odds_json);
+            // Runtime shape validation — skip silently if malformed
+            const odds = (raw && typeof raw === 'object') ? raw as {
               spread?: { favorite: string; line: number };
               moneyline?: { home: number; away: number };
               overUnder?: number;
-            };
-            const parts: string[] = [];
-            if (odds.spread) {
-              const favAbbr = odds.spread.favorite.split(':')[1] ?? odds.spread.favorite;
-              parts.push(`${esc(favAbbr)} ${odds.spread.line > 0 ? '+' : ''}${odds.spread.line.toFixed(1)}`);
-            }
-            if (odds.moneyline) {
-              const ml = odds.moneyline;
-              const homeML = ml.home > 0 ? `+${ml.home}` : `${ml.home}`;
-              const awayML = ml.away > 0 ? `+${ml.away}` : `${ml.away}`;
-              parts.push(`${homeAbbr} ${homeML} / ${awayAbbr} ${awayML}`);
-            }
-            if (odds.overUnder) {
-              parts.push(`o/u ${odds.overUnder.toFixed(1)}`);
-            }
-            if (parts.length > 0) {
-              oddsHtml = `<div class="prediction-odds">${parts.join(' · ')}</div>`;
+            } : null;
+            if (odds) {
+              const parts: string[] = [];
+              if (odds.spread && typeof odds.spread.favorite === 'string' && typeof odds.spread.line === 'number') {
+                const favAbbr = odds.spread.favorite.split(':')[1] ?? odds.spread.favorite;
+                parts.push(`${esc(favAbbr)} ${odds.spread.line > 0 ? '+' : ''}${odds.spread.line.toFixed(1)}`);
+              }
+              if (odds.moneyline && typeof odds.moneyline.home === 'number' && typeof odds.moneyline.away === 'number') {
+                const ml = odds.moneyline;
+                const homeML = ml.home > 0 ? `+${ml.home}` : `${ml.home}`;
+                const awayML = ml.away > 0 ? `+${ml.away}` : `${ml.away}`;
+                parts.push(`${homeAbbr} ${homeML} / ${awayAbbr} ${awayML}`);
+              }
+              if (typeof odds.overUnder === 'number') {
+                parts.push(`o/u ${odds.overUnder.toFixed(1)}`);
+              }
+              if (parts.length > 0) {
+                const updatedAt = p.game_updated_at ? new Date(p.game_updated_at) : null;
+                const ageHours = updatedAt ? (Date.now() - updatedAt.getTime()) / 3600000 : null;
+                const stale = ageHours !== null && ageHours > 4;
+                const ageLabel = updatedAt
+                  ? `as of ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : '';
+                oddsHtml = `<div class="prediction-odds${stale ? ' odds-stale' : ''}">
+                  Vegas: ${parts.join(' · ')}${ageLabel ? ` <span class="odds-age">(${esc(ageLabel)}${stale ? ' — may be stale' : ''})</span>` : ''}
+                </div>`;
+              }
             }
           } catch { /* ignore */ }
         }

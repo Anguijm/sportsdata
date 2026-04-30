@@ -1,12 +1,16 @@
 {
   "method": "platt",
-  "plan_ref": "Plans/nba-learned-model.md addendum v14",
+  "plan_ref": "Plans/nba-phase6-season-aggregate.md",
   "onnx_status": "deferred \u2014 native LightGBM pickles + infer.py for twice-daily batch cadence (fix-pack #9, addendum v14)",
+  "phase5_fixes": {
+    "tov_pct_scaling": "fixed \u2014 stored as fraction (not percent); features.py Change 1",
+    "val_fold_domain": "regular-season only for Platt fit and Brier; Change 2"
+  },
   "feature_config": {
     "feature_form": "ewma",
     "window_size": 10,
     "ewma_halflife": 21,
-    "training_as_of": "2026-04-27T00:00:00Z"
+    "training_as_of": "2026-04-29T00:00:00Z"
   },
   "feature_names": [
     "home_ortg",
@@ -25,6 +29,8 @@
     "home_ast_per_poss",
     "home_stl_per_poss",
     "home_blk_per_poss",
+    "home_bpm_effective",
+    "home_season_net_rating",
     "home_rest_days",
     "home_b2b",
     "home_rest_days_in_last_7",
@@ -45,6 +51,8 @@
     "away_ast_per_poss",
     "away_stl_per_poss",
     "away_blk_per_poss",
+    "away_bpm_effective",
+    "away_season_net_rating",
     "away_rest_days",
     "away_b2b",
     "away_rest_days_in_last_7",
@@ -97,14 +105,14 @@
     },
     "home_tov_pct_off": {
       "transform": "logit_zscore",
-      "mean": 4.789135271208153,
-      "std": 1e-08,
+      "mean": -1.9709195020575534,
+      "std": 0.10183629348838208,
       "eps": 0.008251003066508828
     },
     "home_tov_pct_def": {
       "transform": "logit_zscore",
-      "mean": 4.789135271208153,
-      "std": 1e-08,
+      "mean": -1.9565274522897258,
+      "std": 0.11365555126711163,
       "eps": 0.008251003066508828
     },
     "home_oreb_pct": {
@@ -147,6 +155,18 @@
       "transform": "zscore",
       "mean": 0.05082678928248803,
       "std": 0.009136301044158291,
+      "eps": 0.0
+    },
+    "home_bpm_effective": {
+      "transform": "zscore",
+      "mean": -0.0553193187827641,
+      "std": 4.447581342316625,
+      "eps": 0.0
+    },
+    "home_season_net_rating": {
+      "transform": "zscore",
+      "mean": 0.1168296278571872,
+      "std": 6.52753501311336,
       "eps": 0.0
     },
     "home_rest_days": {
@@ -217,14 +237,14 @@
     },
     "away_tov_pct_off": {
       "transform": "logit_zscore",
-      "mean": 4.789135271208153,
-      "std": 1e-08,
+      "mean": -1.960397411646985,
+      "std": 0.10906929604987207,
       "eps": 0.008251003066508828
     },
     "away_tov_pct_def": {
       "transform": "logit_zscore",
-      "mean": 4.789135271208153,
-      "std": 1e-08,
+      "mean": -1.968182306144389,
+      "std": 0.10621369314295481,
       "eps": 0.008251003066508828
     },
     "away_oreb_pct": {
@@ -269,6 +289,18 @@
       "std": 0.00880812613832203,
       "eps": 0.0
     },
+    "away_bpm_effective": {
+      "transform": "zscore",
+      "mean": -0.0012238005732908242,
+      "std": 4.468056820941098,
+      "eps": 0.0
+    },
+    "away_season_net_rating": {
+      "transform": "zscore",
+      "mean": 0.23803969208097686,
+      "std": 6.5106123791563615,
+      "eps": 0.0
+    },
     "away_rest_days": {
       "transform": "log1p_zscore",
       "mean": 1.1247410135682128,
@@ -307,30 +339,33 @@
     }
   },
   "platt": {
-    "A": 1.349937651515317,
-    "B": 0.015639627048171845,
+    "A": 1.2576930727855264,
+    "B": 0.06685223396995983,
     "formulation": "p_cal = sigmoid(A * logit(p_ensemble) + B)",
-    "sklearn_C": 1000000000.0
+    "sklearn_C": 1000000000.0,
+    "fit_domain": "regular-season val games only"
   },
   "ensemble": {
     "n_seeds": 20,
-    "override_run_id": "20260427T104117-e39d20c0-override",
-    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/20260427T104117-e39d20c0-override/models",
+    "override_run_id": "20260428T204443-640e0cac",
+    "models_dir": "/home/johnanguiano/projects/sportsdata/ml/nba/results/20260428T204443-640e0cac/models",
     "val_cutoff_idx": 2112
   },
   "val_diagnostics": {
-    "n_val": 528,
-    "brier_raw": 0.2049844492964109,
-    "brier_calibrated": 0.2024813832465473,
-    "brier_delta": -0.0025030660498636115,
-    "unconditional_mean_raw": 0.5344277290675077,
-    "unconditional_mean_calibrated": 0.5454422719323127,
-    "empirical_home_win_rate": 0.5454545454545454,
-    "mean_divergence_post_cal": 1.2273522232764122e-05,
+    "n_val_total": 528,
+    "n_val_regular_season": 444,
+    "brier_raw": 0.19851529621255598,
+    "brier_calibrated": 0.196712330917898,
+    "brier_delta": -0.0018029652946579822,
+    "unconditional_mean_raw": 0.5241604088947315,
+    "unconditional_mean_calibrated": 0.5405080229460516,
+    "empirical_home_win_rate": 0.5405405405405406,
+    "mean_divergence_post_cal": 3.251759448896774e-05,
     "season_breakdown": {
       "2024-regular": 444,
       "2024-postseason": 84
-    }
+    },
+    "note": "All Brier/Platt metrics computed on regular-season val games only (Phase 5 fix)"
   },
-  "data_hash_sha256": "21945a5283ce358f7ab60b1ef901e0b563e2c9e2d568f291d282c3cab112c5ce"
+  "data_hash_sha256": "52f0e4dae3f6936591f0a7fd92ef540a524816aaa3e94a174a920886a21254c4"
 }

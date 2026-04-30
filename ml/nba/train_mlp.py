@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader, TensorDataset
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-INPUT_DIM = 42
+INPUT_DIM = 44  # updated when bpm_effective added; _NBANet now reads from X_train.shape[1]
 
 MLP_MAX_EPOCHS = 200
 MLP_EARLY_STOP_PATIENCE = 20
@@ -29,10 +29,10 @@ MLP_BATCH_SIZE = 256
 
 
 class _NBANet(nn.Module):
-    def __init__(self, dropout: float = 0.0) -> None:
+    def __init__(self, dropout: float = 0.0, input_dim: int = INPUT_DIM) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(INPUT_DIM, 128),
+            nn.Linear(input_dim, 128),
             nn.ReLU(),
             nn.BatchNorm1d(128),
             nn.Dropout(p=dropout),
@@ -72,7 +72,7 @@ def fit_mlp(
     dataset = TensorDataset(X_tr, y_tr)
     loader = DataLoader(dataset, batch_size=MLP_BATCH_SIZE, shuffle=True)
 
-    model = _NBANet(dropout=dropout).to(device)
+    model = _NBANet(dropout=dropout, input_dim=X_train.shape[1]).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.BCELoss()
 

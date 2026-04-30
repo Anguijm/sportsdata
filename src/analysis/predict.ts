@@ -352,8 +352,11 @@ export function predictMargin(
   const awayHotStreak = ctx.away.lastNResults.length >= 3 &&
     ctx.away.lastNResults.slice(-3).every(r => r);
 
-  if (homeColdStreak) margin -= homeAdv * 0.5; // halve home advantage when cold
-  if (awayHotStreak) margin -= homeAdv * 0.3;  // further reduce for hot visitor
+  // debt #22: empirically calibrated on 8699 NBA games (scripts/validate-debt22.py).
+  // NBA cold_coef empirical = 0.92 (council review pending before raising from 0.5).
+  // hot_coef empirical = 0.38 — within ±0.15 tolerance of current 0.3.
+  if (homeColdStreak) margin -= homeAdv * 0.5;
+  if (awayHotStreak) margin -= homeAdv * 0.3;
 
   // MLB pitcher ERA differential: lower ERA = better pitcher.
   // Council review (Statistical Validity + Domain Expert convergence):

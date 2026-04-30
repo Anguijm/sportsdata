@@ -51,9 +51,11 @@ through the 5-expert council (`.harness/council/*.md`) in this order:
 2. **Implementation review** → iterate if FAIL
 3. **Test / results review**
 
+**Implementation and results reviews are now automated via Gemini** (`.github/workflows/council.yml` — runs on every PR open/push, posts result as a PR comment). Plan reviews must still be run manually before code is written — the workflow only sees diffs, not intent.
+
 User should never be the first reviewer. Skipping council = CRITICAL FAILURE
-per `feedback_council_discipline.md`. Math expert sits out reviews that have
-no calculations (see persona spec).
+per `feedback_council_discipline.md`. Math expert and prediction-accuracy expert
+both sit out reviews that have no calculations / no model changes (see persona specs).
 
 Full protocol + R1→R2 reversal rules (pm.5 + pm.6): `.harness/council/README.md`.
 

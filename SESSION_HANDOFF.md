@@ -4,48 +4,61 @@
 
 ---
 
-## Start here next session — 2026-04-28 (Sprint 10.20 — Phase 3 null result closed)
+## Start here next session — 2026-04-30 (Sprint 10.22 — debt sweep + Gemini council shipped)
 
-**Current branch:** `claude/phase3-step6-calibration` (2 commits pushed `785a7d1`→`ee05ab4`; open PR to merge).
-**Production state (Fly):** v5 remains incumbent. Phase 3 null result — nothing ships.
+**Current branch:** `main` (local synced to `a696d43`). All feature work is on open PRs below.
+**Production state (Fly):** v5 remains incumbent. Phase 3 null result — nothing ships. Phase 7 not yet planned.
+**Last merged:** PR #65 `feat(council): Gemini-powered automated council review on every PR` at `a696d43`.
 
-**Phase 3 — CLOSED (null result, 2026-04-28):**
-- Step 7 pre-flight: CLEAR (addendum v15, `step7_preflight.py`, Gate 1/2 pass)
-- Step 8 LightGBM: Gate D FAIL — AUC 0.6954 < v5 0.7283; Brier −0.013 degradation
-- Step 8b MLP: Gate D FAIL — AUC 0.7026 < v5 0.7283; Brier −0.009 degradation
-- Test fold burned (counter = 2/2). Neither family ships. v5 remains incumbent.
-- Root causes: EWMA cold-start fragility, val/test composition asymmetry, TOV% zeroing bug (4/42 features silently zeroed), v5 season-aggregate structural advantage
+**Immediate next actions (in order):**
+1. **Review council comments** on PRs #56–#63 (all triggered via empty commits 2026-04-30). Address any FAILs before merging. PRs #57–#63 are debt fixes; #56 is the Phase 3–6 null result chain.
+2. **Open PR for `claude/debt-16-position-weighted-injury`** (no PR exists yet — council won't run until PR is open). Note: Gemini council previously issued FAIL on a contaminated diff (position column was confirmed 100% populated; FAIL was a false alarm). Expect WARN on magic-number multipliers — pre-declared mitigation in learnings.md.
+3. **Phase 7 planning** — post-mortem on Phase 3 null result first. Root causes: EWMA cold-start, TOV% zeroing bug (÷100 fix pending), val/test composition asymmetry, v5 season-aggregate structural advantage. Write addendum + council before any new test-fold touch.
 
-**Phase 3 steps 5 — MERGED:** PR #54 squash-merged to main at `1bc750b`.
-**Phase 3 steps 6–8b — pending merge** via `claude/phase3-step6-calibration`.
+**Open PRs (9 total, council running on all):**
+- #56 `claude/nba-cold-start-prior-plan` — Phases 3–6 null result chain
+- #57 `claude/debt-12-sigmoid-scale` — v5 sigmoid scale CV recalibration
+- #58 `claude/debt-17-23-30-misc` — min-impact threshold + hook false-positive fix
+- #59 `claude/debt-7-ece-refactor` — shared computeECE helper
+- #60 `claude/debt-5-6-10-cosmetic` — ratchet media query, player name wrap, train CI band
+- #61 `claude/debt-9-v2-stability-test` — seed-stability regression test
+- #62 `claude/debt-4-vegas-frontend` — Vegas odds on upcoming prediction cards
+- #63 `claude/debt-15-injury-consistency` — injury consistency test + streak calibration (debts #15 + #22)
+- `claude/debt-16-position-weighted-injury` — position-weighted injury (no PR yet)
 
-**Next actions (in order):**
-1. **Open PR and merge** `claude/phase3-step6-calibration` → main (all step 6–8b artifacts).
-2. **Phase 3 post-mortem (before any future attempt):**
-   - Fix TOV% bug: divide pct-form values by 100 before logit_zscore transform
-   - Add cold-start fallback for first N games of season
-   - Hybrid feature design: season-aggregate base + EWMA adjustment
-   - Regular-season-only val fold (remove postseason inflation)
-   - New plan addendum + council review before any new test-fold touch
+**Council automation (new this session):**
+- `.github/workflows/council.yml` — runs Gemini 2.5 Pro on every PR open/push
+- `.harness/scripts/council.py` — parallel persona runner (ported from roadtripper)
+- `GEMINI_API_KEY` secret set. Budget: 60 runs/month. Add `[skip council]` to PR title to bypass.
+- 503 retries: push an empty commit (`git commit --allow-empty`) — `workflow_dispatch` does NOT post PR comments.
 
-**Key artifacts on branch:**
-- `ml/nba/features.py`: `build_test_fold_tensor()` (NOT IN bypass)
-- `ml/nba/step7_preflight.py`, `ml/nba/evaluate_test_fold.py`, `ml/nba/evaluate_test_fold_mlp.py`
-- `ml/nba/train_mlp_winner.py`, `ml/nba/calibrate_mlp.py`
-- `ml/nba/configs/calibration-params.json`: LightGBM Platt (A=1.3499, B=0.0156)
-- `ml/nba/configs/mlp-calibration-params.json`: MLP Platt (A=1.2941, B=0.0373)
-- `ml/nba/test-fold-touch-counter.json`: counter=2
-
-**Pre-session context to read:**
-1. This file.
-2. `Plans/nba-learned-model.md` addendum v16 + v17 (null result + post-mortem scope).
-3. `learnings.md` last 3 sections.
+**Blockers:**
+- Gemini API 503s during peak demand — transient, retry with empty commit.
+- debt #16 has no PR; council won't auto-run until one is opened.
+- debt #22 coefficient change (NBA cold_coef 0.5→0.92) deferred pending council review.
+- INJURY_COMPENSATION recalibration deferred after debt #16 ships.
 
 ---
 
 ## Historical session log
 
 Older session-end states are preserved below. Most recent at top.
+
+### 2026-04-29/30 — Sprint 10.22 — Debt sweep + Gemini council automation
+
+**What shipped (merged):**
+- PR #65 `feat(council)`: Gemini-powered automated council — `a696d43` on main.
+
+**What's staged (open PRs, council triggered):**
+- PRs #56–#63: 13 debts resolved across 8 PRs. Debt #16 on branch, no PR yet.
+
+**Key decisions:**
+- `resolver.md` renamed to `lead-architect.md` to match council.py's expected filename.
+- prediction-accuracy persona gained abstain rule (mirrors Math expert) after spurious FAIL on infra PR.
+- 503 retry = push empty commit, not `gh workflow run` (dispatch has no PR context).
+- debt #16 Gemini council FAIL on contaminated diff was false alarm (position column 100% populated).
+
+### 2026-04-28 — Sprint 10.20 — Phase 3 null result closed
 
 ### 2026-04-28 — Sprint 10.19 — Phase 3 step 6 (Platt calibration + serving)
 

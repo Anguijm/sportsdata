@@ -2565,6 +2565,8 @@ A **hybrid feature architecture** — season-aggregate base statistics (stable f
 
 **TOV% fix (mandatory pre-gate):** `tov_pct_*` features are currently computed as `100 × TOV / (FGA + 0.44·FTA + TOV)` but stored on the [0, 100] scale before logit-normalization. The logit of values in [5, 25] saturates, producing std ≈ 1e-8 and effectively zeroing the feature. Fix: compute `tov_pct = TOV / (FGA + 0.44·FTA + TOV)` (decimal form, ∈ [0, 1]) before logit → Z-score normalization. Trivial code change; gating commit before any retraining.
 
+**Logit edge-case handling (all percentage features):** `logit(p)` is undefined at p=0 and p=1. A team can have tov_pct=0 in small samples. All percentage features must be clipped before the logit transform: `p = clip(p, ε, 1−ε)` where ε=1e-6. Apply uniformly to all features in [0,1] before logit normalization. Unit test must confirm no NaN/Inf outputs across the full training tensor.
+
 ---
 
 ### Data splits (pre-declared)
@@ -2595,8 +2597,8 @@ A **hybrid feature architecture** — season-aggregate base statistics (stable f
 
 **Secondary gate — test fold (2024-regular, N=1,237, CI-powered):**
 
-- **Rule 4**: Phase 7 Brier improvement on 2024-regular vs. v5 prediction-replay ≥ **0.005** with 95% bootstrap CI excluding zero. Same CI standard as Rule 1 — N=1,237 is fully powered (SE ≈ 0.0033 at this N). A test-fold reversal (Phase 7 worse than v5) is a FAIL; val gate does not override.
-- **Rationale for full CI rule (not directional-only)**: N=1,237 regular-season games gives SE ≈ σ×√(1/N) ≈ 0.20×√(1/1237) ≈ 0.0057. CI half-width ≈ ±0.011. This is comparable to Phase 3 and supports a CI-gated rule. Pre-declaring directional-only would be an inappropriate concession given adequate power.
+- **Rule 4**: Phase 7 Brier improvement on 2024-regular vs. v5 prediction-replay ≥ **0.005** with 95% block-bootstrap CI excluding zero. A test-fold reversal (Phase 7 worse than v5) is a FAIL; val gate does not override.
+- **SE derivation (paired-diff, not marginal)**: The bootstrap CI is computed on per-game *paired differences* (Phase7_Brier_i − v5_Brier_i), not on per-game Brier scores independently. Paired-diff σ is much smaller than marginal Brier σ (~0.20). Phase 3's empirical block-bootstrap SE was 0.004957 at N=528. Scaling to N=1,237: SE₇ = 0.004957 × √(528/1237) ≈ **0.0032**. CI half-width ≈ 1.96 × 0.0032 ≈ **0.0063**. To reliably clear the CI gate (80% power), the true effect must be ≥ (1.96+0.84) × 0.0032 ≈ **0.0090**. Pre-declare: CI is the binding constraint, not the 0.005 point-estimate floor. If the val fold yields a ≥0.005 point estimate but the test fold falls in the 0.005–0.009 range, the CI may include zero — that is a pre-declared null result, not a borderline call.
 
 **Null result path:** If val Rule 1 fails, or val Rule 2 fails, or test Rule 4 fails: null result documented, test fold burned, no re-attempt on same splits. Test fold counter = 1/1.
 

@@ -809,8 +809,10 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
   const testLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brier)}`).join(' ');
   const trainLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brier)}`).join(' ');
 
-  // Test CI band — omit if data is absent
+  // Test CI band — brierCI95 is always present in schemaVersion 2+ artifacts (Sprint 6+).
+  // Guard is for backward compat with any pre-Sprint-6 artifact still on disk.
   const hasCI = iterations.every(it => it.test.brierCI95);
+  if (!hasCI) console.warn('[renderRatchet] artifact missing test.brierCI95 — regenerate the ratchet artifact');
   const ciBand = hasCI
     ? [
         ...iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95![0])}`),
@@ -818,8 +820,9 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
       ].join(' ')
     : null;
 
-  // Train CI band (debt #10: shaded region for train fold) — omit if data is absent
+  // Train CI band (debt #10) — same backward-compat guard as test band above.
   const hasTrainCI = iterations.every(it => it.train.brierCI95);
+  if (!hasTrainCI) console.warn('[renderRatchet] artifact missing train.brierCI95 — regenerate the ratchet artifact');
   const trainCiBand = hasTrainCI
     ? [
         ...iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95![0])}`),

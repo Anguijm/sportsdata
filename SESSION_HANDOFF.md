@@ -4,48 +4,61 @@
 
 ---
 
-## Start here next session — 2026-04-29 (Sprint 10.22 — Phase 6 season_net_rating null result)
+## Start here next session — 2026-04-30 (Sprint 10.22 — debt sweep + Gemini council shipped)
 
-**Current branch:** `claude/nba-cold-start-prior-plan` (pushed `625c594`; no PR open yet).
-**Production state (Fly):** v5 remains incumbent. Phases 3, 4, 5, and 6 are all null results.
+**Current branch:** `main` (local synced to `a696d43`). All feature work is on open PRs below.
+**Production state (Fly):** v5 remains incumbent. Phase 3 null result — nothing ships. Phase 7 not yet planned.
+**Last merged:** PR #65 `feat(council): Gemini-powered automated council review on every PR` at `a696d43`.
 
-**Phase 6 season-aggregate features — CLOSED (null result, 2026-04-29):**
-- Hypothesis: adding season-to-date mean Net Rating (home/away) gives model v5's core signal
-- Result: Gate D FAIL — AUC 0.7237 < v5 0.7283 (gap 0.0046). Only +0.0016 AUC improvement.
-- Gate 2 council CLEAR (7.4/10). Null result accepted. v5 holds.
-- Diagnosis: EWMA features dilute the season-aggregate signal at n=2640 + LightGBM
+**Immediate next actions (in order):**
+1. **Review council comments** on PRs #56–#63 (all triggered via empty commits 2026-04-30). Address any FAILs before merging. PRs #57–#63 are debt fixes; #56 is the Phase 3–6 null result chain.
+2. **Open PR for `claude/debt-16-position-weighted-injury`** (no PR exists yet — council won't run until PR is open). Note: Gemini council previously issued FAIL on a contaminated diff (position column was confirmed 100% populated; FAIL was a false alarm). Expect WARN on magic-number multipliers — pre-declared mitigation in learnings.md.
+3. **Phase 7 planning** — post-mortem on Phase 3 null result first. Root causes: EWMA cold-start, TOV% zeroing bug (÷100 fix pending), val/test composition asymmetry, v5 season-aggregate structural advantage. Write addendum + council before any new test-fold touch.
 
-**AUC trajectory (all four phases):**
-- Phase 3: 0.6954 (42 EWMA, unfeaturized)
-- Phase 4: 0.7241 (44 EWMA + BPM prior)
-- Phase 5: 0.7221 (44 EWMA + BPM, bugs fixed)
-- Phase 6: 0.7237 (46 features, season_net_rating added)
+**Open PRs (9 total, council running on all):**
+- #56 `claude/nba-cold-start-prior-plan` — Phases 3–6 null result chain
+- #57 `claude/debt-12-sigmoid-scale` — v5 sigmoid scale CV recalibration
+- #58 `claude/debt-17-23-30-misc` — min-impact threshold + hook false-positive fix
+- #59 `claude/debt-7-ece-refactor` — shared computeECE helper
+- #60 `claude/debt-5-6-10-cosmetic` — ratchet media query, player name wrap, train CI band
+- #61 `claude/debt-9-v2-stability-test` — seed-stability regression test
+- #62 `claude/debt-4-vegas-frontend` — Vegas odds on upcoming prediction cards
+- #63 `claude/debt-15-injury-consistency` — injury consistency test + streak calibration (debts #15 + #22)
+- `claude/debt-16-position-weighted-injury` — position-weighted injury (no PR yet)
 
-**Next actions (in order):**
-1. **Open PR** for `claude/nba-cold-start-prior-plan` → main (Phase 3–6 null result history).
-2. **Plan Phase 7** — options:
-   a. Linear model (logistic regression) on the 46-feature set — far more sample-efficient than LightGBM
-   b. Drop EWMA entirely — use only season-aggregate + BPM prior features
-   c. More training data (add prior seasons to training window)
-   See `Plans/nba-phase6-season-aggregate.md §If Gate D fails` for full context.
+**Council automation (new this session):**
+- `.github/workflows/council.yml` — runs Gemini 2.5 Pro on every PR open/push
+- `.harness/scripts/council.py` — parallel persona runner (ported from roadtripper)
+- `GEMINI_API_KEY` secret set. Budget: 60 runs/month. Add `[skip council]` to PR title to bypass.
+- 503 retries: push an empty commit (`git commit --allow-empty`) — `workflow_dispatch` does NOT post PR comments.
 
-**Key artifacts on this branch:**
-- `ml/nba/features.py`: 46 features — season_net_rating added (`ORDERED_STATS`, `_rolling_feature_vector`)
-- `ml/nba/calibrate.py`: Phase 6 run `20260428T204443-640e0cac`; Platt A=1.258, B=0.067
-- `ml/nba/configs/calibration-params.json`: Phase 6 Platt params; val Brier 0.196712
-- `ml/nba/test-fold-touch-counter.json`: counter=1, Gate 2 council CLEAR 7.4/10
-- `Plans/nba-phase6-season-aggregate.md`: complete with Gate 1 + Gate 2 addenda
-
-**Pre-session context to read:**
-1. This file.
-2. `Plans/nba-phase6-season-aggregate.md §If Gate D fails` — Phase 7 direction options.
-3. `learnings.md` last two sections (phase5 + phase6).
+**Blockers:**
+- Gemini API 503s during peak demand — transient, retry with empty commit.
+- debt #16 has no PR; council won't auto-run until one is opened.
+- debt #22 coefficient change (NBA cold_coef 0.5→0.92) deferred pending council review.
+- INJURY_COMPENSATION recalibration deferred after debt #16 ships.
 
 ---
 
 ## Historical session log
 
 Older session-end states are preserved below. Most recent at top.
+
+### 2026-04-29/30 — Sprint 10.22 — Debt sweep + Gemini council automation
+
+**What shipped (merged):**
+- PR #65 `feat(council)`: Gemini-powered automated council — `a696d43` on main.
+
+**What's staged (open PRs, council triggered):**
+- PRs #56–#63: 13 debts resolved across 8 PRs. Debt #16 on branch, no PR yet.
+
+**Key decisions:**
+- `resolver.md` renamed to `lead-architect.md` to match council.py's expected filename.
+- prediction-accuracy persona gained abstain rule (mirrors Math expert) after spurious FAIL on infra PR.
+- 503 retry = push empty commit, not `gh workflow run` (dispatch has no PR context).
+- debt #16 Gemini council FAIL on contaminated diff was false alarm (position column 100% populated).
+
+### 2026-04-28 — Sprint 10.20 — Phase 3 null result closed
 
 ### 2026-04-28 — Sprint 10.19 — Phase 3 step 6 (Platt calibration + serving)
 

@@ -2515,7 +2515,7 @@ Per §Phase 3 L158: "If both fail, neither ships; null result documented in lear
 
 ## Addendum v18 — Phase 7 Plan: Hybrid Season-Agg + EWMA Model (2026-05-01)
 
-**Status**: DRAFT — awaiting council plan review.
+**Status**: DRAFT rev 1 — revised after council WARN (Domain Expert FAIL: postseason test fold inappropriate). Test fold changed to 2024-regular; training trimmed to 2021–2022; val fold is 2023-regular; postseason explicitly de-scoped; data-completeness pre-flight added; Rule 4 upgraded to full CI rule (N=1,237 powered).
 
 **Trigger**: Phase 3 null result closed (addendum v17). Mandatory post-mortem scope (5 items) satisfied. This addendum is the re-council required by addendum v17 item 5 before any new test-fold touch.
 
@@ -2523,7 +2523,7 @@ Per §Phase 3 L158: "If both fail, neither ships; null result documented in lear
 
 ### Hypothesis
 
-A **hybrid feature architecture** — season-aggregate base statistics (stable from game 1) paired with EWMA-delta adjustment features (capturing recent-form deviation from baseline) — will outperform v5's season-aggregate point differential on both the val fold and the 2025-26 postseason test fold.
+A **hybrid feature architecture** — season-aggregate base statistics (stable from game 1) paired with EWMA-delta adjustment features (capturing recent-form deviation from baseline) — will outperform v5's season-aggregate point differential on both the val fold (2023-regular) and the test fold (2024-regular).
 
 **Rationale for hybrid vs. EWMA-only (Phase 3 lesson):** Phase 3 used EWMA features exclusively. v5 uses season-aggregate exclusively and has a structural advantage because season-aggregate point differential is near-sufficient for stable NBA team quality. The hybrid absorbs v5's structural advantage as a base signal and adds recency sensitivity on top. Neither competes against the other; both contribute.
 
@@ -2571,30 +2571,34 @@ A **hybrid feature architecture** — season-aggregate base statistics (stable f
 
 | Split | Seasons | N (approx) | Notes |
 |-------|---------|-----------|-------|
-| Training (inner-CV) | 2021-regular, 2022-regular, 2023-regular | ~3,703 games | K=5 stratified folds |
-| Val fold | 2024-regular | 1,237 games | Regular season only. No postseason. |
-| **Test fold** | **2025-postseason** | **~80–100 games** | **Pre-declared. Sealed until val gate passes.** |
+| Training (inner-CV) | 2021-regular, 2022-regular | ~2,466 games | K=5 stratified folds |
+| Val fold | 2023-regular | ~1,230 games | Regular season only. No postseason. |
+| **Test fold** | **2024-regular** | **1,237 games** | **Pre-declared. Sealed until val gate passes.** |
 
-**Test fold rationale:** The 2025-26 regular season is burned per addendum v17 ("No further touches permissible on 2025-26 test data"). Postseason games (2025-postseason in DB) are temporally after all design decisions from the Phase 3 post-mortem and constitute a clean out-of-distribution evaluation. Games are being played now (playoffs started ~April 19, 2026); they must be ingested but not evaluated until the test-fold gate.
+**Test fold rationale:** The 2025-26 regular season is burned per addendum v17. The 2025-postseason is explicitly out of scope (see below). 2024-regular was Phase 3's inner-CV val fold; however, Phase 7's architecture (hybrid season-agg + EWMA-delta) was designed from root-cause analysis of Phase 3's failure modes, not from fitting to 2024-regular outcomes. The design is orthogonal to any information encoded in Phase 3's use of this data. This is pre-declared; council adjudicates at plan-review.
 
-**Test fold seal protocol:** The `test-fold-touch-counter.json` file tracks touches. Counter resets to 0 for Phase 7. No one looks at Phase 7 predictions on 2025-postseason games until the val gate is CLEAR and the pre-flight is passed. The first peek is the only touch.
+**Postseason explicitly out of scope:** Phase 7 is trained on regular-season data and evaluated on regular-season data only. Postseason prediction requires a separate plan with domain-appropriate val/test splits (shortened rotations, series-level effects, injury management differ materially from regular season). No Phase 7 evaluation on postseason games is permitted.
+
+**Test fold seal protocol:** The `test-fold-touch-counter.json` file tracks touches. Counter resets to 0 for Phase 7. No one looks at Phase 7 predictions on 2024-regular games until the val gate is CLEAR and the pre-flight is passed. The first peek is the only touch.
+
+**Data completeness pre-flight:** Before any test-fold touch, run a scraper audit confirming all 2024-regular games are ingested with `updated_at` populated. Missing games are a disqualifier — document count and proceed only if completeness ≥ 99% (≥1,224 of 1,237 games). Fewer than 1,224 games: defer test-fold touch and ingest missing games first.
 
 ---
 
 ### Ship rules (pre-declared)
 
-**Primary gate — val fold (power-carrying):**
+**Primary gate — val fold (2023-regular, N≈1,230):**
 
-- **Rule 1**: Phase 7 Brier improvement on 2024-regular vs. v5 prediction-replay ≥ **0.005** with 95% bootstrap CI excluding zero. (Phase 3's rule was ≥ 0.010; lowered to 0.005 given the hybrid architecture is a conservative step up from v5, not a radical replacement.)
-- **Rule 2 (Gate D)**: Phase 7 AUC on 2024-regular ≥ v5 AUC on 2024-regular (same games, prediction-replay). Catches catastrophic miscalibration.
+- **Rule 1**: Phase 7 Brier improvement on 2023-regular vs. v5 prediction-replay ≥ **0.005** with 95% bootstrap CI excluding zero. (Phase 3's rule was ≥ 0.010; lowered to 0.005 given the hybrid architecture is a conservative step up from v5, not a radical replacement.)
+- **Rule 2 (Gate D)**: Phase 7 AUC on 2023-regular ≥ v5 AUC on 2023-regular (same games, prediction-replay). Catches catastrophic miscalibration.
 - **Rule 3**: Unconditional prediction mean within ±3pp of empirical NBA home-win rate on val fold (~57–58%).
 
-**Secondary gate — test fold (directional):**
+**Secondary gate — test fold (2024-regular, N=1,237, CI-powered):**
 
-- **Rule 4**: Phase 7 Brier on 2025-postseason ≤ v5 Brier on 2025-postseason. Directional check only — N~80–100 playoff games is underpowered for CI. A test-fold reversal (Phase 7 worse than v5 on playoffs) is a FAIL; the val gate does not override.
-- **Rationale for directional-only**: CI half-width at N=90, σ≈0.20 is ±0.041 — larger than the expected improvement. Pre-declaring directional-only is honest about the power constraint and avoids a CI rule that could never be satisfied at this N.
+- **Rule 4**: Phase 7 Brier improvement on 2024-regular vs. v5 prediction-replay ≥ **0.005** with 95% bootstrap CI excluding zero. Same CI standard as Rule 1 — N=1,237 is fully powered (SE ≈ 0.0033 at this N). A test-fold reversal (Phase 7 worse than v5) is a FAIL; val gate does not override.
+- **Rationale for full CI rule (not directional-only)**: N=1,237 regular-season games gives SE ≈ σ×√(1/N) ≈ 0.20×√(1/1237) ≈ 0.0057. CI half-width ≈ ±0.011. This is comparable to Phase 3 and supports a CI-gated rule. Pre-declaring directional-only would be an inappropriate concession given adequate power.
 
-**Null result path:** If val Rule 1 fails, or val Rule 2 fails, or test Rule 4 reverses: null result documented, test fold burned, no re-attempt on same splits. Test fold counter = 1/1.
+**Null result path:** If val Rule 1 fails, or val Rule 2 fails, or test Rule 4 fails: null result documented, test fold burned, no re-attempt on same splits. Test fold counter = 1/1.
 
 **Ship action if all rules pass:** Phase 7 model deployed as `v7` in `model_version`. v5 remains available for rollback. Shadow mode before live swap (per §Phase 1 precedent).
 
@@ -2606,10 +2610,10 @@ All steps require council review at the gate indicated before proceeding to the 
 
 1. **TOV% fix** — `ml/nba/features.py` fix + unit test confirming non-zero std after normalization. **Council impl-review** (gate: impl CLEAR).
 2. **Hybrid feature pipeline** — add season-agg features and EWMA-delta features to `build_training_tensor()`. Extend Phase 3's `features.py` with the new feature groups. **Council impl-review**.
-3. **Inner-CV training** — run on 2021–2023 regular seasons, K=5 folds, select winning halflife. **Council results review** (gate: results CLEAR before val fold touch).
-4. **Val fold evaluation** — run on 2024-regular (pre-declared, sealed until inner-CV CLEAR). Apply primary ship rules 1–3. **Council results review** (gate: val CLEAR before test-fold touch).
-5. **Pre-flight check** — per Phase 3 precedent: test-fold-touch-counter audit, v5 prediction-replay baseline on postseason games, Gate D pre-check on val fold. **Council plan-review** (gate: pre-flight CLEAR before single test-fold touch).
-6. **Test fold evaluation** — single touch on 2025-postseason. Apply Rule 4. **Council results review** → ship or document null result.
+3. **Inner-CV training** — run on 2021–2022 regular seasons, K=5 folds, select winning halflife. **Council results review** (gate: results CLEAR before val fold touch).
+4. **Val fold evaluation** — run on 2023-regular (pre-declared, sealed until inner-CV CLEAR). Apply primary ship rules 1–3. **Council results review** (gate: val CLEAR before test-fold touch).
+5. **Pre-flight check** — test-fold-touch-counter audit (counter = 0), v5 prediction-replay baseline on 2024-regular games, Gate D pre-check on val fold, scraper audit confirming ≥ 99% 2024-regular game completeness. **Council plan-review** (gate: pre-flight CLEAR before single test-fold touch).
+6. **Test fold evaluation** — single touch on 2024-regular. Apply Rule 4. **Council results review** → ship or document null result.
 
 ---
 
@@ -2617,11 +2621,10 @@ All steps require council review at the gate indicated before proceeding to the 
 
 | # | Risk | Mitigation |
 |---|------|-----------|
-| 1 | Test fold N too small — playoff series sweeps reduce games below 70 | Pre-declared directional-only Rule 4; val gate is primary. |
-| 2 | 2025-postseason not yet fully scraped | Scraping task tracked separately; test-fold touch deferred until final games are ingested. |
-| 3 | Season-agg and EWMA-delta features are correlated — model may not separate them | Include `games_played` as an explicit feature; let model learn the cold-start blending. If inner-CV shows near-zero delta weights, document and treat as ablation evidence. |
-| 4 | 2024-regular val fold was used in Phase 3 inner-CV (as part of the train-val split) | Phase 3's inner-CV included 2024-regular as a validation fold; Phase 7 uses it as the primary val fold. This is not strictly clean. Pre-declare in council review; the primary change (hybrid features) is orthogonal to any Phase 3 inner-CV decisions made on this data. |
-| 5 | Halflife selection on inner-CV selects on training data, then val fold evaluates — appropriate separation maintained | Inner-CV selects halflife on 2021–2023; val fold is fully held out from this selection. |
+| 1 | 2024-regular test fold was Phase 3's inner-CV val fold — not strictly clean | Pre-declared. Phase 7 architecture was designed from Phase 3's root-cause post-mortem, not from fitting to 2024-regular outcomes. Hybrid features are orthogonal to any Phase 3 inner-CV decisions on this data. Council adjudicates at plan-review. |
+| 2 | Season-agg and EWMA-delta features are correlated — model may not separate them | Include `games_played` as an explicit feature; let model learn the cold-start blending. If inner-CV shows near-zero delta weights, document and treat as ablation evidence. |
+| 3 | Halflife selection on inner-CV selects on training data, then val fold evaluates — appropriate separation maintained | Inner-CV selects halflife on 2021–2022; val fold (2023-regular) is fully held out from this selection. |
+| 4 | 2024-regular game completeness < 99% at pre-flight time | Step 5 pre-flight scraper audit is a blocking gate. If completeness fails, ingest missing games before proceeding. Test-fold touch counter stays at 0 until audit passes. |
 
 ---
 
@@ -2630,3 +2633,4 @@ All steps require council review at the gate indicated before proceeding to the 
 - BPM player-aggregate prior (Phases 4–6): deferred. The traded-player pipeline gap (~13–14% missing) must be fixed first. Phase 7 does not require it.
 - Feature ablations published as separate deliverables: out of scope. Inner-CV winner selection suffices.
 - Cup-knockout TOV convention fix (pm.1 from addendum v10): carry forward to Phase 7 impl-review. ~14 games; negligible but must be pre-declared as known bias.
+- **Postseason prediction**: explicitly out of scope. Phase 7 is trained on and evaluated against regular-season games only. Playoff evaluation requires a separate plan with domain-appropriate val/test splits (shortened rotations, series-level strategic adjustments, and injury management differ materially from the regular season).

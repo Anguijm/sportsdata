@@ -56,6 +56,8 @@ interface ReasoningJson {
   prob_home_wins: number;
   /** Debt #14: true on shadow rows (model_version='v5-naive'), absent on adjusted rows. */
   shadow?: boolean;
+  /** Injury impact logged for future backtesting of the noise-threshold model. */
+  injury?: { homeOutImpact: number; awayOutImpact: number; netImpact: number; ramp: number };
 }
 
 /** @deprecated Use getSeasonYear from './season.js' instead. Kept for backwards compat. */
@@ -325,11 +327,21 @@ export function predictGame(
     low_confidence: lowConfidence,
   };
 
+  const netImpact = injuryImpact.awayOutImpact - injuryImpact.homeOutImpact;
+  const injuryRamp = Math.min(1, Math.max(0, (Math.abs(netImpact) - 1) / 2));
   const reasoning: ReasoningJson = {
     model: 'v5',
     features: baseFeatures,
     pick,
     prob_home_wins: probHome,
+    ...(hasInjuryData && {
+      injury: {
+        homeOutImpact: injuryImpact.homeOutImpact,
+        awayOutImpact: injuryImpact.awayOutImpact,
+        netImpact,
+        ramp: injuryRamp,
+      },
+    }),
   };
 
   const homeAbbr = game.home_team_id.split(':')[1] ?? game.home_team_id;

@@ -342,6 +342,9 @@ interface PredictionRow {
   home_team_id: string;
   away_team_id: string;
   game_status: string;
+  pitchers_json?: string | null;
+  odds_json?: string | null;
+  game_updated_at?: string | null;
 }
 
 interface TrackRecordCohort {
@@ -476,9 +479,9 @@ function renderPredictions(
         const dateLabel = formatGameDate(p.game_date);
         // MLB pitcher display
         let pitcherHtml = '';
-        if (currentSport === 'mlb' && (p as unknown as { pitchers_json: string | null }).pitchers_json) {
+        if (currentSport === 'mlb' && p.pitchers_json) {
           try {
-            const pitchers = JSON.parse((p as unknown as { pitchers_json: string }).pitchers_json) as {
+            const pitchers = JSON.parse(p.pitchers_json) as {
               home?: { name: string; era: number; record?: string };
               away?: { name: string; era: number; record?: string };
             };
@@ -490,6 +493,47 @@ function renderPredictions(
                 <span class="pitcher-vs">vs</span>
                 ${hp ? `<span class="pitcher">${esc(hp.name)} (${hp.era.toFixed(2)} ERA)</span>` : ''}
               </div>`;
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Vegas odds display (debt #4)
+        let oddsHtml = '';
+        if (p.odds_json) {
+          try {
+            const raw = JSON.parse(p.odds_json);
+            // Runtime shape validation — skip silently if malformed
+            const odds = (raw && typeof raw === 'object') ? raw as {
+              spread?: { favorite: string; line: number };
+              moneyline?: { home: number; away: number };
+              overUnder?: number;
+            } : null;
+            if (odds) {
+              const parts: string[] = [];
+              if (odds.spread && typeof odds.spread.favorite === 'string' && typeof odds.spread.line === 'number') {
+                const favAbbr = odds.spread.favorite.split(':')[1] ?? odds.spread.favorite;
+                parts.push(`${esc(favAbbr)} ${odds.spread.line > 0 ? '+' : ''}${odds.spread.line.toFixed(1)}`);
+              }
+              if (odds.moneyline && typeof odds.moneyline.home === 'number' && typeof odds.moneyline.away === 'number') {
+                const ml = odds.moneyline;
+                const homeML = ml.home > 0 ? `+${ml.home}` : `${ml.home}`;
+                const awayML = ml.away > 0 ? `+${ml.away}` : `${ml.away}`;
+                parts.push(`${homeAbbr} ${homeML} / ${awayAbbr} ${awayML}`);
+              }
+              if (typeof odds.overUnder === 'number') {
+                parts.push(`o/u ${odds.overUnder.toFixed(1)}`);
+              }
+              if (parts.length > 0) {
+                const updatedAt = p.game_updated_at ? new Date(p.game_updated_at) : null;
+                const ageHours = updatedAt ? (Date.now() - updatedAt.getTime()) / 3600000 : null;
+                const stale = ageHours !== null && ageHours > 4;
+                const ageLabel = updatedAt
+                  ? `as of ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : '';
+                oddsHtml = `<div class="prediction-odds${stale ? ' odds-stale' : ''}">
+                  Vegas: ${parts.join(' · ')}${ageLabel ? ` <span class="odds-age">(${esc(ageLabel)}${stale ? ' — may be stale' : ''})</span>` : ''}
+                </div>`;
+              }
             }
           } catch { /* ignore */ }
         }
@@ -506,6 +550,7 @@ function renderPredictions(
               <div class="matchup-team ${winnerAbbr === homeAbbr ? 'pick' : ''}">${homeAbbr}</div>
             </div>
             ${pitcherHtml}
+            ${oddsHtml}
             <div class="prediction-pick">
               <div class="pick-text">Model pick: <strong>${winnerAbbr}</strong></div>
               <div class="pick-confidence">${confidence}%</div>
@@ -777,9 +822,9 @@ interface RatchetArtifact {
 interface RatchetScore {
   sampleSize: number;
   brier: number;
-  brierCI95: [number, number];
+  brierCI95?: [number, number];
   accuracy: number;
-  accuracyCI95: [number, number];
+  accuracyCI95?: [number, number];
   homeWinRate: number;
 }
 
@@ -795,7 +840,10 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
   const plotW = chartWidth - margin.left - margin.right;
   const plotH = chartHeight - margin.top - margin.bottom;
 
-  const allBriers = iterations.flatMap(i => [i.train.brier, i.test.brier, i.train.brierCI95[0], i.train.brierCI95[1], i.test.brierCI95[0], i.test.brierCI95[1]]);
+  const allBriers = iterations.flatMap(i => [
+    i.train.brier, i.test.brier,
+    ...(i.train.brierCI95 ?? []), ...(i.test.brierCI95 ?? []),
+  ]);
   const maxBrier = Math.max(...allBriers) * 1.05;
   const minBrier = Math.max(0, Math.min(...allBriers) * 0.95);
 
@@ -806,10 +854,26 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
   const testLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brier)}`).join(' ');
   const trainLine = iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brier)}`).join(' ');
 
-  // Test CI band
-  const ciTop = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95[0])}`);
-  const ciBot = iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95[1])}`).reverse();
-  const ciBand = [...ciTop, ...ciBot].join(' ');
+  // Test CI band — brierCI95 is always present in schemaVersion 2+ artifacts (Sprint 6+).
+  // Guard is for backward compat with any pre-Sprint-6 artifact still on disk.
+  const hasCI = iterations.every(it => it.test.brierCI95);
+  if (!hasCI) console.warn('[renderRatchet] artifact missing test.brierCI95 — regenerate the ratchet artifact');
+  const ciBand = hasCI
+    ? [
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95![0])}`),
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.test.brierCI95![1])}`).reverse(),
+      ].join(' ')
+    : null;
+
+  // Train CI band (debt #10) — same backward-compat guard as test band above.
+  const hasTrainCI = iterations.every(it => it.train.brierCI95);
+  if (!hasTrainCI) console.warn('[renderRatchet] artifact missing train.brierCI95 — regenerate the ratchet artifact');
+  const trainCiBand = hasTrainCI
+    ? [
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95![0])}`),
+        ...iterations.map((it, i) => `${xScale(i)},${yScale(it.train.brierCI95![1])}`).reverse(),
+      ].join(' ')
+    : null;
 
   const iterationRows = iterations.map((it, i) => {
     const delta = it.deltaVsPrevious
@@ -854,8 +918,10 @@ function renderRatchet(container: HTMLElement, data: RatchetArtifact) {
 
     <div class="chart">
       <svg viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="xMidYMid meet">
-        <!-- CI band -->
-        <polygon points="${ciBand}" fill="#64d2ff" fill-opacity="0.15" />
+        <!-- Train CI band (debt #10) -->
+        ${trainCiBand ? `<polygon points="${trainCiBand}" fill="#888888" fill-opacity="0.12" />` : ''}
+        <!-- Test CI band -->
+        ${ciBand ? `<polygon points="${ciBand}" fill="#64d2ff" fill-opacity="0.15" />` : ''}
         <!-- Train line -->
         <polyline points="${trainLine}" fill="none" stroke="#666" stroke-width="2" stroke-dasharray="4,4" />
         <!-- Test line -->

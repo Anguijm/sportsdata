@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-29 (post Sprint 10.22 debt-resolution sweep — debts #4/#5/#6/#7/#9/#10/#12/#15/#16/#17/#22/#23/#30 all resolved via PRs #57–#63 + branch claude/debt-16-position-weighted-injury; Phase 3 remains at step 6).
+Last regenerated: 2026-04-30 (post Sprint 10.22 — debt sweep complete; Gemini council PR #65 merged to main at a696d43; 9 debt PRs open awaiting council review; v5 incumbent; Phase 7 not yet planned).
 
 ## Where to start
 
@@ -23,12 +23,13 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Phase 3 step 6 — DONE (PR open, pending merge).** Platt calibration (A=1.350, B=0.016) on 528-game val fold. `calibrate.py` + `infer.py`. Raw Brier 0.2050→calibrated 0.2025. Gate 1 CLEAR (7.3/10), Gate 2 CLEAR (8.5/10). Branch: `claude/phase3-step6-calibration`.
-- **Phase 3 step 7 — Pre-flight ship-rule gates.** Power check (block-bootstrap SE on training fold), seed-instability CI, v5-replay regression. Council pre-touch review required before test-fold is opened. No test-fold touch until council signs off.
+- **Review Gemini council comments on PRs #56–#63.** All branches triggered via empty commits 2026-04-30. Address any FAILs; merge what CLEARs. Priority order: #57 (sigmoid scale, HIGH), #56 (null result chain), #58–#63 (debt fixes).
+- **Open PR for `claude/debt-16-position-weighted-injury`.** No PR exists yet; council won't auto-run until one is opened. Expect WARN on position multipliers (pre-declared in learnings.md 2026-04-30).
 
 ## Next (queued, scoped)
 
-- **Phase 3 steps 7–10**: pre-flight ship-rule gates → test-fold evaluation (LightGBM first) → shadow window (28 game-days or 500 preds) → live swap. See `Plans/nba-learned-model.md` addendum v14 + plan body §Phase 3 ship rules.
+- **Phase 7 planning** — Phase 3 null result post-mortem first. Fix list: TOV% ÷100 bug, cold-start fallback (first N games), hybrid features (season-agg base + EWMA adjustment), regular-season-only val fold. Write addendum + council before any new test-fold touch. See `Plans/nba-learned-model.md` addenda v16–v17.
+- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (gated on N≥200 injury games). Follow-up to debt #16.
 
 ## Someday (daydreams, architectural ideas)
 
@@ -50,16 +51,15 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- `claude/phase3-step6-calibration` — Phase 3 step 6 Platt calibration + serving (branch pushed, PR not yet opened).
-- `claude/nba-cold-start-prior-plan` (PR #56) — Phases 3–6 null-result chain; open, not merged.
-- `claude/debt-12-sigmoid-scale` (PR #57) — v5 sigmoid scale CV.
-- `claude/debt-17-23-30-misc` (PR #58) — min-impact threshold + hook false-positive fix.
-- `claude/debt-7-ece-refactor` (PR #59) — computeECE shared helper.
-- `claude/debt-5-6-10-cosmetic` (PR #60) — media query, name wrap, train CI band.
-- `claude/debt-9-v2-stability-test` (PR #61) — seed-stability test.
-- `claude/debt-4-vegas-frontend` (PR #62) — Vegas odds on upcoming cards.
-- `claude/debt-15-injury-consistency` (PR #63) — injury consistency + streak calibration (debts #15 + #22).
-- `claude/debt-16-position-weighted-injury` — position-weighted injury multipliers (no PR yet).
+- `claude/nba-cold-start-prior-plan` (PR #56) — Phases 3–6 null result chain; council triggered.
+- `claude/debt-12-sigmoid-scale` (PR #57) — v5 sigmoid scale CV; council triggered.
+- `claude/debt-17-23-30-misc` (PR #58) — min-impact threshold + hook fix; council triggered.
+- `claude/debt-7-ece-refactor` (PR #59) — computeECE shared helper; council triggered.
+- `claude/debt-5-6-10-cosmetic` (PR #60) — media query, name wrap, train CI band; council triggered.
+- `claude/debt-9-v2-stability-test` (PR #61) — seed-stability test; council triggered.
+- `claude/debt-4-vegas-frontend` (PR #62) — Vegas odds on upcoming cards; council triggered.
+- `claude/debt-15-injury-consistency` (PR #63) — injury consistency + streak calibration; council triggered.
+- `claude/debt-16-position-weighted-injury` — position-weighted injury multipliers; **no PR yet**.
 
 ---
 
@@ -73,7 +73,8 @@ See `SESSION_LOG.md` "Council Debts (Open)" table for full descriptions and sour
 | 2 | MLB doubleheader handling | Pre-generalize | Sprint 8.5 |
 | 3 | Test fixture covering both ID shapes | With #1 | |
 | 8 | Disable stale Cloudflare direct-git deploy source | Low | dashboard only |
-| 18 | Fit INJURY_COMPENSATION separately for margin vs winprob | Gated on N≥200 | follow-up after #16 |
+| 16 | Position-weighted injury multipliers | Medium | PR pending; council running |
+| 18 | Fit INJURY_COMPENSATION separately for margin vs winprob | Gated on N≥200 | follow-up to #16 |
 | 19 | Second injury data provider | HELD | trigger met |
 | 20 | Historical odds ingest | HIGH | unblocks ATS backtest |
 | 24 | Dixon-Coles τ low-score correction | LOW | math-proven zero margin impact |
@@ -83,13 +84,13 @@ See `SESSION_LOG.md` "Council Debts (Open)" table for full descriptions and sour
 | 32 | Shadow-analysis CLI / endpoint | HIGH | gated on N≥30 pairs |
 
 Closed (recent): #11 (Sprint 10.8), #13 (PR #28), #14 (PR #38), #27 (PR #34), #28 (PR #36), #31 (PR #44), #33 (PRs #42/#43/#45), #34 (Sprint 10.13), **#35 (Sprint 10.14, option-b after v10 forward-and-rollback)**.
-Sprint 10.22 sweep (2026-04-29): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7** (PR #59), **#9** (PR #61), **#12** (PR #57), **#15/#22** (PR #63), **#16** (branch claude/debt-16-position-weighted-injury), **#17/#30** (PR #58), **#23** (already satisfied — clamp existed for all sports).
+Sprint 10.22 sweep (2026-04-29/30): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7** (PR #59), **#9** (PR #61), **#12** (PR #57), **#15/#22** (PR #63), **#16** (branch, no PR), **#17/#30** (PR #58), **#23** (already satisfied).
 
 ## Plans (active)
 
 | File | Status | Notes |
 |---|---|---|
-| `Plans/nba-learned-model.md` | Phase 2 SHIPPED. Phase 3 plan-draft (addendum v11) council-CLEAR 2026-04-26. Implementation gated on pre-flight tooling. | Addenda v1–v11 (+ v10 post-mortem) are append-only history. |
+| `Plans/nba-learned-model.md` | Phase 3 NULL RESULT (2026-04-28). Addenda v1–v17 append-only. Phase 7 planning not yet started — post-mortem required first. | v5 remains incumbent. |
 | `Plans/nba-phase2-backfill.md` | Debt #33 plan, fully executed; closed. | Reference for backfill mechanics. |
 | `Plans/soccer-poisson.md` (+ addendum) | Reference for debt #25/#26 work. | |
 | `Plans/shadow-prediction-logging.md` | Reference for debt #14/#32 work. | |
@@ -102,7 +103,8 @@ Sprint 10.22 sweep (2026-04-29): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7**
 
 These are codified elsewhere; restated here for skim-scan.
 
-- **Council discipline is non-negotiable.** Plans, implementations, AND test/results all get reviewed. See `feedback_council_discipline.md` (memory) and `.harness/council/*.md` for personas. **5 experts** (DQ / Stats / Pred / Domain / Math); Math sits out reviews with no calculations.
+- **Council is now automated via Gemini.** `.github/workflows/council.yml` runs on every PR open/push. `GEMINI_API_KEY` secret set. 60 runs/month budget. Add `[skip council]` to PR title to bypass. 503 retries = empty commit push. Plans, implementations, AND test/results still go through council — automation handles implementation/results; plan reviews must still be run before coding.
+- **Council discipline is non-negotiable.** Plans, implementations, AND test/results all get reviewed. See `feedback_council_discipline.md` (memory) and `.harness/council/*.md` for personas. **5 experts** (DQ / Stats / Pred / Domain / Math); Math and Pred-Accuracy sit out infra/non-model reviews.
 - **Dissenter-named falsification test (pm.5; codified Sprint 10.14).** When a council R1 surfaces a load-bearing convention disagreement and R2 entertains a reversal driven by an empirical claim, the falsification test named by the dissenting expert in R1 becomes blocking on R2 reversal.
 - **Multi-row-write empirical-verification standard (pm.6; codified Sprint 10.14).** Any future plan that pivots on a single empirical check requires (a) ≥2 data points per stratum the population contains, (b) ≥5 total data points, (c) adversarial selection (≥1 data point per stratum chosen by the dissenting expert, not the proponent), AND (d) the dissenter's named falsification test. All four conditions are blocking.
 - **Pre-backfill DB snapshot is mandatory (codified Sprint 10.14).** For any backfill / migration / mass-UPDATE on production data, capture `sqlite3 .backup` (or equivalent atomic snapshot) of `data/sportsdata.db` BEFORE execution begins. Risk-mitigation pre-states the rollback recipe; without the snapshot, the recipe is incomplete.

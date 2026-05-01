@@ -323,6 +323,35 @@ export interface CalibrationRow {
   low_confidence: number;
 }
 
+/** debt #7: shared ECE helper — build confidence-in-pick buckets from rows and
+ *  return the ECE scalar. Used for both full-cohort and high-confidence-only. */
+function computeECE(
+  rows: Pick<CalibrationRow, 'predicted_prob' | 'was_correct'>[],
+  binCount: number,
+  binWidth: number,
+): number | null {
+  const buckets: { sumPred: number; correct: number; n: number }[] = Array.from(
+    { length: binCount },
+    () => ({ sumPred: 0, correct: 0, n: 0 }),
+  );
+  for (const row of rows) {
+    const p = row.predicted_prob;
+    if (!Number.isFinite(p) || p < 0 || p > 1) continue;
+    const confidence = p >= 0.5 ? p : 1 - p;
+    if (confidence < 0.5 || confidence > 1.0) continue;
+    let idx = Math.floor((confidence - 0.5) / binWidth);
+    if (idx >= binCount) idx = binCount - 1;
+    if (idx < 0) idx = 0;
+    buckets[idx]!.sumPred += confidence;
+    buckets[idx]!.correct += row.was_correct;
+    buckets[idx]!.n += 1;
+  }
+  const filled = buckets.filter(b => b.n > 0);
+  const n = filled.reduce((a, b) => a + b.n, 0);
+  if (n === 0) return null;
+  return filled.reduce((acc, b) => acc + (b.n / n) * Math.abs(b.sumPred / b.n - b.correct / b.n), 0);
+}
+
 /** Wilson 95% CI for binomial proportion p̂ = k/n. Stable for n ∈ {0,1}. */
 function wilsonCI(k: number, n: number): { center: number; lo: number; hi: number } {
   const z = 1.96;
@@ -436,38 +465,9 @@ export function computeCohort(
     ? nonEmpty.reduce((acc, b) => acc + (b.n / nTotal) * Math.abs(b.predictedAvg - b.actualRate), 0)
     : null;
 
-  // ECE excluding low_confidence rows (Engineer's secondary stat).
-  // Same confidence-in-pick transform as the main loop (Debt #31).
+  // ECE excluding low_confidence rows (Engineer's secondary stat). debt #7.
   const highConfRows = rows.filter(r => r.low_confidence === 0);
-  let eceHighConfOnly: number | null = null;
-  if (highConfRows.length > 0) {
-    const hcBuckets: { sumPred: number; correct: number; n: number }[] = Array.from(
-      { length: binCount },
-      () => ({ sumPred: 0, correct: 0, n: 0 }),
-    );
-    for (const row of highConfRows) {
-      const p = row.predicted_prob;
-      if (!Number.isFinite(p) || p < 0 || p > 1) continue;
-      const pickedHome = p >= 0.5;
-      const confidence = pickedHome ? p : 1 - p;
-      if (confidence < 0.5 || confidence > 1.0) continue;
-      let idx = Math.floor((confidence - 0.5) / binWidth);
-      if (idx >= binCount) idx = binCount - 1;
-      if (idx < 0) idx = 0;
-      hcBuckets[idx]!.sumPred += confidence;
-      hcBuckets[idx]!.correct += row.was_correct;
-      hcBuckets[idx]!.n += 1;
-    }
-    const hcNonEmpty = hcBuckets.filter(b => b.n > 0);
-    const hcN = hcNonEmpty.reduce((a, b) => a + b.n, 0);
-    if (hcN > 0) {
-      eceHighConfOnly = hcNonEmpty.reduce((acc, b) => {
-        const pAvg = b.sumPred / b.n;
-        const aRate = b.correct / b.n;
-        return acc + (b.n / hcN) * Math.abs(pAvg - aRate);
-      }, 0);
-    }
-  }
+  const eceHighConfOnly = computeECE(highConfRows, binCount, binWidth);
 
   // Signed residual: mean(predicted - actual) over non-empty bins, weighted by n
   const signedResidual = nTotal > 0
@@ -553,6 +553,10 @@ export interface PredictionWithGame {
   game_status: string;
   /** MLB probable pitchers JSON, if available */
   pitchers_json: string | null;
+  /** Vegas odds JSON (spread + moneyline + over/under), if available */
+  odds_json: string | null;
+  /** When the game record was last updated — proxy for odds freshness */
+  game_updated_at: string | null;
 }
 
 export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWithGame[] {
@@ -567,7 +571,7 @@ export function getUpcomingPredictions(sport: Sport, limit = 20): PredictionWith
            p.predicted_prob, p.reasoning_text, p.made_at, p.resolved_at,
            p.actual_winner, p.was_correct, p.brier_score, p.low_confidence,
            g.date as game_date, g.home_team_id, g.away_team_id, g.status as game_status,
-           g.pitchers_json
+           g.pitchers_json, g.odds_json, g.updated_at as game_updated_at
     FROM predictions p
     JOIN games g ON p.game_id = g.id
     WHERE p.sport = ? AND p.model_version = 'v5' AND p.resolved_at IS NULL

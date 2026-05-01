@@ -31,6 +31,13 @@ if ! echo "$cmd" | grep -qE '(^|[[:space:]])git[[:space:]]+push([[:space:]]|$)';
   exit 0
 fi
 
+# debt #30: false-positive guard — if the command also contains `git commit`,
+# the commit runs before the push (shell && semantics), so new content will
+# exist by the time push executes. Allow the chain unconditionally.
+if echo "$cmd" | grep -qE '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$|[[:space:]]-)'; then
+  exit 0
+fi
+
 # Must be inside a git repo; silently allow if not.
 toplevel=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [ -z "$toplevel" ]; then

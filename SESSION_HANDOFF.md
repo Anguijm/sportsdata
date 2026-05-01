@@ -4,45 +4,54 @@
 
 ---
 
-## Start here next session — 2026-04-30 (Sprint 10.22 — debt sweep + Gemini council shipped)
+## Start here next session — 2026-05-01 (Sprint 10.23 — Phase 7 plan locked; debt #16 in review)
 
-**Current branch:** `main` (local synced to `a696d43`). All feature work is on open PRs below.
-**Production state (Fly):** v5 remains incumbent. Phase 3 null result — nothing ships. Phase 7 not yet planned.
-**Last merged:** PR #65 `feat(council): Gemini-powered automated council review on every PR` at `a696d43`.
+**Current branch:** `main` (local synced to `635e826`).
+**Production state (Fly):** v5 remains incumbent. Phase 7 plan council-CLEAR on main (addendum v18).
+**Last merged:** PR #67 `plan(phase7): Hybrid Season-Agg + EWMA model — addendum v18` at `635e826`.
 
 **Immediate next actions (in order):**
-1. **Review council comments** on PRs #56–#63 (all triggered via empty commits 2026-04-30). Address any FAILs before merging. PRs #57–#63 are debt fixes; #56 is the Phase 3–6 null result chain.
-2. **Open PR for `claude/debt-16-position-weighted-injury`** (no PR exists yet — council won't run until PR is open). Note: Gemini council previously issued FAIL on a contaminated diff (position column was confirmed 100% populated; FAIL was a false alarm). Expect WARN on magic-number multipliers — pre-declared mitigation in learnings.md.
-3. **Phase 7 planning** — post-mortem on Phase 3 null result first. Root causes: EWMA cold-start, TOV% zeroing bug (÷100 fix pending), val/test composition asymmetry, v5 season-aggregate structural advantage. Write addendum + council before any new test-fold touch.
+1. **Check PR #68 council** (`claude/debt-16-position-weighted-injury`) — main was merged into branch at `72d02dd` and pushed 2026-05-01; council should have fired. Expect WARN on magic-number position multipliers (pre-declared). If WARN mitigations are acceptable, merge.
+2. **Phase 7 Step 1** — TOV% fix in `ml/nba/features.py`: compute `tov_pct = TOV / (FGA + 0.44·FTA + TOV)` on [0,1] scale; add ε=1e-6 clip before logit; unit test confirming non-zero std. Branch `claude/phase7-step1-tov-fix`. Council impl-review required before any retraining.
 
-**Open PRs (9 total, council running on all):**
-- #56 `claude/nba-cold-start-prior-plan` — Phases 3–6 null result chain
-- #57 `claude/debt-12-sigmoid-scale` — v5 sigmoid scale CV recalibration
-- #58 `claude/debt-17-23-30-misc` — min-impact threshold + hook false-positive fix
-- #59 `claude/debt-7-ece-refactor` — shared computeECE helper
-- #60 `claude/debt-5-6-10-cosmetic` — ratchet media query, player name wrap, train CI band
-- #61 `claude/debt-9-v2-stability-test` — seed-stability regression test
-- #62 `claude/debt-4-vegas-frontend` — Vegas odds on upcoming prediction cards
-- #63 `claude/debt-15-injury-consistency` — injury consistency test + streak calibration (debts #15 + #22)
-- `claude/debt-16-position-weighted-injury` — position-weighted injury (no PR yet)
+**Open PRs (1):**
+- #68 `claude/debt-16-position-weighted-injury` — position-weighted injury multipliers; council running (main merged in at 72d02dd, 2026-05-01).
 
-**Council automation (new this session):**
-- `.github/workflows/council.yml` — runs Gemini 2.5 Pro on every PR open/push
-- `.harness/scripts/council.py` — parallel persona runner (ported from roadtripper)
-- `GEMINI_API_KEY` secret set. Budget: 60 runs/month. Add `[skip council]` to PR title to bypass.
-- 503 retries: push an empty commit (`git commit --allow-empty`) — `workflow_dispatch` does NOT post PR comments.
+**Phase 7 data splits (locked, addendum v18):**
+- Training (inner-CV): 2021-regular + 2022-regular (~2,466 games)
+- Val fold: 2023-regular (~1,230 games)
+- Test fold: 2024-regular (1,237 games) — **sealed**
+- Ship rule: Brier improvement ≥ 0.005 + 95% block-bootstrap CI excluding zero on both val and test. 80%-power MDE ≈ 0.009. CI is the binding constraint.
+- Postseason: explicitly out of scope.
 
 **Blockers:**
-- Gemini API 503s during peak demand — transient, retry with empty commit.
-- debt #16 has no PR; council won't auto-run until one is opened.
-- debt #22 coefficient change (NBA cold_coef 0.5→0.92) deferred pending council review.
-- INJURY_COMPENSATION recalibration deferred after debt #16 ships.
+- PR #68 council pending.
+- debt #22 coefficient change (NBA cold_coef 0.5→0.92) deferred — still needs council.
+- debt #18 (INJURY_COMPENSATION margin vs winprob) gated on debt #16 shipping.
+
+**Council bootstrap gotcha (new, 2026-05-01):**
+Branches predating Phase C rollout (PR #66) have no `council.yml`. GitHub Actions uses HEAD branch workflow files for same-repo PRs — so no workflows fire at all. Fix: merge `origin/main` into the branch before opening the PR. Fast check: `git show origin/<branch>:.github/workflows/council.yml 2>/dev/null || echo "MISSING"`.
 
 ---
 
 ## Historical session log
 
 Older session-end states are preserved below. Most recent at top.
+
+### 2026-05-01 — Sprint 10.23 — Phase 7 plan locked + debt sweep council close-out
+
+**What shipped (merged):**
+- PR #66 `harness: Phase C rollout` — canonical infrastructure at `7cb002f` (already on main from prior session).
+- PRs #56–#63 — all 8 debt-sweep PRs merged during this session (CLEARs merged immediately; WARN on #58 soft-ramp fixed before merge; WARN on #60/#62 logging fixes added before merge).
+- PR #67 `plan(phase7)`: Phase 7 plan addendum v18 CLEAR after 3 council rounds at `635e826`.
+
+**What's staged (open PRs):**
+- PR #68 `claude/debt-16-position-weighted-injury` — position-weighted injury multipliers; council running.
+
+**Key decisions:**
+- Phase 7 test fold changed from 2025-postseason (council Domain Expert FAIL) to 2024-regular (N=1,237, CI-powered). Postseason explicitly de-scoped.
+- SE derivation: use Phase-3-scaled empirical block-bootstrap SE (0.0032 at N=1,237), not marginal Brier σ (0.0057). Paired diffs have much lower variance.
+- Branches predating Phase C rollout need `origin/main` merged before any PR opens — GitHub Actions uses HEAD branch workflow files for same-repo PRs.
 
 ### 2026-04-29/30 — Sprint 10.22 — Debt sweep + Gemini council automation
 

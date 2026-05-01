@@ -6,7 +6,7 @@
 > Update at session start (regenerate from `SESSION_LOG.md` + `git log` if
 > stale) and at session end (when handing off).
 
-Last regenerated: 2026-04-30 (post Sprint 10.22 — debt sweep complete; Gemini council PR #65 merged to main at a696d43; 9 debt PRs open awaiting council review; v5 incumbent; Phase 7 not yet planned).
+Last regenerated: 2026-05-01 (post Sprint 10.23 — Phase 7 plan council-CLEAR at 635e826; all Sprint 10.22 debt PRs #56–#63 merged; PR #68 debt #16 open awaiting council; v5 incumbent; Phase 7 Step 1 is next).
 
 ## Where to start
 
@@ -23,13 +23,16 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Review Gemini council comments on PRs #56–#63.** All branches triggered via empty commits 2026-04-30. Address any FAILs; merge what CLEARs. Priority order: #57 (sigmoid scale, HIGH), #56 (null result chain), #58–#63 (debt fixes).
-- **Open PR for `claude/debt-16-position-weighted-injury`.** No PR exists yet; council won't auto-run until one is opened. Expect WARN on position multipliers (pre-declared in learnings.md 2026-04-30).
+- **Check + merge PR #68** (`claude/debt-16-position-weighted-injury`) — position-weighted injury multipliers; council running as of 2026-05-01 (main merged in at 72d02dd). Expect WARN on magic-number multipliers; pre-declared mitigation: backtest not yet feasible, logging added in predict-runner.ts for future validation.
+- **Phase 7 Step 1** — TOV% fix in `ml/nba/features.py`: compute `tov_pct` on [0,1] scale, add ε=1e-6 clip before logit, unit test confirming non-zero std. Branch `claude/phase7-step1-tov-fix`. Council impl-review required before proceeding to Step 2.
 
 ## Next (queued, scoped)
 
-- **Phase 7 planning** — Phase 3 null result post-mortem first. Fix list: TOV% ÷100 bug, cold-start fallback (first N games), hybrid features (season-agg base + EWMA adjustment), regular-season-only val fold. Write addendum + council before any new test-fold touch. See `Plans/nba-learned-model.md` addenda v16–v17.
-- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (gated on N≥200 injury games). Follow-up to debt #16.
+- **Phase 7 Step 2** — Hybrid feature pipeline: add season-agg group + EWMA-delta group to `build_training_tensor()`. Council impl-review. (Gated on Step 1 CLEAR.)
+- **Phase 7 Step 3** — Inner-CV training on 2021–2022-regular, K=5 folds, select halflife winner. Council results review. (Gated on Step 2 CLEAR.)
+- **Phase 7 Steps 4–6** — Val fold eval (2023-regular), pre-flight, test fold eval (2024-regular). Each has a council gate. See `Plans/nba-learned-model.md` addendum v18.
+- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (gated on N≥200 injury games; follow-up to debt #16 shipping).
+- **debt #22** — NBA cold_coef 0.5→0.92 coefficient change; still needs council review.
 
 ## Someday (daydreams, architectural ideas)
 
@@ -51,15 +54,7 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- `claude/nba-cold-start-prior-plan` (PR #56) — Phases 3–6 null result chain; council triggered.
-- `claude/debt-12-sigmoid-scale` (PR #57) — v5 sigmoid scale CV; council triggered.
-- `claude/debt-17-23-30-misc` (PR #58) — min-impact threshold + hook fix; council triggered.
-- `claude/debt-7-ece-refactor` (PR #59) — computeECE shared helper; council triggered.
-- `claude/debt-5-6-10-cosmetic` (PR #60) — media query, name wrap, train CI band; council triggered.
-- `claude/debt-9-v2-stability-test` (PR #61) — seed-stability test; council triggered.
-- `claude/debt-4-vegas-frontend` (PR #62) — Vegas odds on upcoming cards; council triggered.
-- `claude/debt-15-injury-consistency` (PR #63) — injury consistency + streak calibration; council triggered.
-- `claude/debt-16-position-weighted-injury` — position-weighted injury multipliers; **no PR yet**.
+- `claude/debt-16-position-weighted-injury` (PR #68) — position-weighted injury multipliers; council running (main merged in 2026-05-01).
 
 ---
 
@@ -84,13 +79,14 @@ See `SESSION_LOG.md` "Council Debts (Open)" table for full descriptions and sour
 | 32 | Shadow-analysis CLI / endpoint | HIGH | gated on N≥30 pairs |
 
 Closed (recent): #11 (Sprint 10.8), #13 (PR #28), #14 (PR #38), #27 (PR #34), #28 (PR #36), #31 (PR #44), #33 (PRs #42/#43/#45), #34 (Sprint 10.13), **#35 (Sprint 10.14, option-b after v10 forward-and-rollback)**.
-Sprint 10.22 sweep (2026-04-29/30): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7** (PR #59), **#9** (PR #61), **#12** (PR #57), **#15/#22** (PR #63), **#16** (branch, no PR), **#17/#30** (PR #58), **#23** (already satisfied).
+Sprint 10.22 sweep (merged 2026-05-01): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7** (PR #59), **#9** (PR #61), **#12** (PR #57), **#15/#22** (PR #63), **#17/#30** (PR #58), **#23** (already satisfied).
+Sprint 10.23 in progress (2026-05-01): **#16** (PR #68, council running).
 
 ## Plans (active)
 
 | File | Status | Notes |
 |---|---|---|
-| `Plans/nba-learned-model.md` | Phase 3 NULL RESULT (2026-04-28). Addenda v1–v17 append-only. Phase 7 planning not yet started — post-mortem required first. | v5 remains incumbent. |
+| `Plans/nba-learned-model.md` | Phase 3 NULL RESULT (addenda v1–v17). Phase 7 plan council-CLEAR (addendum v18, PR #67, 2026-05-01). Splits: train 2021–2022-regular, val 2023-regular, test 2024-regular. Step 1 (TOV% fix) is next. | v5 remains incumbent. |
 | `Plans/nba-phase2-backfill.md` | Debt #33 plan, fully executed; closed. | Reference for backfill mechanics. |
 | `Plans/soccer-poisson.md` (+ addendum) | Reference for debt #25/#26 work. | |
 | `Plans/shadow-prediction-logging.md` | Reference for debt #14/#32 work. | |

@@ -262,14 +262,22 @@ export function computeInjuryImpact(sport: Sport, teamId: string): number {
       ORDER BY season DESC LIMIT 1
     `).get(inj.teamAbbr, sport, inj.playerName) as { stats_json: string; games_played: number; position: string | null } | undefined;
 
-    // Fuzzy fallback: LIKE match on last name
+    // Fuzzy fallback: LIKE match on last name. Refuse the join if >1 distinct
+    // teammate matches the surname (debt #36) — silently picking one would
+    // produce an incorrect impact score.
     if (!row) {
       const lastName = inj.playerName.split(' ').pop() ?? inj.playerName;
-      row = db.prepare(`
-        SELECT stats_json, games_played, position FROM player_stats
+      const matches = db.prepare(`
+        SELECT stats_json, games_played, position, full_name FROM player_stats
         WHERE team_abbr = ? AND sport = ? AND full_name LIKE ?
-        ORDER BY season DESC LIMIT 1
-      `).get(inj.teamAbbr, sport, `%${lastName}%`) as typeof row;
+        ORDER BY season DESC
+      `).all(inj.teamAbbr, sport, `%${lastName}%`) as Array<{ stats_json: string; games_played: number; position: string | null; full_name: string }>;
+      const distinctNames = new Set(matches.map(m => m.full_name));
+      if (distinctNames.size > 1) {
+        console.warn(`  ⚠ Injury: '${inj.playerName}' (${inj.teamAbbr}) ambiguous LIKE fallback — ${distinctNames.size} teammates match '${lastName}'; skipping (debt #36)`);
+        continue;
+      }
+      row = matches[0];
     }
 
     if (!row) {

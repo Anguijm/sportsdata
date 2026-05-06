@@ -82,7 +82,7 @@ See `SESSION_LOG.md` "Council Debts (Open)" table for full descriptions and sour
 | 26 | Pre-2024 soccer match scrape | HIGH | gating soccer-v2 |
 | 29 | Ternary reliability for soccer Poisson | Low | gated on 1X2 |
 | 32 | Shadow-analysis CLI / endpoint | HIGH | gated on N≥30 pairs |
-| 36 | Injury-name fuzzy fallback can mismatch on duplicate last names | Medium | PR #68 R1 DQ WARN; fix via upstream player-ID normalization or refuse non-unique LIKE |
+| 36 | Injury-name fuzzy fallback can mismatch on duplicate last names | Low | PR #68 R3 ships interim mitigation (refuse non-unique LIKE); full fix = upstream player-ID normalization |
 
 Closed (recent): #11 (Sprint 10.8), #13 (PR #28), #14 (PR #38), #27 (PR #34), #28 (PR #36), #31 (PR #44), #33 (PRs #42/#43/#45), #34 (Sprint 10.13), **#35 (Sprint 10.14, option-b after v10 forward-and-rollback)**.
 Sprint 10.22 sweep (2026-04-29/30): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7** (PR #59), **#9** (PR #61), **#12** (PR #57), **#15/#22** (PR #63), **#16** (branch, no PR), **#17/#30** (PR #58), **#23** (already satisfied).

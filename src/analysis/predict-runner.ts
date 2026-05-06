@@ -243,10 +243,14 @@ export function computeInjuryImpact(sport: Sport, teamId: string): number {
       return 1.0;
     }
     // NBA/NHL/Soccer: position doesn't reliably indicate leverage; use stats threshold.
-    const maxPG = config.maxIndividual;
-    if (perGame >= maxPG * 0.5) return 1.5;  // top performer (e.g. NBA ≥20 PPG)
-    if (perGame <= maxPG * 0.1) return 0.5;  // fringe contributor (e.g. NBA ≤4 PPG)
-    return 1.0;
+    // Continuous piecewise-linear over [0.5, 1.5]: anchors at 0.1·maxPG → 0.5×,
+    // 0.5·maxPG → 1.5× (midpoint 0.3·maxPG → 1.0×, matching prior step-function default).
+    // Avoids the cliff effect where a player just under maxPG·0.5 got 1.0× and
+    // one just over got 1.5×.
+    const ratio = perGame / config.maxIndividual;
+    if (ratio <= 0.1) return 0.5;
+    if (ratio >= 0.5) return 1.5;
+    return 0.5 + (ratio - 0.1) * 2.5;
   }
 
   let totalImpact = 0;

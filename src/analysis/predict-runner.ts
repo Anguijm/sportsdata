@@ -214,33 +214,70 @@ export function computeInjuryImpact(sport: Sport, teamId: string): number {
     isPerGame: boolean;
     fallbackPerGame: number;
     maxIndividual: number;
+    maxTeam: number;
   }> = {
-    nba: { stat: 'offensive.avgPoints',    isPerGame: true,  fallbackPerGame: 10,  maxIndividual: 40 },
-    nfl: { stat: 'general.gamesStarted',   isPerGame: false, fallbackPerGame: 3,   maxIndividual: 17 },
-    mlb: { stat: 'batting.OPS',            isPerGame: true,  fallbackPerGame: 0.3, maxIndividual: 1.5 },
-    nhl: { stat: 'offensive.points',       isPerGame: false, fallbackPerGame: 0.5, maxIndividual: 2.0 },
-    mls: { stat: 'offensive.totalGoals',   isPerGame: false, fallbackPerGame: 0.2, maxIndividual: 1.5 },
-    epl: { stat: 'offensive.totalGoals',   isPerGame: false, fallbackPerGame: 0.2, maxIndividual: 1.5 },
+    nba: { stat: 'offensive.avgPoints',    isPerGame: true,  fallbackPerGame: 10,  maxIndividual: 40,  maxTeam: 80  },
+    nfl: { stat: 'general.gamesStarted',   isPerGame: false, fallbackPerGame: 3,   maxIndividual: 17,  maxTeam: 34  },
+    mlb: { stat: 'batting.OPS',            isPerGame: true,  fallbackPerGame: 0.3, maxIndividual: 1.5, maxTeam: 3.0 },
+    nhl: { stat: 'offensive.points',       isPerGame: false, fallbackPerGame: 0.5, maxIndividual: 2.0, maxTeam: 4.0 },
+    mls: { stat: 'offensive.totalGoals',   isPerGame: false, fallbackPerGame: 0.2, maxIndividual: 1.5, maxTeam: 3.0 },
+    epl: { stat: 'offensive.totalGoals',   isPerGame: false, fallbackPerGame: 0.2, maxIndividual: 1.5, maxTeam: 3.0 },
   };
   const config = IMPACT_CONFIG[sport] ?? IMPACT_CONFIG['nba'];
+
+  // Position multiplier: amplifies high-leverage positions (QB, MLB SP) and
+  // discounts low-leverage ones (kickers, relievers). For sports where position
+  // doesn't predict impact (NBA G/F/C), use stats-based threshold instead.
+  // debt #16: INJURY_COMPENSATION may need recalibration after this change.
+  function positionMultiplier(position: string | null, perGame: number): number {
+    const pos = position?.toUpperCase() ?? '';
+    if (sport === 'nfl') {
+      if (pos === 'QB') return 3.0;
+      if (pos === 'RB' || pos === 'WR' || pos === 'TE') return 1.5;
+      if (pos === 'PK' || pos === 'P' || pos === 'LS') return 0.5;
+      return 1.0;
+    }
+    if (sport === 'mlb') {
+      if (pos === 'SP') return 1.5;
+      if (pos === 'RP') return 0.5;
+      return 1.0;
+    }
+    // NBA/NHL/Soccer: position doesn't reliably indicate leverage; use stats threshold.
+    // Continuous piecewise-linear over [0.5, 1.5]: anchors at 0.1·maxPG → 0.5×,
+    // 0.5·maxPG → 1.5× (midpoint 0.3·maxPG → 1.0×, matching prior step-function default).
+    // Avoids the cliff effect where a player just under maxPG·0.5 got 1.0× and
+    // one just over got 1.5×.
+    const ratio = perGame / config.maxIndividual;
+    if (ratio <= 0.1) return 0.5;
+    if (ratio >= 0.5) return 1.5;
+    return 0.5 + (ratio - 0.1) * 2.5;
+  }
 
   let totalImpact = 0;
   for (const inj of recentInjuries) {
     // Look up player's season stats — try exact name first, then fuzzy
     let row = db.prepare(`
-      SELECT stats_json, games_played FROM player_stats
+      SELECT stats_json, games_played, position FROM player_stats
       WHERE team_abbr = ? AND sport = ? AND full_name = ?
       ORDER BY season DESC LIMIT 1
-    `).get(inj.teamAbbr, sport, inj.playerName) as { stats_json: string; games_played: number } | undefined;
+    `).get(inj.teamAbbr, sport, inj.playerName) as { stats_json: string; games_played: number; position: string | null } | undefined;
 
-    // Fuzzy fallback: LIKE match on last name
+    // Fuzzy fallback: LIKE match on last name. Refuse the join if >1 distinct
+    // teammate matches the surname (debt #36) — silently picking one would
+    // produce an incorrect impact score.
     if (!row) {
       const lastName = inj.playerName.split(' ').pop() ?? inj.playerName;
-      row = db.prepare(`
-        SELECT stats_json, games_played FROM player_stats
+      const matches = db.prepare(`
+        SELECT stats_json, games_played, position, full_name FROM player_stats
         WHERE team_abbr = ? AND sport = ? AND full_name LIKE ?
-        ORDER BY season DESC LIMIT 1
-      `).get(inj.teamAbbr, sport, `%${lastName}%`) as typeof row;
+        ORDER BY season DESC
+      `).all(inj.teamAbbr, sport, `%${lastName}%`) as Array<{ stats_json: string; games_played: number; position: string | null; full_name: string }>;
+      const distinctNames = new Set(matches.map(m => m.full_name));
+      if (distinctNames.size > 1) {
+        console.warn(`  ⚠ Injury: '${inj.playerName}' (${inj.teamAbbr}) ambiguous LIKE fallback — ${distinctNames.size} teammates match '${lastName}'; skipping (debt #36)`);
+        continue;
+      }
+      row = matches[0];
     }
 
     if (!row) {
@@ -258,10 +295,11 @@ export function computeInjuryImpact(sport: Sport, teamId: string): number {
       if (perGame > config.maxIndividual) {
         console.warn(`  ⚠ Injury impact clamped for ${inj.playerName}: ${perGame.toFixed(2)} → ${config.maxIndividual}`);
       }
-      totalImpact += clampedPerGame;
+      totalImpact += clampedPerGame * positionMultiplier(row.position, perGame);
     } catch { /* skip */ }
   }
-  return totalImpact;
+  // Team-level cap: prevents multiple high-multiplier injuries from overwhelming the model.
+  return Math.min(totalImpact, config.maxTeam);
 }
 
 export function predictGame(

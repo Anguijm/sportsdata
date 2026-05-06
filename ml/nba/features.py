@@ -94,8 +94,11 @@ class FeatureConfig:
             alpha = 1 - 2 ** (-1.0 / h)
             n_eff = (2 - alpha) / alpha
             return 1.0 / (2 * n_eff)
-        # season_agg: approximate N_eff = 41 (half-season average)
-        return 1.0 / (2 * 41)
+        # season_agg (Phase 7): uniform ε=1e-6 per Plans/nba-learned-model.md addendum v18
+        # §"Logit edge-case handling". Tighter than Phase 3's 1/(2·N_eff) ≈ 0.012, defensive
+        # against the rare zero-rate edge case while staying well below realistic season-agg
+        # rate values (typical tov_pct_agg ≈ 0.13).
+        return 1e-6
 
 
 def _weighted_mean(values: list[float], config: FeatureConfig) -> float | None:

@@ -58,6 +58,28 @@ _BINARY_FEATURES = {
     "b2b", "is_denver_home", "neutral_site",
 }
 
+# Phase 7 hybrid feature pipeline (Plans/nba-learned-model.md addendum v18).
+# 10 per-team stats × 2 teams × (season-agg + 3 EWMA-deltas) plus 9 game-level
+# features → 89 total features (vs Phase 3's 42). Inner-CV in Step 3 selects
+# the winning halflife from PHASE7_HALFLIVES.
+PHASE7_AGG_STATS = [
+    "net_rating",
+    "efg_pct_off", "efg_pct_def",
+    "tov_pct_off", "tov_pct_def",
+    "oreb_pct", "dreb_pct",
+    "three_p_rate_off", "three_p_rate_def",
+    "pace",
+]
+PHASE7_HALFLIVES = [7, 14, 21]
+# Rate-form season-agg features get logit_zscore; net_rating_agg + pace_agg
+# get plain zscore. All deltas get zscore (real-valued, can be negative).
+_PHASE7_AGG_RATE_STATS = {
+    "efg_pct_off", "efg_pct_def",
+    "tov_pct_off", "tov_pct_def",
+    "oreb_pct", "dreb_pct",
+    "three_p_rate_off", "three_p_rate_def",
+}
+
 
 @dataclass(frozen=True)
 class NormParams:
@@ -85,6 +107,16 @@ class FeatureConfig:
     def eps_for(self, feature_name: str) -> float:
         """Return ε for logit clipping, 0.0 for non-rate features."""
         base = feature_name.removeprefix("home_").removeprefix("away_")
+
+        # Phase 7 hybrid feature names (Plans/nba-learned-model.md addendum v18).
+        # `_agg` rates use uniform ε=1e-6 per §"Logit edge-case handling"; deltas
+        # are real-valued and use zscore (no logit clip needed).
+        if base.endswith("_agg"):
+            stat = base[: -len("_agg")]
+            return 1e-6 if stat in _PHASE7_AGG_RATE_STATS else 0.0
+        if "_delta_h" in base:
+            return 0.0
+
         if base not in _RATE_FEATURES:
             return 0.0
         if self.feature_form == "rolling":
@@ -94,10 +126,7 @@ class FeatureConfig:
             alpha = 1 - 2 ** (-1.0 / h)
             n_eff = (2 - alpha) / alpha
             return 1.0 / (2 * n_eff)
-        # season_agg (Phase 7): uniform ε=1e-6 per Plans/nba-learned-model.md addendum v18
-        # §"Logit edge-case handling". Tighter than Phase 3's 1/(2·N_eff) ≈ 0.012, defensive
-        # against the rare zero-rate edge case while staying well below realistic season-agg
-        # rate values (typical tov_pct_agg ≈ 0.13).
+        # season_agg (Phase 7): uniform ε=1e-6 per addendum v18 §"Logit edge-case handling".
         return 1e-6
 
 
@@ -307,6 +336,12 @@ def _per_game_derived(r: dict) -> dict[str, float]:
 
     net_rating = ortg - drtg
 
+    # Pace = possessions per game (regulation 48-min equivalent). Symmetric
+    # within a game: each team has the same possession count up to ±1 for
+    # who started/ended quarters. Average smooths the residual asymmetry.
+    # Used as a season-aggregate feature in Phase 7 (addendum v18).
+    pace = (poss + opp_poss) / 2.0
+
     return {
         "ortg": ortg,
         "drtg": drtg,
@@ -322,6 +357,7 @@ def _per_game_derived(r: dict) -> dict[str, float]:
         "ast_per_poss": ast_per_poss,
         "stl_per_poss": stl_per_poss,
         "blk_per_poss": blk_per_poss,
+        "pace": pace,
     }
 
 
@@ -484,6 +520,51 @@ def _rolling_feature_vector(
     return result
 
 
+def _phase7_team_features(
+    team_id: str,
+    histories: dict[str, dict[str, list[dict]]],
+    target_date: str,
+    target_season: str,
+    venue: str,
+) -> dict[str, float]:
+    """
+    Phase 7 hybrid per-team features: season-agg + EWMA-delta per stat per halflife.
+
+    Both season-agg and EWMA-delta operate on the team's current-season-only prior
+    games (filtered by `target_season`) — "zero at season start, converges to recency
+    deviation from baseline as games accumulate" (Plans/nba-learned-model.md
+    addendum v18 §"Feature architecture").
+
+    Returns NaN for both groups when the team has no prior games this season; the
+    normalization pipeline imputes NaN → 0.0 (training mean).
+    """
+    h = histories.get(team_id, {}).get(venue, [])
+    prior = [g for g in h if g["season"] == target_season and g["date"] < target_date]
+
+    result: dict[str, float] = {}
+
+    # Group 1 — season-aggregate (simple mean of per-game stat values).
+    agg_config = FeatureConfig(feature_form="season_agg")
+    for stat in PHASE7_AGG_STATS:
+        values = [g[stat] for g in prior]
+        agg = _weighted_mean(values, agg_config)
+        result[f"{stat}_agg"] = float("nan") if agg is None else agg
+
+    # Group 2 — EWMA-delta = EWMA_h - season_agg, for each halflife.
+    for halflife in PHASE7_HALFLIVES:
+        ewma_config = FeatureConfig(feature_form="ewma", ewma_halflife=halflife)
+        for stat in PHASE7_AGG_STATS:
+            values = [g[stat] for g in prior]
+            ewma = _weighted_mean(values, ewma_config)
+            agg_val = result[f"{stat}_agg"]
+            if ewma is None or math.isnan(agg_val):
+                result[f"{stat}_delta_h{halflife}"] = float("nan")
+            else:
+                result[f"{stat}_delta_h{halflife}"] = ewma - agg_val
+
+    return result
+
+
 def _enrich_opp_drtg(
     histories: dict[str, dict[str, list[dict]]],
 ) -> None:
@@ -608,7 +689,24 @@ def _build_team_histories_with_wins(
 
 
 def _get_transform(feature_name: str) -> str:
+    # Phase 7 hybrid features (Plans/nba-learned-model.md addendum v18).
+    # Match before Phase 3 routing so `tov_pct_off_agg` doesn't fall through to
+    # _RATE_FEATURES (which is keyed on the un-suffixed name).
+    if feature_name in {"home_advantage", "b2b_home", "b2b_away"}:
+        return "passthrough"
+    if feature_name in {"days_rest_home", "days_rest_away",
+                        "games_played_home", "games_played_away"}:
+        return "log1p_zscore"
     base = feature_name.removeprefix("home_").removeprefix("away_")
+    if base.endswith("_agg"):
+        stat = base[: -len("_agg")]
+        if stat in _PHASE7_AGG_RATE_STATS:
+            return "logit_zscore"
+        return "zscore"  # net_rating_agg, pace_agg
+    if "_delta_h" in base:
+        return "zscore"  # deltas are real-valued (can be negative)
+
+    # Phase 3 (existing) — keep below the Phase 7 branches above.
     if base in _RATE_FEATURES:
         return "logit_zscore"
     if base in _COUNT_FEATURES:
@@ -710,6 +808,32 @@ FEATURE_NAMES_ALL = (
 )
 
 
+# Phase 7 hybrid feature pipeline feature-name assembly
+# (Plans/nba-learned-model.md addendum v18)
+PHASE7_GAME_LEVEL_NAMES = [
+    "home_advantage", "neutral_site", "is_denver_home",
+    "days_rest_home", "days_rest_away",
+    "b2b_home", "b2b_away",
+    "games_played_home", "games_played_away",
+]
+NBA_HOME_ADVANTAGE_V5 = 2.25  # v5 NBA home-advantage (debt #27 closure, Sprint 10.9.5)
+
+
+def _phase7_team_feature_names(prefix: str) -> list[str]:
+    """Per-team Phase 7 names: agg for each stat + delta for each (stat × halflife)."""
+    names = [f"{prefix}_{s}_agg" for s in PHASE7_AGG_STATS]
+    for h in PHASE7_HALFLIVES:
+        names.extend(f"{prefix}_{s}_delta_h{h}" for s in PHASE7_AGG_STATS)
+    return names
+
+
+PHASE7_FEATURE_NAMES_ALL = (
+    _phase7_team_feature_names("home")
+    + _phase7_team_feature_names("away")
+    + PHASE7_GAME_LEVEL_NAMES
+)
+
+
 def _game_feature_vector(
     game: dict,
     histories: dict[str, dict[str, list[dict]]],
@@ -738,6 +862,54 @@ def _game_feature_vector(
     game_vals = [
         1.0 if home_id == DENVER_TEAM_ID else 0.0,
         float(game.get("neutral_site", 0)),
+    ]
+
+    return np.array(home_vals + away_vals + game_vals, dtype=float)
+
+
+def _phase7_game_feature_vector(
+    game: dict,
+    histories: dict[str, dict[str, list[dict]]],
+) -> np.ndarray:
+    """Phase 7 hybrid feature vector for one game (un-normalized).
+
+    Order: home_team_features + away_team_features + game-level. Aligned with
+    `PHASE7_FEATURE_NAMES_ALL`.
+    """
+    home_id = game["home_team_id"]
+    away_id = game["away_team_id"]
+    target_date = game["date"]
+    target_season = game["season"]
+    neutral_site = float(game.get("neutral_site", 0))
+
+    home_team = _phase7_team_features(home_id, histories, target_date, target_season, "home")
+    away_team = _phase7_team_features(away_id, histories, target_date, target_season, "away")
+    home_sched = _schedule_features(home_id, histories, target_date)
+    away_sched = _schedule_features(away_id, histories, target_date)
+
+    # games_played per team: count of current-season prior games in the team's "all" history
+    home_gp = float(sum(
+        1 for g in histories.get(home_id, {}).get("all", [])
+        if g["season"] == target_season and g["date"] < target_date
+    ))
+    away_gp = float(sum(
+        1 for g in histories.get(away_id, {}).get("all", [])
+        if g["season"] == target_season and g["date"] < target_date
+    ))
+
+    home_vals = [home_team[name.removeprefix("home_")] for name in _phase7_team_feature_names("home")]
+    away_vals = [away_team[name.removeprefix("away_")] for name in _phase7_team_feature_names("away")]
+
+    game_vals = [
+        NBA_HOME_ADVANTAGE_V5 * (1.0 - neutral_site),  # home_advantage
+        neutral_site,
+        1.0 if home_id == DENVER_TEAM_ID else 0.0,
+        float(home_sched.get("rest_days", float("nan"))),
+        float(away_sched.get("rest_days", float("nan"))),
+        float(home_sched.get("b2b", float("nan"))),
+        float(away_sched.get("b2b", float("nan"))),
+        home_gp,
+        away_gp,
     ]
 
     return np.array(home_vals + away_vals + game_vals, dtype=float)
@@ -849,6 +1021,95 @@ def build_training_tensor(
         )
 
     manifest_path = os.path.join(os.path.dirname(db_path), "_training_manifest.json")
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    return X_norm, y, game_ids
+
+
+def build_phase7_training_tensor(
+    config: FeatureConfig,
+    db_path: str,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """
+    Build the Phase 7 hybrid training tensor.
+
+    Layout: home (10 agg + 30 delta) + away (10 agg + 30 delta) + 9 game-level
+    = 89 features. See `PHASE7_FEATURE_NAMES_ALL` for the exact ordering.
+
+    Plan: Plans/nba-learned-model.md addendum v18 §"Feature architecture".
+    Returns: (X_norm, y, game_ids).
+
+    Side effects:
+        - Sets config.feature_names = PHASE7_FEATURE_NAMES_ALL
+        - Sets config.norm_params (fitted on this training fold)
+        - Writes `_phase7_training_manifest.json` next to db_path
+    """
+    if not config.training_as_of:
+        raise ValueError(
+            "config.training_as_of must be set before build_phase7_training_tensor"
+        )
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = None
+
+    box_rows = _load_box_stats(conn, config.training_as_of)
+    eligible_games = _load_eligible_games(conn, config.training_as_of)
+    game_results_raw = conn.execute(
+        "SELECT game_id, home_win FROM game_results WHERE sport = 'nba'"
+    ).fetchall()
+    game_results: dict[str, int] = {r[0]: r[1] for r in game_results_raw}
+    conn.close()
+
+    eligible_game_ids = {g["game_id"] for g in eligible_games}
+    box_rows, imputation_log, null_tov_count = _impute_sentinel_tov(box_rows)
+    paired = _pair_game_rows(box_rows)
+    histories = _build_team_histories_with_wins(
+        box_rows, paired, eligible_game_ids, game_results
+    )
+    # Note: Phase 7 does NOT call _enrich_opp_drtg — opp-adjusted Net Rating is
+    # not in the Phase 7 feature set per addendum v18 §"Feature architecture".
+
+    feature_names = PHASE7_FEATURE_NAMES_ALL
+    X_raw_rows = []
+    y_list = []
+    game_ids = []
+
+    for game in eligible_games:
+        gid = game["game_id"]
+        if game_results.get(gid) is None:
+            continue
+        vec = _phase7_game_feature_vector(game, histories)
+        X_raw_rows.append(vec)
+        y_list.append(int(game["home_win"]))
+        game_ids.append(gid)
+
+    X_raw = np.array(X_raw_rows, dtype=float)
+    y = np.array(y_list, dtype=int)
+
+    X_norm, fitted_config = _fit_and_normalize(X_raw, feature_names, config)
+
+    config.feature_names = feature_names
+    config.norm_params = fitted_config.norm_params
+
+    manifest = {
+        "training_as_of": config.training_as_of,
+        "architecture": "phase7_hybrid",
+        "halflives": PHASE7_HALFLIVES,
+        "agg_stats": PHASE7_AGG_STATS,
+        "n_games": int(X_norm.shape[0]),
+        "n_features": int(X_norm.shape[1]),
+        "feature_names": feature_names,
+        "sentinel_imputation_count": len(imputation_log),
+        "team_tov_null_imputed": null_tov_count,
+        "season_distribution": {},
+    }
+    for game in eligible_games:
+        manifest["season_distribution"][game["season"]] = (
+            manifest["season_distribution"].get(game["season"], 0) + 1
+        )
+
+    manifest_path = os.path.join(os.path.dirname(db_path), "_phase7_training_manifest.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
 

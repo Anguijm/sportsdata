@@ -200,7 +200,7 @@ def run_phase7_inner_cv(
             "n_features": int(X_sub.shape[1]),
             "fold_briers": fold_briers,
             "mean_brier": float(np.mean(fold_briers)),
-            "std_brier": float(np.std(fold_briers, ddof=0)),
+            "std_brier": float(np.std(fold_briers, ddof=1)),
         }
 
     winner = _select_winner(halflife_results)

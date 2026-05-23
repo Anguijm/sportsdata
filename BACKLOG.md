@@ -23,15 +23,14 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Check + merge PR #68** (`claude/debt-16-position-weighted-injury`) — position-weighted injury multipliers; council running as of 2026-05-01 (main merged in at 72d02dd). Expect WARN on magic-number multipliers; pre-declared mitigation: backtest not yet feasible, logging added in predict-runner.ts for future validation.
-- **Phase 7 Step 1** — TOV% fix in `ml/nba/features.py`: compute `tov_pct` on [0,1] scale, add ε=1e-6 clip before logit, unit test confirming non-zero std. Branch `claude/phase7-step1-tov-fix`. Council impl-review required before proceeding to Step 2.
+- **Plan-review council on addendum v19** (`claude/phase7-step3-data-prereq-addendum-v19`, 2026-05-24). Surfaces a data-prereq gap missed by v18 council: `nba_game_box_stats` has 0 rows for 2021/2022 (Phase 2 backfill was scoped post-2022) and `nba_eligible_games` view whitelist excludes those seasons. Step 3 training run is paused until council picks a path (backfill + widen view / re-scope training fold / defer to a debt). Run plan-review manually before any new code.
+- **PR #72 council re-review** (`claude/phase7-step3-inner-cv`) — ddof=0→ddof=1 fix pushed at 4006421 on 2026-05-24, addressing the impl-review WARN. Council should re-fire automatically.
 
 ## Next (queued, scoped)
 
-- **Phase 7 Step 2** — Hybrid feature pipeline: add season-agg group + EWMA-delta group to `build_training_tensor()`. Council impl-review. (Gated on Step 1 CLEAR.)
-- **Phase 7 Step 3** — Inner-CV training on 2021–2022-regular, K=5 folds, select halflife winner. Council results review. (Gated on Step 2 CLEAR.)
-- **Phase 7 Steps 4–6** — Val fold eval (2023-regular), pre-flight, test fold eval (2024-regular). Each has a council gate. See `Plans/nba-learned-model.md` addendum v18.
-- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (gated on N≥200 injury games; follow-up to debt #16 shipping).
+- **Phase 7 Step 3 training run** — BLOCKED on addendum v19 plan-review CLEAR. Once unblocked: run inner-CV on the council-approved training fold, K=5 folds, select halflife winner. Council results review.
+- **Phase 7 Steps 4–6** — Val fold eval (2023-regular), pre-flight, test fold eval (2024-regular). Each has a council gate. See `Plans/nba-learned-model.md` addendum v18 (plus v19 disposition).
+- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (gated on N≥200 injury games; follow-up to debt #16 shipping, merged in PR #68).
 - **debt #22** — NBA cold_coef 0.5→0.92 coefficient change; still needs council review.
 
 ## Someday (daydreams, architectural ideas)
@@ -54,7 +53,8 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- `claude/debt-16-position-weighted-injury` (PR #68) — position-weighted injury multipliers; council running (main merged in 2026-05-01).
+- `claude/phase7-step3-inner-cv` (PR #72) — Step 3 inner-CV harness; ddof fix pushed 2026-05-24, council re-running. Training run BLOCKED on addendum v19 disposition.
+- `claude/phase7-step3-data-prereq-addendum-v19` (no PR yet) — addendum v19 DRAFT surfacing the 2021/2022 box-stats prereq gap. Open PR + run plan-review council manually before any backfill/view code.
 
 ---
 

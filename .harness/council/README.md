@@ -80,6 +80,34 @@ Skipping any gate is a CRITICAL process failure. The user must never be the firs
 
 ---
 
+### pm.8 — Pipeline impl-review requires end-to-end smoke (blocking)
+
+**When it applies:** any PR whose diff modifies a feature-engineering or training pipeline (i.e., code that reads from a data source, computes derived values, and produces a tensor or other consumable artifact).
+
+**Rule:** impl-review cannot return CLEAR until the proponent has demonstrated, with an in-PR smoke run, that the pipeline produces non-degenerate output on a representative input slice. Specifically:
+
+1. **Non-empty output:** the tensor/artifact has rows. `X.shape[0] > 0`.
+2. **Non-degenerate variance:** for each feature group the plan declares (e.g. season-agg vs. EWMA-delta vs. game-level), at least one column has columnwise variance > 0.
+3. **Non-degenerate labels:** if the pipeline produces labels, both classes are present (for classification) or labels have non-zero variance (for regression).
+4. **Cross-parameter inequality:** if the pipeline produces parallel feature groups parameterized by a hyperparameter (e.g. EWMA halflives), at least one canary column must differ row-by-row across the parameter values. Otherwise the inner-CV winner selection is meaningless.
+
+The smoke run must be inside the PR (a committed test script + verified PASS in the PR description, OR a CI workflow step). "Tests pass on synthetic data" is NOT sufficient — synthetic data hides interaction bugs with the production schema, the time-machine filter, and the eligibility view.
+
+If a smoke run is genuinely impossible (the training data doesn't yet exist), the plan-review for the consuming step MUST declare this prereq inline AND the impl-review must defer CLEAR until the data arrives. Council reviewers verify the prereq is named before voting CLEAR on the consuming-step plan.
+
+**Why:** Phase 7 Step 2 (PR #71) shipped a feature pipeline with two latent bugs (Phase 7 addendum v21: `updated_at` time-machine filter excluded backfilled rows; `TEST_FOLD_SEASONS` was stale Phase 3 era). Both bugs CLEAR'd impl-review on code-shape + isolated-unit-test grounds, because no end-to-end run against real backfilled data was possible at the time. The bugs only manifested when Path A (v19+v20) populated the training data and PR-3 ran the harness: Brier was identical to 14 decimal places across all 3 halflives, because the prior history was empty for every 2021/2022 game. Codified rule + remediation: `Plans/nba-learned-model.md` addendum v21.
+
+**How to apply:** when reading a pipeline PR, before voting CLEAR:
+
+1. Locate the smoke test script (or CI workflow step) in the diff. If absent, vote WARN minimum.
+2. Confirm the smoke test exercises the production data path (real DB, real eligibility view, real downstream consumer) — not a mocked tensor.
+3. Confirm the smoke test asserts at least the four non-degeneracy properties above.
+4. If the consuming-step's training data doesn't yet exist, confirm the plan declared the prereq AND the impl-review explicitly defers CLEAR pending that data — do NOT issue CLEAR on the basis of "code looks right, can't test yet."
+
+**Canonical example:** PR #76 / addendum v21 (Sprint 10.25) — features.py shipped at PR #71 with `updated_at`-based time-machine filter that broke on backfilled data. Smoke test `ml/nba/test_phase7_feature_variance.py` introduced post-hoc; council impl-review CLEAR'd it 10/10 once the bug was fixed AND the smoke test was added.
+
+---
+
 ## Lead Architect hard rules
 
 The Lead Architect applies these non-negotiable verdicts regardless of other expert scores:

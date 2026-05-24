@@ -24,6 +24,8 @@ resolve the actual ship question). Next session: plan + execute Step 4
 - PR #76 v21: features.py time-machine filter (updated_at → g.date) + TEST_FOLD_SEASONS refresh + smoke test → CLEAR 10/10
 - PR #77 PR-3: Step 3 inner-CV results artifact (h=14 winner) → WARN 8/10 (modest perf, pre-declared per v18 Risk #4)
 - PR #78 codify pm.8 council rule → CLEAR 10/10
+- PR #79 SESSION_HANDOFF regeneration → WARN 8/10 (mirrors #77 finding, doc-only)
+- PR #80 PR-2b: bbref cross-source audit on 70 games (incl. 20 new 2021/2022) → CLEAR 10/10
 
 ### Step 3 canonical result
 
@@ -59,9 +61,11 @@ CI is the binding constraint.
 
 ### Deferred / parallel work
 
-- **PR-2b** (deferred per v20 A4, NOT gating): bbref cross-source audit on 20
-  hand-picked 2021/2022 games. ~15 min: Playwright bbref scraper + audit script.
-  Verification only.
+- **PR-2b** ✅ **DONE** at PR #80 (`6ca7e92`, 2026-05-24). bbref cross-source
+  audit on 70 games (50 baseline + 20 new 2021/2022) — 70/70 PASS, zero
+  mapping divergence. Council CLEAR 10/10. Confirmed ESPN scraper extracts
+  2021/2022 fields with same fidelity as 2023+. Audit doc:
+  `docs/espn-bbref-audit-v19.md`.
 - **debt #22**: NBA `cold_coef` 0.5→0.92 — needs council, model-change protocol.
 - **debt #18** (INJURY_COMPENSATION margin vs winprob) — unblocked by debt #16 ship.
 

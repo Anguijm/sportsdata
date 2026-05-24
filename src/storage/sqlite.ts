@@ -166,12 +166,15 @@ function initTables(db: Database.Database): void {
   }
 
   // Phase 3 step 3 migration: update nba_eligible_games to add neutral_site column.
+  // Phase 7 addendum v19 migration: widen season whitelist to include
+  // 2021-regular + 2022-regular (Phase 7 training fold). Phase 7 is regular-
+  // season only; postseason 2021/2022 stays excluded.
   // SQLite has no CREATE OR REPLACE VIEW; must drop dependents + view + recreate all.
-  // Idempotent: only fires if the view definition doesn't already include neutral_site.
+  // Idempotent: only fires if the view definition is missing either signal.
   const viewRow = db.prepare(
     "SELECT sql FROM sqlite_master WHERE type='view' AND name='nba_eligible_games'"
   ).get() as { sql: string } | undefined;
-  if (viewRow && !viewRow.sql.includes('neutral_site')) {
+  if (viewRow && (!viewRow.sql.includes('neutral_site') || !viewRow.sql.includes("'2021-regular'"))) {
     db.exec(`
       DROP VIEW IF EXISTS box_stats_coverage_aggregate;
       DROP VIEW IF EXISTS box_stats_coverage_per_season;
@@ -407,8 +410,10 @@ function initTables(db: Database.Database): void {
 
     -- ============================================================
     -- Debt #33: views for Phase-2 ship-rule evaluation.
-    -- Eligibility: 'final' status, hardcoded post-2022 NBA seasons
-    -- (see Plans/nba-learned-model.md addendum v11 step 3).
+    -- Eligibility: 'final' status, hardcoded NBA seasons.
+    -- See Plans/nba-learned-model.md addendum v11 step 3 (initial whitelist)
+    -- and addendum v19 (2021-regular + 2022-regular added for Phase 7 training).
+    -- Phase 7 is regular-season-only; 2021/2022 postseason intentionally excluded.
     -- Coverage gates evaluated against UNROUNDED ratios.
     -- neutral_site added Phase 3 step 3 — LEFT JOIN on lookup table.
     -- ============================================================
@@ -424,7 +429,9 @@ function initTables(db: Database.Database): void {
     LEFT JOIN nba_neutral_site_games nsgs ON nsgs.game_id = g.id
     WHERE g.sport = 'nba'
       AND g.status = 'final'
-      AND g.season IN ('2023-regular', '2023-postseason',
+      AND g.season IN ('2021-regular',
+                       '2022-regular',
+                       '2023-regular', '2023-postseason',
                        '2024-regular', '2024-postseason',
                        '2025-regular', '2025-postseason');
 

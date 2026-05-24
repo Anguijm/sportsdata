@@ -2953,3 +2953,147 @@ NOT in this PR's diff:
 - Changes to backfilled `updated_at` timestamps (the schema field stays as-is for audit-log purposes; the FILTER is what changes, not the data).
 - Codification of pm.8 — proposed inline above for a separate council-blessed `.harness/council/README.md` update PR.
 
+---
+
+## Addendum v22 — Phase 7 Step 4 plan: val-fold evaluation on 2023-regular (2026-05-24)
+
+**Status**: DRAFT — requires **plan-review council** before any Step 4 code is written. Per CLAUDE.md mandate, the automated workflow on this PR reviews the diff but not plan intent; the manual `python3 .harness/scripts/council.py --plan` run is the binding gate.
+
+**Trigger**: Phase 7 Step 3 results-review CLEAR at PR #77 (WARN 8/10 per v18 Risk #4 pre-declaration). Winner halflife=14 selected. v18 §"Implementation sequence" step 4 (val-fold eval) is now unblocked.
+
+---
+
+### pm.7 data-prereq audit (cited inline per the codified rule)
+
+Run at plan-review time, 2026-05-24, against `data/sqlite/sportsdata.db`:
+
+| Slice | v18 plan body | Actual | Status |
+|---|---|---|---|
+| `nba_eligible_games` rows for 2023-regular | "~1,230" (rough) | **1,237** | ✅ +7 vs plan estimate (more power, not less) |
+| `nba_game_box_stats` per-team coverage 2023-regular | implicit ≥98% | **100.00%** (2,474 / 2,474) | ✅ |
+| `game_results` joined labels for 2023-regular | implicit "all" | **1,237** | ✅ no missing labels |
+| `nba_eligible_games` for 2024-regular (test fold, sealed) | 1,237 | 1,237 | ✅ untouched, sealed |
+
+Worst per-team cell: every team in 2023-regular has 100% box-stat coverage. No Omicron-style cluster, no schema_error backlog. **pm.7 PASS — no pre-flight gate needed before Step 4 code is written.**
+
+Reconciliation of "~1,230" plan-body estimate vs actual 1,237: the plan body wrote "~1,230" as a rough figure during v18 plan drafting. The DB actual is the 82-game-per-team regular season summed (averages slightly above due to a small number of teams playing 83 due to Cup-tournament finals not counting separately). Use **1,237** as the binding N for power calculations in this addendum.
+
+---
+
+### Step 4 design
+
+#### Model training
+
+- **Training set:** 2021-regular + 2022-regular (2,466 eligible games), per Path A backfilled data. Excludes the 12 schema_error games (per v20 — both teams' rows skipped at upsert) and the 7 unmapped Omicron-reschedule games. Effective N: 2,447 games × 2 team-rows = 4,894 rows in the feature tensor.
+- **Halflife:** 14 (Step 3 winner). h=7 and h=21 delta columns are dropped at the column-subset stage (per `_subset_for_halflife` in `phase7_cv_runner.py`); kept set is 20 agg + 20 delta-h14 + 9 game-level = 49 features.
+- **Model:** **single** LightGBM (no 20-seed ensemble). Phase 7 Step 3 inner-CV used single-seed; Step 4 preserves that for consistency. Pre-declared risk: single-seed has higher variance than Phase 3's 20-seed; mitigation = bootstrap CI captures it. If point-estimate-vs-CI tension surfaces, council can request a 20-seed re-run as a follow-up.
+- **Hyperparameters:** pinned to Phase 3 v13 defaults, identical to Step 3:
+  ```
+  num_leaves=63, min_child_samples=100, reg_alpha=0.1,
+  n_estimators=2000, early_stopping_rounds=50
+  ```
+
+#### Platt calibration
+
+- **Holdout split:** last 25% of training data **by date** (forward-chaining, no leakage). With 2,447 games, the Platt holdout is approximately the last ~612 games (≈ early-March 2023 through end of 2022-regular). LightGBM training set: first ~1,835 games (≈ Oct 2021 – early March 2023).
+- **Platt method:** logit-space Platt scaling fit via `LogisticRegression(C=1e9)`. Inverse-link maps Platt-calibrated logit back to probability. Matches Phase 3 v14 (`ml/nba/calibrate.py`).
+- **Calibration-quality logging (pre-declared check):** the addendum-v18 calibration curve diagnostics (max bin residual ≤ 0.05 on bins with n ≥ 20) are computed and logged but are NOT a Step 4 ship gate — those are Step 5+ pre-flight items.
+
+#### Val-fold scoring (2023-regular, 1,237 games)
+
+- Build val tensor using `build_phase7_training_tensor` with `training_as_of` set just past the 2023-regular last game date (e.g. `2024-05-01`) AND a season filter to only score 2023-regular game-rows. The Step 4 driver script will add the season filter on top of the existing tensor builder.
+- Apply trained LightGBM + frozen Platt params from above. Compute per-game probability.
+- Compute Brier (Phase 7) = mean((p − y)²) over the 1,237 games.
+
+#### v5 baseline (reuse Phase 3 implementation)
+
+- Use the existing `_v5_predict` / `_compute_v5_on_games` functions from `ml/nba/evaluate_test_fold.py` (Phase 3, already merged + battle-tested). Inputs: per-team running aggregate stats (games_played, points_for, points_against) computed at game time. Outputs: v5 logistic probability.
+- v5 baseline cannot use 2023-regular box-stats because v5 only consumes raw game points (not box stats). It computes from `game_results` aggregates per team-season. No leakage risk from Path A backfill — v5 path is structurally independent.
+- Compute v5 Brier on the same 1,237 games.
+
+#### Ship gate (per v18)
+
+- **Primary**: Brier(v5) − Brier(Phase 7) ≥ **0.005** absolute (positive = Phase 7 better).
+- **Binding**: 95% **block-bootstrap paired CI** on per-game Brier difference **entirely above zero**. Pinned spec (matches `Plans/nba-learned-model.md` §Phase 3 rule 1 + §Effective sample size):
+  - Resamples: **B = 10,000**
+  - Block definition: **`(home_team, week)`** (revised from `(team, week)` per round-2 Stats feedback in Phase 3 plan; reused for Phase 7 unchanged)
+  - Week = ISO-week of game date
+  - Naive per-game-IID bootstrap also computed as sensitivity (NOT a gate). If the two CIs disagree by >2× width on the Brier difference, block-CI is authoritative per Phase 3 precedent.
+- **80%-power MDE on N=1,237** (per v18): ≈ 0.009. The 0.005 ship floor is BELOW MDE — meaning a 0.005-true-effect Phase 7 will fail-to-reject ~50% of the time on N=1,237. **The CI gate is the binding constraint**, not the point estimate. v18 already pre-declared this.
+
+#### Test-fold seal protocol (unchanged)
+
+Step 4 does NOT touch 2024-regular. The `test-fold-touch-counter.json` (per Phase 3 addendum v11) stays at 0 throughout Step 4. The first allowed touch is in Step 5 (pre-flight) which is a separate addendum + council gate.
+
+---
+
+### pm.8 smoke test (pre-declared per the codified rule)
+
+A new test file `ml/nba/test_phase7_val_eval_smoke.py` will be committed in the Step 4 impl PR. Assertions (all must PASS before impl-review CLEAR):
+
+1. **Training tensor non-degenerate** (already verified by v21 `test_phase7_feature_variance.py`; smoke re-runs that suite).
+2. **Platt holdout non-empty**: last 25% by date has ≥ 1 game with y=0 and ≥ 1 with y=1.
+3. **Val tensor for 2023-regular** has exactly 1,237 rows after season filter (matches pm.7 audit count).
+4. **Val tensor has both classes** (home_win=0 and home_win=1).
+5. **v5 baseline predictions** on 2023-regular: `mean ∈ (0.45, 0.65)` (sane home-advantage), `std > 0.01` (non-degenerate).
+6. **Phase 7 predictions** on 2023-regular: same sanity bounds.
+7. **Brier computation** produces no NaN/inf.
+8. **Block-bootstrap** runs with B=10,000 in under 60 seconds; output CI has finite endpoints.
+
+If any of the 8 assertions fails, impl-review CANNOT vote CLEAR.
+
+---
+
+### Implementation sequence (the Step 4 PR)
+
+The Step 4 impl PR will ship:
+
+- `ml/nba/phase7_val_eval.py` — new driver:
+  1. Build training tensor (2021/2022, h=14).
+  2. Date-split into LightGBM training (first 75%) and Platt holdout (last 25%).
+  3. Train LightGBM with the pinned hyperparams.
+  4. Fit Platt on holdout.
+  5. Build val tensor (2023-regular), apply LightGBM + Platt → Phase 7 predictions.
+  6. Compute v5 baseline via `_compute_v5_on_games` (imported from `evaluate_test_fold.py`).
+  7. Compute Brier (Phase 7), Brier (v5), and difference.
+  8. Block-bootstrap 95% CI on paired Brier difference. Naive IID bootstrap as sensitivity.
+  9. Calibration-curve diagnostics on Phase 7 predictions (logged, not gating).
+  10. Write artifact JSON to `ml/nba/results/phase7-val-{timestamp}-{uuid}.json` with the full breakdown: pre-bootstrap point estimates, both CIs, per-team Brier, per-week Brier, calibration curve, Platt params, manifest.
+- `ml/nba/test_phase7_val_eval_smoke.py` — the pm.8 smoke test (8 assertions above).
+- Council impl/results review on the impl PR. Verdict drives whether Step 4 ships.
+
+---
+
+### Risks pre-declared
+
+| # | Risk | Mitigation |
+|---|---|---|
+| 1 | Phase 7 inner-CV Brier (0.234) on training fold was worse than v5 (~0.220). Val-fold result likely also worse. | **Pre-declared null result per v18 Risk #4 is acceptable.** Step 4 is the binding evaluation; if Phase 7 fails the ship gate, the Phase 7 path is closed (null result, like Phase 3 + v17), and we pivot to a new Phase 8 plan or accept v5 indefinitely. No re-litigation of the inner-CV winner. |
+| 2 | Single-seed LightGBM has higher variance than Phase 3's 20-seed ensemble. If point-estimate-vs-CI tension surfaces (e.g., point estimate misses gate by 0.001 but CI is wide), council may want a 20-seed re-run. | Pre-declared follow-up. Single-seed run is the primary result; 20-seed re-run is a council-requested sensitivity, not a do-over. |
+| 3 | Platt holdout (last 25% by date) may be unrepresentative if there's late-season effect on 2022-regular. | Calibration-curve logging captures this. If max bin residual on val > 0.05 with n ≥ 20, council flags it as a pre-flight concern for Step 5; not a Step 4 gate. |
+| 4 | 2023-regular val-fold tensor may surface its own data-quality issues (despite pm.7 PASS — pm.7 audits row counts, not field-level consistency). | The pm.8 smoke test catches gross issues (NaN, missing class, wrong N); deeper issues would surface during Step 4 impl-review on actual results. |
+| 5 | The `(home_team, week)` block-bootstrap may have <50 blocks on N=1,237 single-season slice. | Pre-declared check: count blocks before B=10,000 run. If <50, fall back to `(home_team, month)` blocks (broader) with a pre-flight note. Currently expect ~ 30 teams × ~24 weeks = ~720 blocks (well above 50). |
+| 6 | v5 baseline reimplementation in Python (`_v5_predict`) may have drifted from the TypeScript canonical at `src/analysis/predict.ts`. | Step 4 impl PR includes a one-shot consistency check: pick 20 random 2023-regular games, run both v5 paths (Python + `npx tsx scripts/v5-prediction-replay.ts` against the same fixture), assert byte-for-byte equality. Council impl-review verifies this check passed. |
+| 7 | Step 4 results land WARN/FAIL because of council disagreement on the 0.005 ship threshold (some experts may want stricter). | v18 already pre-declared 0.005 + 95% CI. v18 was council-CLEAR. **No re-litigation** unless new evidence surfaces (per Phase 3 v15 pm.5 — falsification-test discipline applies). |
+
+---
+
+### What this addendum does NOT do
+
+- Does NOT touch the 2024-regular test fold. That's Step 5 (pre-flight) + Step 6 (test-fold eval).
+- Does NOT change the v18 train/val/test split or the v20 R3' relaxation (still 2021/2022-train, 2023-val, 2024-test; 2021-reg per-team threshold ≥93%).
+- Does NOT change inner-CV winner (h=14 frozen).
+- Does NOT change v5 incumbent behavior. v5 is consumed read-only via the existing `_v5_predict` Python re-implementation in `evaluate_test_fold.py`.
+- Does NOT pre-judge the Step 4 outcome. The plan is the procedure; the outcome is whatever the math says.
+
+---
+
+### Cross-references
+
+- **v18** §"Implementation sequence" step 4 + §"Ship rules" (Brier ≥ 0.005 + 95% CI).
+- **v19 + v20 + v21** — Path A prereq remediations (data + features.py + audit; all closed PRs #73, #75, #76, #80).
+- **Phase 3 addendum v11** — `(home_team, week)` block-bootstrap spec, `_v5_predict`, `evaluate_test_fold.py` evaluator pattern.
+- **Phase 3 addendum v14** — Platt calibration in logit space, `LogisticRegression(C=1e9)`.
+- **pm.7** — data-prereq audit (cited inline above; satisfied).
+- **pm.8** — pipeline impl-review end-to-end smoke (pre-declared above; gates impl PR).
+

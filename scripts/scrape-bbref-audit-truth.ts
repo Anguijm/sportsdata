@@ -147,6 +147,30 @@ const RAW: QueueRaw[] = [
   ['nba:bdl-18447749', '2026-03-09', 'nba:CLE', 'nba:PHI', '2025-regular'],
   ['nba:bdl-18447807', '2026-03-16', 'nba:HOU', 'nba:LAL', '2025-regular'],
   ['nba:bdl-18447469', '2026-03-18', 'nba:MEM', 'nba:DEN', '2025-regular'],
+  // PR-2b additions (Phase 7 addendum v20 A4): 10 lowest-bdl-N games per
+  // season from 2021-regular + 2022-regular (the Path A backfilled fold).
+  // Convention matches the existing list: lowest available bdl-N not in sample.
+  // Game-IDs sourced from games table after Path A backfill.
+  ['nba:bdl-473409', '2021-10-19', 'nba:LAL',  'nba:GS',  '2021-regular'],
+  ['nba:bdl-473410', '2021-10-19', 'nba:MIL',  'nba:BKN', '2021-regular'],
+  ['nba:bdl-473411', '2021-10-20', 'nba:CHA',  'nba:IND', '2021-regular'],
+  ['nba:bdl-473412', '2021-10-20', 'nba:DET',  'nba:CHI', '2021-regular'],
+  ['nba:bdl-473413', '2021-10-20', 'nba:TOR',  'nba:WSH', '2021-regular'],
+  ['nba:bdl-473414', '2021-10-20', 'nba:NY',   'nba:BOS', '2021-regular'],
+  ['nba:bdl-473415', '2021-10-20', 'nba:MEM',  'nba:CLE', '2021-regular'],
+  ['nba:bdl-473416', '2021-10-20', 'nba:MIN',  'nba:HOU', '2021-regular'],
+  ['nba:bdl-473417', '2021-10-20', 'nba:NO',   'nba:PHI', '2021-regular'],
+  ['nba:bdl-473418', '2021-10-20', 'nba:SA',   'nba:ORL', '2021-regular'],
+  ['nba:bdl-857355', '2022-10-18', 'nba:BOS',  'nba:PHI', '2022-regular'],
+  ['nba:bdl-857356', '2022-10-18', 'nba:GS',   'nba:LAL', '2022-regular'],
+  ['nba:bdl-857357', '2022-10-19', 'nba:IND',  'nba:WSH', '2022-regular'],
+  ['nba:bdl-857358', '2022-10-19', 'nba:DET',  'nba:ORL', '2022-regular'],
+  ['nba:bdl-857359', '2022-10-19', 'nba:BKN',  'nba:NO',  '2022-regular'],
+  ['nba:bdl-857360', '2022-10-19', 'nba:ATL',  'nba:HOU', '2022-regular'],
+  ['nba:bdl-857361', '2022-10-19', 'nba:MIA',  'nba:CHI', '2022-regular'],
+  ['nba:bdl-857362', '2022-10-19', 'nba:TOR',  'nba:CLE', '2022-regular'],
+  ['nba:bdl-857363', '2022-10-19', 'nba:MEM',  'nba:NY',  '2022-regular'],
+  ['nba:bdl-857364', '2022-10-19', 'nba:MIN',  'nba:OKC', '2022-regular'],
 ];
 type QueueRaw = [string, string, string, string, string];
 

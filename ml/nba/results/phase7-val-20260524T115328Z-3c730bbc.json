@@ -1,0 +1,156 @@
+{
+  "run_id": "phase7-val-20260524T115328Z-3c730bbc",
+  "phase": "phase7",
+  "step": 4,
+  "training_as_of": "2024-05-01",
+  "training_seasons": [
+    "2021-regular",
+    "2022-regular"
+  ],
+  "val_seasons": [
+    "2023-regular"
+  ],
+  "halflife": 14,
+  "seed": 0,
+  "n_train_full": 2466,
+  "n_lgbm_train": 1850,
+  "n_platt_holdout": 616,
+  "platt_holdout_date_range": [
+    "2023-01-11",
+    "2023-04-14"
+  ],
+  "n_val": 1237,
+  "lgbm_params": {
+    "num_leaves": 63,
+    "min_child_samples": 100,
+    "reg_alpha": 0.1,
+    "n_estimators": 2000,
+    "early_stopping_rounds": 50,
+    "seed": 0,
+    "random_state": 0
+  },
+  "platt": {
+    "A": 0.9440262489264183,
+    "B": -0.04111683015563789,
+    "uncal_brier_on_platt": 0.23382773641048002,
+    "cal_brier_on_platt": 0.23363342076778681
+  },
+  "brier": {
+    "phase7": 0.22261699358873782,
+    "v5": 0.21491628134075114,
+    "improvement_v5_minus_phase7": -0.007700712247986685
+  },
+  "block_bootstrap": {
+    "spec": "blocks=(home_team, iso_week); B=10000; alpha=0.05",
+    "n_blocks": 651,
+    "mean_paired_diff": -0.007700712247986605,
+    "ci_lo": -0.014446957153310026,
+    "ci_hi": -0.0008090641467866734
+  },
+  "iid_bootstrap_sensitivity": {
+    "spec": "per-game IID; B=10000; alpha=0.05 \u2014 NOT a gate, sensitivity only",
+    "mean_paired_diff": -0.007700712247986605,
+    "ci_lo": -0.014773489340507111,
+    "ci_hi": -0.0006696247611770365
+  },
+  "calibration": {
+    "ece_phase7": 0.03037067608836073,
+    "ece_v5": 0.024861777392043576,
+    "note": "non-gating per v22; Step 5 pre-flight is where these matter"
+  },
+  "v5_consistency": {
+    "status": "python-side captured; ts-side compare is a manual one-shot",
+    "samples": [
+      {
+        "game_id": "nba:bdl-1037652",
+        "python_v5_p": 0.57
+      },
+      {
+        "game_id": "nba:bdl-1037711",
+        "python_v5_p": 0.5026785458047767
+      },
+      {
+        "game_id": "nba:bdl-3277402",
+        "python_v5_p": 0.15
+      },
+      {
+        "game_id": "nba:bdl-3277433",
+        "python_v5_p": 0.3827173482350518
+      },
+      {
+        "game_id": "nba:bdl-1037778",
+        "python_v5_p": 0.5849632169727541
+      },
+      {
+        "game_id": "nba:bdl-3277482",
+        "python_v5_p": 0.802488874494704
+      },
+      {
+        "game_id": "nba:bdl-1037884",
+        "python_v5_p": 0.3426823108147891
+      },
+      {
+        "game_id": "nba:bdl-1037957",
+        "python_v5_p": 0.7645741619953952
+      },
+      {
+        "game_id": "nba:bdl-1037991",
+        "python_v5_p": 0.7176974600935109
+      },
+      {
+        "game_id": "nba:bdl-1038011",
+        "python_v5_p": 0.6726775227425892
+      },
+      {
+        "game_id": "nba:bdl-1038074",
+        "python_v5_p": 0.7969348372817108
+      },
+      {
+        "game_id": "nba:bdl-1038323",
+        "python_v5_p": 0.6087111833870479
+      },
+      {
+        "game_id": "nba:bdl-1038343",
+        "python_v5_p": 0.4091096972242874
+      },
+      {
+        "game_id": "nba:bdl-1038361",
+        "python_v5_p": 0.4738587634497851
+      },
+      {
+        "game_id": "nba:bdl-1038385",
+        "python_v5_p": 0.7779487499584695
+      },
+      {
+        "game_id": "nba:bdl-1038397",
+        "python_v5_p": 0.5214892792151027
+      },
+      {
+        "game_id": "nba:bdl-1038472",
+        "python_v5_p": 0.546012474896647
+      },
+      {
+        "game_id": "nba:bdl-1038557",
+        "python_v5_p": 0.2729819847225324
+      },
+      {
+        "game_id": "nba:bdl-1038722",
+        "python_v5_p": 0.6933672642961688
+      },
+      {
+        "game_id": "nba:bdl-1038754",
+        "python_v5_p": 0.5774567579928144
+      }
+    ]
+  },
+  "ship_gate": {
+    "floor": 0.005,
+    "point_pass": false,
+    "ci_lo_above_zero": false,
+    "overall": "FAIL",
+    "note": "CI gate is binding per v18/v22; point estimate is informational"
+  },
+  "scoring_convention": "Phase 7 Step 4 val-fold eval per Plans/nba-learned-model.md addendum v22. LightGBM trained on first 75% of 2021/2022-regular by date; Platt fit on last 25%; scored on 2023-regular val fold; v5 baseline from ml/nba/evaluate_test_fold.py.",
+  "run_environment_note": "Repository is date-pinned to 2026-05-24 per the project's currentDate convention. Run-ID timestamps reflect that pinned date, not wall-clock drift.",
+  "plan": "Plans/nba-learned-model.md addendum v22"
+}

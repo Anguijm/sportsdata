@@ -2839,3 +2839,117 @@ The 13 known incidents are itemized in `docs/phase7-2021-2022-backfill-coverage.
 - Re-scoping of Phase 7 step sequence — Step 3 (PR-3) is unblocked once PR-2 council CLEARs.
 - A retroactive change to Phase 2's debt #33 scope (which legitimately ended at post-2022).
 
+---
+
+## Addendum v21 — Phase 7 features.py time-machine filter + stale TEST_FOLD_SEASONS (2026-05-24)
+
+**Status**: DRAFT — code fix bundled in this PR. Council impl-review on this PR adjudicates v21 together with the actual code change.
+
+**Trigger**: PR-3 trial training run on 2026-05-24 (immediately after PR-2 v20 merged at `ea5dd09`) produced a degenerate result: all 3 halflives [7, 14, 21] yielded **identical Brier to 14+ decimal places** (0.2459930364898013). Investigation found two compounding bugs in `ml/nba/features.py` (originally landed in PR #71, Phase 7 Step 2).
+
+---
+
+### Bug A — `updated_at` time-machine filter excludes backfilled rows
+
+**Location.** `ml/nba/features.py:170` (and parallel at line 1197 for `_load_box_stats_with_test`):
+
+```sql
+WHERE bs.season NOT IN (TEST_FOLD_SEASONS)
+  AND bs.updated_at <= ?   -- <-- training_as_of
+```
+
+**Behavior.** The filter is intended to give point-in-time correctness: only data that was "known" as of `training_as_of` participates in feature computation. For real-time-scraped data (Phase 3 case), `updated_at ≈ game_date`, so the filter behaves as the plan intended.
+
+**Failure mode for backfilled data.** The 2021/2022 rows shipped by PR-2 have `updated_at = 2026-05-24` (the backfill timestamp). With `training_as_of = 2024-01-01`, the filter excludes every backfilled row. The feature builder's prior-history lookup (`prior = [g for g in h if g.date < target_date]`) sees an empty list → `_weighted_mean([])` returns `None` → feature value is `NaN` → normalization sets it to 0. EWMA and season-aggregate features become identically zero. Delta features (EWMA − agg) are zero. No halflife signal exists in the training tensor.
+
+**Evidence.** Direct inspection of the training tensor (before normalization) confirmed `nz_frac=0.0`, `std=0.0` for all 60 delta columns across 2,955 rows.
+
+**Schema context (Phase 2 addendum v7).** `nba_game_box_stats` has BOTH `first_scraped_at` (set once at insert) AND `updated_at` (mutated on any change). The v7 design uses `first_scraped_at` to "partition training artifacts by 'when did we first see this row.'" Phase 7's features.py uses `updated_at` — wrong column for the time-machine intent, BUT for backfilled data even `first_scraped_at = 2026-05-24` because the row was first inserted by the backfill. Switching to `first_scraped_at` does NOT fix the bug.
+
+**Correct semantic.** For training on historical data, the time-machine filter should be on **game date**, not scrape timestamp. The `eg.date <= training_as_of` filter already exists in `_load_eligible_games` (line 196) — the parallel filter in `_load_box_stats` should be `g.date <= training_as_of`, NOT `bs.updated_at <= training_as_of`.
+
+**Fix.** Replace `AND bs.updated_at <= ?` with `AND g.date <= SUBSTR(?, 1, 10)` in both `_SQL_LOAD_BOX_STATS` (line 168-172) and `_SQL_LOAD_BOX_STATS_WITH_TEST` (line 1189-1199). This matches the eligibility filter's semantic and works for both live-scraped (where `g.date ≈ updated_at`) and backfilled data (where `g.date << updated_at`).
+
+---
+
+### Bug B — `TEST_FOLD_SEASONS` is stale
+
+**Location.** `ml/nba/features.py:43`:
+
+```python
+TEST_FOLD_SEASONS: frozenset[str] = frozenset({"2025-regular", "2025-postseason"})
+```
+
+**Phase 7 reality.** Addendum v18 §"Data splits" names the test fold as **2024-regular** (sealed, N=1,237). 2025-regular is OUT OF SCOPE for Phase 7. The constant was carried over from Phase 3 (where 2025 was the test fold) and never updated.
+
+**Practical impact for PR-3 inner-CV.** The harness's own season filter (`PHASE7_TRAINING_SEASONS = ('2021-regular','2022-regular')`) prevents direct 2024-leakage into training rows. However:
+- `_load_box_stats` excludes 2025-regular (which Phase 7 doesn't use) but DOES NOT exclude 2024-regular (Phase 7's sealed test fold).
+- The per-game prior-history filter (`g.date < target_date`) prevents 2024 from leaking INTO 2021/2022 feature computation because all 2024 dates are after all 2022 dates.
+- BUT: the box-stats load is over-broad (loads ~3,800 unused 2024-regular rows into memory), and any future code that iterates `box_rows` without a season filter could accidentally touch the test fold.
+
+**Future-proofing.** The val fold (2023-regular, N≈1,230) should remain accessible (it's used for Platt calibration in a separate step). Only the test fold and out-of-scope seasons should be excluded.
+
+**Fix.** Update to reflect Phase 7's sealed slice and Phase 7's out-of-scope seasons:
+
+```python
+TEST_FOLD_SEASONS: frozenset[str] = frozenset({
+    "2024-regular", "2024-postseason",  # Phase 7 sealed test fold + its postseason
+    "2025-regular", "2025-postseason",  # Phase 7 out-of-scope (carry forward)
+})
+```
+
+This adds the actual Phase 7 test fold to the exclusion set AND preserves the 2025 carry-forward. Future seasons (2025-26, 2026-27) are also excluded by default — that's the desired behavior for a frozen training fold.
+
+---
+
+### Why Step 2 (PR #71) council impl-review missed this
+
+Both bugs are present in PR #71 features.py (the Phase 7 Step 2 hybrid pipeline). Step 2 council impl-review CLEAR'd the code on the basis of test coverage and code-shape correctness — but no end-to-end run against real training data was possible because the 2021/2022 backfill didn't yet exist. The bugs only manifest when:
+- Backfilled data is loaded (Bug A: zero-variance features)
+- The unused-data audit is run (Bug B: superficial — affects code hygiene more than correctness for the inner-CV use case)
+
+**Codification proposal — pm.8 — Pipeline impl-review requires end-to-end smoke**:
+
+A new rule for `.harness/council/README.md`: any plan whose code change is a feature-engineering or training pipeline must include, before impl-review CLEAR, a smoke run on a representative training slice that asserts:
+1. Output tensor has rows (`X.shape[0] > 0`).
+2. Output tensor has columnwise variance > 0 for at least one column in each feature group declared by the plan.
+3. Output labels have both classes present (for classification) / non-degenerate variance (for regression).
+
+If a smoke run is genuinely impossible (e.g., the training data doesn't yet exist), the plan-review for the consuming step MUST declare this prereq inline. Council reviewers verify the prereq is named before voting CLEAR on the consuming-step plan.
+
+This rule generalizes pm.7's data-prereq audit from "verify the data exists" to "verify the pipeline produces non-degenerate output." Applies to plan-review (declaration) and impl-review (smoke-run gate).
+
+---
+
+### Code change scope
+
+This PR's diff:
+- `ml/nba/features.py:43`: TEST_FOLD_SEASONS updated.
+- `ml/nba/features.py:168-172`: `_SQL_LOAD_BOX_STATS` uses `g.date <= SUBSTR(?, 1, 10)`.
+- `ml/nba/features.py:1189-1199`: `_SQL_LOAD_BOX_STATS_WITH_TEST` mirrors the change.
+- `scripts/test-phase7-feature-variance.ts` (or `.py` to fit Python conventions): new smoke-test asserting non-zero variance on delta features when training_as_of=2024-01-01 against the PR-2 backfilled DB.
+
+NOT in this PR's diff:
+- The pm.8 codification — proposed for a separate PR after council CLEARs the v21 plan.
+- Re-running Step 3 inner-CV — that's PR-3, gated on this PR's merge.
+
+---
+
+### Risks pre-declared
+
+| # | Risk | Mitigation |
+|---|------|-----------|
+| 1 | The semantic change from `updated_at` to `g.date` filter affects Phase 3 NULL-result reproducibility if anyone re-runs the old harness | Phase 3 is closed (addendum v17). Live-scraped Phase 3 data had `updated_at ≈ g.date`; both filters give equivalent rows. No-op for closed Phase 3 work. |
+| 2 | `build_test_fold_tensor` may rely on `updated_at` for a documented reason that v21 misses | Reviewed. `_load_box_stats_with_test` callers are `build_test_fold_tensor` (for live test-fold scoring on 2024-regular) where `g.date ≈ updated_at` and the semantic is equivalent. Pre-declared check in impl-review. |
+| 3 | Adding 2024-regular to TEST_FOLD_SEASONS breaks any out-of-scope code that expected to read 2024-regular box stats from `_load_box_stats` | Reviewed. `_load_box_stats` callers are training tensors only (`build_training_tensor`, `build_phase7_training_tensor`). Both correctly exclude test-fold rows from training; adding 2024 only enforces what was always intended. |
+| 4 | Re-run Step 3 training on the fixed code yields a *meaningful* winner halflife but model performance is poor / WAR vs v5 is negative | This is Phase 7's actual scientific question. Addendum v18 §"Risks" already pre-declared it. Not a bug. |
+
+---
+
+### What this addendum does NOT include
+
+- Changes to Phase 7 train/val/test splits (still 2021–2022-regular train, 2023-regular val, 2024-regular test).
+- Changes to the inner-CV harness in `phase7_cv_runner.py` (it consumes whatever feature tensor it's given; the bugs are upstream).
+- Changes to backfilled `updated_at` timestamps (the schema field stays as-is for audit-log purposes; the FILTER is what changes, not the data).
+- Codification of pm.8 — proposed inline above for a separate council-blessed `.harness/council/README.md` update PR.
+

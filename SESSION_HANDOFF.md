@@ -4,90 +4,74 @@
 
 ---
 
-## Start here next session — 2026-05-24 (Phase 7 Path A complete; Step 4 next)
+## Start here next session — 2026-05-24 (Phase 7 NULL RESULT; Phase 8 strategic decision pending)
 
-**TL;DR.** Phase 7 Path A (Steps 1-3 + the three prereq remediation PRs) is
-fully shipped to main. Step 3 winner is **halflife=14, mean Brier 0.233946**
-on 2021-regular + 2022-regular inner-CV. v5 incumbent Brier ~0.220 — Phase 7
-training-fold is worse, consistent with addendum v18 Risk #4 (val/test gates
-resolve the actual ship question). Next session: plan + execute Step 4
-(val-fold evaluation on 2023-regular).
+**TL;DR.** Phase 7 hybrid season-agg + EWMA-delta architecture **failed the val-fold ship gate** on 2023-regular (PR #83, council CLEAR 10/10). Phase 7 is the fifth consecutive learned-model null result (Phase 3-7). v5 remains permanent NBA incumbent until a Phase 8 plan exists. **Debt #37 is now the top-priority backlog item: a strategic decision on Phase 8 direction needs user-level input before any Phase 8 plan PR.**
 
-**Current branch:** `main` at `f07468d`.
+**Current branch:** `main` at the PR #84 (v23 close-out) merge commit.
+
+### Phase 7 final result (PR #83)
+
+| Metric | Phase 7 (h=14 + Platt) | v5 incumbent | Diff |
+|---|---|---|---|
+| Brier on 2023-regular val (N=1,237) | **0.222617** | 0.214916 | **-0.0077** (v5 better) |
+| ECE | 0.0304 | 0.0249 | v5 better-calibrated |
+| 95% block-bootstrap paired CI | mean -0.0077, **[-0.0144, -0.0008]** | — | entirely below 0 |
+| IID per-game sensitivity CI | [-0.0148, -0.0007] | — | agrees with block-CI |
+
+Artifact: `ml/nba/results/phase7-val-20260524T115328Z-3c730bbc.json`.
+
+### Phase 8 strategic decision (debt #37) — candidate directions
+
+Per v23 §"Phase 8 deferred", v22 plan-review domain-expert WARN, and cross-phase null-result pattern:
+
+1. **Injury features** (highest signal per domain expert; multi-sprint, needs injury data infrastructure)
+2. **Schedule/travel features** (smaller scope; mostly derivable from existing `games` table)
+3. **Player-level BPM** (Phase 4 retry; needs trade-pipeline fix to address the 13-14% missing-player gap first)
+4. **Declare v5 permanent NBA incumbent + redirect R&D to other sports** (e.g., MLB or NHL scale calibration; soccer Phase 8 work gated on debt #25/#26)
+5. **Different model class** on existing features (Bayesian hierarchical, GP, calibrated probabilistic forest) — lower confidence in payoff per Phase 3's LightGBM↔MLP parity finding
+
+None of these is committed. Each requires its own plan + pm.7 + pm.8 + council cycle.
 
 ### What this session shipped (Sprint 10.25, all merged to main 2026-05-24)
 
-- PR #72 Step 3 inner-CV harness + ddof=1 fix → CLEAR 10/10
-- PR #73 addendum v19 (data-prereq gap surfaced) → CLEAR 10/10
-- PR #74 PR-1: widen `nba_eligible_games` view to 2021/2022 + codify pm.7 → CLEAR 10/10
-- PR #75 PR-2: backfill 2021/2022 (12,498 rows) + addendum v20 gate adjustment → CLEAR 9/10 (DQ FAIL on input-data state was override-resolved by lead architect)
-- PR #76 v21: features.py time-machine filter (updated_at → g.date) + TEST_FOLD_SEASONS refresh + smoke test → CLEAR 10/10
-- PR #77 PR-3: Step 3 inner-CV results artifact (h=14 winner) → WARN 8/10 (modest perf, pre-declared per v18 Risk #4)
+- PR #72 Step 3 harness + ddof=1 fix → CLEAR 10/10
+- PR #73 addendum v19 (data-prereq gap) → CLEAR 10/10
+- PR #74 PR-1: view widen + codify pm.7 → CLEAR 10/10
+- PR #75 PR-2: 2021/2022 backfill (12,498 rows) + v20 gate adjustment → CLEAR 9/10 (DQ-FAIL override on input-data state)
+- PR #76 v21: features.py time-machine fix + TEST_FOLD_SEASONS refresh + smoke → CLEAR 10/10
+- PR #77 PR-3: Step 3 inner-CV results (h=14 winner) → WARN 8/10 (pre-declared per v18 Risk #4)
 - PR #78 codify pm.8 council rule → CLEAR 10/10
-- PR #79 SESSION_HANDOFF regeneration → WARN 8/10 (mirrors #77 finding, doc-only)
-- PR #80 PR-2b: bbref cross-source audit on 70 games (incl. 20 new 2021/2022) → CLEAR 10/10
-
-### Step 3 canonical result
-
-| halflife | mean Brier | std Brier | n_features |
-|---|---|---|---|
-| 7 | 0.234568 | 0.007358 | 49 |
-| **14** | **0.233946** | **0.007206** | 49 |
-| 21 | 0.235377 | 0.006245 | 49 |
-
-Winner: **halflife=14**. Note that Brier separations (~0.0007–0.0014) are smaller
-than fold-std (~0.007), so the winner is selected per the lowest-mean rule but is
-not robustly differentiated. Artifact: `ml/nba/results/phase7-cv-20260524T094619Z-135677f1.json`.
-
-### Step 4 — val-fold evaluation (next session)
-
-**What:** Train a single LightGBM model on 2021-regular + 2022-regular using
-halflife=14 (the Step 3 winner), Platt-calibrate on a held-out portion of the
-training fold, score on **2023-regular** (1,230 games), compute Brier and compare
-to v5's 2023-regular Brier.
-
-**Ship rule (per addendum v18):** Brier improvement ≥ 0.005 + 95% block-bootstrap
-CI excluding zero, on BOTH val (this step) and test (Step 8). 80%-power MDE ≈ 0.009.
-CI is the binding constraint.
-
-**Discipline:**
-- Step 4 does NOT touch the test fold (2024-regular sealed).
-- Plan-review council BEFORE writing the Step 4 code, per CLAUDE.md.
-- pm.7 applies: verify 2023-regular row counts at plan-review time
-  (`SELECT COUNT(*) FROM nba_eligible_games WHERE season='2023-regular'` — should
-  return 1,237 vs the expected 1,230 from the plan body; reconcile any diff).
-- pm.8 applies: the Step 4 implementation PR must include a smoke run with
-  non-degenerate feature variance assertions BEFORE impl-review CLEAR.
-
-### Deferred / parallel work
-
-- **PR-2b** ✅ **DONE** at PR #80 (`6ca7e92`, 2026-05-24). bbref cross-source
-  audit on 70 games (50 baseline + 20 new 2021/2022) — 70/70 PASS, zero
-  mapping divergence. Council CLEAR 10/10. Confirmed ESPN scraper extracts
-  2021/2022 fields with same fidelity as 2023+. Audit doc:
-  `docs/espn-bbref-audit-v19.md`.
-- **debt #22**: NBA `cold_coef` 0.5→0.92 — needs council, model-change protocol.
-- **debt #18** (INJURY_COMPENSATION margin vs winprob) — unblocked by debt #16 ship.
+- PR #79 SESSION_HANDOFF regen → WARN 8/10 (mirrors #77)
+- PR #80 PR-2b: bbref cross-source audit 70/70 PASS → CLEAR 10/10
+- PR #81 ledger close → CLEAR 10/10
+- PR #82 v22 Step 4 plan → WARN 8/10 (model-arch concern, pre-declared)
+- PR #83 Step 4 val-fold eval — **NULL RESULT** → CLEAR 10/10 (framework correctly falsifying)
+- PR #84 v23 close-out (this push) — pending council
 
 ### Council rules codified this session
 
-- **pm.7** (`.harness/council/README.md`): plan-review must verify data-prereq
-  existence at plan-review time. Canonical: v19 + PR #74.
-- **pm.8** (`.harness/council/README.md`): pipeline impl-review requires
-  end-to-end smoke run on representative data. Canonical: v21 + PR #76 + PR #78.
+- **pm.7**: plan-review must verify data-prereq existence at plan-review time. Canonical: v19 + PR #74.
+- **pm.8**: pipeline impl-review requires end-to-end smoke run on real data path. Canonical: v21 + PR #76 + PR #78.
+- **Session-level autonomous override** (`feedback_autonomous_council_override.md`): user delegated plan-review judgment to Claude mid-session; Claude proposes own counter-challenges + proceeds without re-asking. Default discipline (manual plan-review) still applies in future sessions absent re-confirmation.
 
-Both rules came out of council-discipline gaps Path A surfaced: pattern-correctness
-in isolation ≠ production-correctness when the data path actually exists.
+### Carry-forward debts (unchanged)
 
-### Phase 7 data splits (locked, addendum v18 + v20 R3 adjustment)
+- **debt #18**: INJURY_COMPENSATION margin vs winprob — unblocked by debt #16 ship; can proceed independently of Phase 8 decision.
+- **debt #22**: NBA `cold_coef` 0.5→0.92 — needs council, model-change protocol. Unrelated to Phase 7 close-out.
+- **debt #37** (NEW): Phase 8 NBA learned-model strategic decision — see above; HIGH priority but gated on user-level input.
 
-- Training (inner-CV, DONE): 2021-regular (1,224/1,230 games, 99.5% coverage)
-  + 2022-regular (1,236/1,236 games, 100%) — 2,466 eligible, 12,498 box-stat rows
-  across 28 teams at 100%, 2 teams (CHI, TOR) at 93.9% per v20 R3' adjustment
-  (Omicron cluster Dec 14, 2021 – Feb 3, 2022).
-- Val fold (NEXT, Step 4): 2023-regular (1,237 games)
-- Test fold (sealed, Step 8): 2024-regular (1,237 games)
-- Postseason: explicitly out of scope.
+### Cross-phase lesson (codified in v23)
+
+Five consecutive learned-model null results (Phase 3-7) on NBA win-probability prediction at n≈4k games. The architectural lesson is empirically robust: **v5's simple sigmoid on season-aggregate point differential is near-sufficient at this data scale**. Adding feature complexity (EWMA windowing, recency-delta, player-aggregate priors, season-aggregate companions) has NOT produced a robust Brier improvement ≥ 0.005 with CI excluding zero on any of Phase 3, 4, 5, 6, or 7. Phase 8, if pursued, must address this pattern with a different class of signal (likely injury / rest / travel, per domain expert) OR accept v5 as permanent.
+
+### Phase 7 closed — splits, gates, and artifacts (for historical reference)
+
+- Training (Phase 7 final, no re-run): 2021-regular (1,224/1,230 effective after PR-2 omissions) + 2022-regular (1,236/1,236) = 2,447 effective games, 4,894 team-rows in tensor.
+- Val (Phase 7 final): 2023-regular, N=1,237, 100% coverage.
+- Test (sealed, NEVER touched in Phase 7 per protocol when val failed): 2024-regular, N=1,237.
+- Halflife winner: h=14 (Step 3 mean Brier 0.233946).
+- Step 4 ship gate: FAIL (0.0077 worse than v5; CI entirely below zero).
 
 ---
 

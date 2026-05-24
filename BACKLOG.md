@@ -23,15 +23,13 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 
 ## Now (this week's actionable work)
 
-- **Plan-review council on addendum v19** (`claude/phase7-step3-data-prereq-addendum-v19`, 2026-05-24). Surfaces a data-prereq gap missed by v18 council: `nba_game_box_stats` has 0 rows for 2021/2022 (Phase 2 backfill was scoped post-2022) and `nba_eligible_games` view whitelist excludes those seasons. Step 3 training run is paused until council picks a path (backfill + widen view / re-scope training fold / defer to a debt). Run plan-review manually before any new code.
-- **PR #72 council re-review** (`claude/phase7-step3-inner-cv`) — ddof=0→ddof=1 fix pushed at 4006421 on 2026-05-24, addressing the impl-review WARN. Council should re-fire automatically.
+- **debt #37: Phase 8 NBA learned-model strategic decision** — Phase 7 NULL RESULT closed at PR #83 (2026-05-24); v23 close-out at PR #84. Pick from candidate Phase 8 directions: (1) injury features, (2) schedule/travel features, (3) BPM with trade-pipeline fix, (4) declare v5 permanent NBA incumbent + redirect to other sports, (5) different model class. **Requires user-level prioritization session before any Phase 8 plan PR.**
+- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (unblocked by debt #16 ship at PR #68). Can proceed independently of Phase 8 decision.
+- **debt #22** — NBA cold_coef 0.5→0.92 coefficient change; still needs council review. Unrelated to Phase 7 close-out; v5-specific calibration.
 
 ## Next (queued, scoped)
 
-- **Phase 7 Step 3 training run** — BLOCKED on addendum v19 plan-review CLEAR. Once unblocked: run inner-CV on the council-approved training fold, K=5 folds, select halflife winner. Council results review.
-- **Phase 7 Steps 4–6** — Val fold eval (2023-regular), pre-flight, test fold eval (2024-regular). Each has a council gate. See `Plans/nba-learned-model.md` addendum v18 (plus v19 disposition).
-- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (gated on N≥200 injury games; follow-up to debt #16 shipping, merged in PR #68).
-- **debt #22** — NBA cold_coef 0.5→0.92 coefficient change; still needs council review.
+- (intentionally empty until debt #37 strategic decision lands)
 
 ## Someday (daydreams, architectural ideas)
 
@@ -53,8 +51,7 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- `claude/phase7-step3-inner-cv` (PR #72) — Step 3 inner-CV harness; ddof fix pushed 2026-05-24, council re-running. Training run BLOCKED on addendum v19 disposition.
-- `claude/phase7-step3-data-prereq-addendum-v19` (no PR yet) — addendum v19 DRAFT surfacing the 2021/2022 box-stats prereq gap. Open PR + run plan-review council manually before any backfill/view code.
+- `claude/phase7-v23-closeout` — Phase 7 NULL RESULT close-out addendum v23 + this BACKLOG update + memory updates. Pushing imminently; auto-council on diff.
 
 ---
 
@@ -78,16 +75,18 @@ See `SESSION_LOG.md` "Council Debts (Open)" table for full descriptions and sour
 | 29 | Ternary reliability for soccer Poisson | Low | gated on 1X2 |
 | 32 | Shadow-analysis CLI / endpoint | HIGH | gated on N≥30 pairs |
 | 36 | Injury-name fuzzy fallback can mismatch on duplicate last names | Low | PR #68 R3 ships interim mitigation (refuse non-unique LIKE); full fix = upstream player-ID normalization |
+| 37 | Phase 8 NBA learned-model strategic decision | HIGH | Phase 7 NULL (PR #83, v23 close-out at PR #84). 5 candidate directions surveyed in v23. Needs user-level prioritization session. |
 
 Closed (recent): #11 (Sprint 10.8), #13 (PR #28), #14 (PR #38), #27 (PR #34), #28 (PR #36), #31 (PR #44), #33 (PRs #42/#43/#45), #34 (Sprint 10.13), **#35 (Sprint 10.14, option-b after v10 forward-and-rollback)**.
 Sprint 10.22 sweep (merged 2026-05-01): **#4** (PR #62), **#5/#6/#10** (PR #60), **#7** (PR #59), **#9** (PR #61), **#12** (PR #57), **#15/#22** (PR #63), **#17/#30** (PR #58), **#23** (already satisfied).
-Sprint 10.23 in progress (2026-05-01): **#16** (PR #68, council running).
+Sprint 10.23 (closed 2026-05-01): **#16** (PR #68).
+**Sprint 10.25 (closed 2026-05-24)**: Phase 7 NULL RESULT closed at PR #83; Phase 7 path closed. PRs #72–#84 across this sprint. Council rules pm.7+pm.8 codified.
 
 ## Plans (active)
 
 | File | Status | Notes |
 |---|---|---|
-| `Plans/nba-learned-model.md` | Phase 3 NULL RESULT (addenda v1–v17). Phase 7 plan council-CLEAR (addendum v18, PR #67, 2026-05-01). Splits: train 2021–2022-regular, val 2023-regular, test 2024-regular. Step 1 (TOV% fix) is next. | v5 remains incumbent. |
+| `Plans/nba-learned-model.md` | **Phase 7 NULL RESULT closed** (addenda v18–v23, PRs #67/#73/#75/#76/#82/#83/#84). Phase 7 hybrid season-agg + EWMA-delta architecture failed val-fold ship gate by 0.0077 Brier with 95% CI entirely below zero. v5 remains permanent incumbent for NBA learned-model path until a Phase 8 plan exists (debt #37). **Closed; v5 incumbent across all phases 3-7.** | |
 | `Plans/nba-phase2-backfill.md` | Debt #33 plan, fully executed; closed. | Reference for backfill mechanics. |
 | `Plans/soccer-poisson.md` (+ addendum) | Reference for debt #25/#26 work. | |
 | `Plans/shadow-prediction-logging.md` | Reference for debt #14/#32 work. | |

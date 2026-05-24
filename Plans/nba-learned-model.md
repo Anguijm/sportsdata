@@ -3097,3 +3097,123 @@ The Step 4 impl PR will ship:
 - **pm.7** — data-prereq audit (cited inline above; satisfied).
 - **pm.8** — pipeline impl-review end-to-end smoke (pre-declared above; gates impl PR).
 
+---
+
+## Addendum v23 — Phase 7 NULL RESULT close-out + cross-phase lesson + Phase 8 deferred (2026-05-24)
+
+**Status**: CLOSE-OUT. Documents Phase 7 path closure following Step 4 ship-gate FAIL (PR #83 merged at council CLEAR 10/10). No Phase 8 plan proposed — that requires a separate planning session with strategic input the close-out does not pre-decide.
+
+**Trigger**: Phase 7 Step 4 val-fold evaluation on 2023-regular (PR #83, 2026-05-24) returned **FAIL on both the point estimate (Phase 7 worse by 0.0077 Brier) and the binding 95% block-bootstrap CI** (entirely below zero). Per v18 + v22 ship-rule discipline, Phase 7 cannot proceed to Step 5+ (test-fold eval), and the Phase 7 hybrid architecture is closed as a null result.
+
+---
+
+### Phase 7 final result
+
+| Metric | Phase 7 (h=14 + Platt) | v5 incumbent | Diff |
+|---|---|---|---|
+| Brier on 2023-regular val (N=1,237) | **0.222617** | 0.214916 | -0.0077 (v5 wins) |
+| ECE | 0.0304 | 0.0249 | v5 better-calibrated |
+| Block-bootstrap paired CI (95%) | mean -0.0077, **[-0.0144, -0.0008]** | — | entirely below 0 |
+| IID per-game sensitivity CI (95%) | [-0.0148, -0.0007] | — | agrees with block-CI |
+| Blocks used: (home_team, iso_week) | **651** | — | well above 50 stability floor |
+
+**Test fold remained sealed.** `test-fold-touch-counter.json` was not touched. The 2024-regular slice was excluded by `TEST_FOLD_SEASONS` per v21 fix, and the v18 protocol forbids test-fold touch when val fails. This addendum confirms that protocol was followed.
+
+---
+
+### Cross-phase pattern: FIVE consecutive learned-model null results
+
+| Phase | Architecture | Outcome | Reference |
+|---|---|---|---|
+| Phase 3 | 42 EWMA features, LightGBM 20-seed + MLP 20-seed | NULL on 2025-26 test fold | addendum v17 |
+| Phase 4 | 44 features (EWMA + BPM player prior) | NULL — BPM gap (~13-14% missing) blocked improvement | post-mortem in v18 |
+| Phase 5 | 44 features (BPM with bug fixes) | NULL — bug fixes did not move Brier | post-mortem |
+| Phase 6 | 46 features (added season_net_rating) | NULL — explicit feature addition did not help | post-mortem |
+| **Phase 7** | **89 features (hybrid season-agg + EWMA-delta, h=14)** | **NULL on 2023-regular val fold (this addendum)** | **v22 + v23** |
+
+**Architectural lesson** (corroborated by 5 independent attempts): **for NBA win-probability prediction at n≈4k games of training data, the v5 simple-sigmoid baseline on season-aggregate point differential is empirically near-sufficient**. Adding feature complexity (EWMA windowing, recency-delta, player-aggregate priors, season-aggregate companions) has not produced a robust Brier improvement of ≥0.005 with bootstrap-CI excluding zero.
+
+Phase 7's specific contribution was the **hybrid season-agg + EWMA-delta** architecture — the explicit theory was that a base signal (season-agg) plus a recency-adjustment signal (EWMA-delta) would capture both v5's structural advantage and any recent-form effect. Step 4's result shows the recency-delta signal did not provide enough information gain to beat v5; the model with 89 features performs *worse* than v5 with 3 statistics (games_played, points_for, points_against).
+
+---
+
+### What this null result does NOT prove
+
+To be precise about what is and is not falsified:
+
+- **NOT falsified**: that some learned model with sufficient feature engineering AND additional signals beyond box-scores could beat v5. Phase 7 only tested the hybrid season-agg + EWMA-delta architecture on box-score-derived features.
+- **NOT falsified**: that injury, schedule, or travel features (none of which were in Phase 3-7) would change the answer. v22 plan-review's domain-expert WARN explicitly identified this as the most likely path forward.
+- **NOT falsified**: that a different ML class (Gaussian process, Bayesian hierarchical, deep tabular) on the same feature set would behave differently. Phase 3 explored LightGBM vs MLP and got identical null results; Phase 7 used LightGBM single-seed.
+
+**WHAT IS falsified, on this data, with N=1,237 val-fold games and α=0.05**: that the Phase 7 hybrid architecture with halflife=14 on the existing 89-feature set produces a Brier improvement ≥ 0.005 over v5 on 2023-regular NBA games.
+
+---
+
+### v5 status (unchanged)
+
+- v5 remains the NBA incumbent for production prediction.
+- v5 also serves NFL (same continuous-sigmoid scale=0.10), MLB (scale=0.26), NHL (scale=0.40), MLS (scale=0.80), EPL (scale=0.90).
+- No code change to v5 is proposed in this close-out.
+- v5's debt #22 (cold_coef 0.5→0.92 calibration) is OPEN and unrelated to this addendum — it remains in the BACKLOG for a separate council pass.
+
+---
+
+### Phase 8 — deferred to a separate planning session
+
+This close-out does NOT propose a Phase 8 plan. The strategic question — "should we continue investing in NBA learned-model R&D, and if so, what architecture?" — requires user-level input that the close-out cannot pre-decide. Candidate Phase 8 directions (NOT a commitment, just a survey for the future planning session):
+
+1. **Injury features** (domain-expert recommendation from v22 + cross-phase pattern). Requires injury data infrastructure: scraping NBA injury reports, mapping to player-IDs, time-stamping availability. Multi-sprint commitment.
+2. **Schedule/travel features** (back-to-backs, road trips, time-zone changes, rest days). Mostly derivable from existing `games` table; smaller-scope than injuries.
+3. **Player-level signals** (return-of-Phase-4 BPM but with the 13-14% missing-player gap solved first via a trade-pipeline fix). Multi-sprint commitment.
+4. **Pivot away from NBA learned-model entirely** — declare v5 the permanent NBA incumbent and redirect R&D budget to other sports (e.g., MLB or NHL where v5's scale calibration might be improvable, or to soccer where Phase 8 work like debt #25 / #26 is gated on different prereqs).
+5. **Different model class** on existing features (Bayesian hierarchical, GP, calibrated probabilistic forest). Lower confidence in payoff given Phase 3's LightGBM+MLP parity result.
+
+Each of these would be its own plan with its own pm.7 + pm.8 + council cycle.
+
+**Backlog entry created (debt #37 — see `BACKLOG.md`):** *"Phase 8 NBA learned-model strategic decision — pick from candidates #1-#5 above; needs user-level prioritization session."*
+
+---
+
+### Council-discipline reflections from Phase 7
+
+The Path A surfacing of three council-discipline gaps (v19, v20, v21) plus this clean null result demonstrate the maturity of the council process:
+
+- **pm.7** (data-prereq audit at plan-review) caught v19's missing 2021/2022 data BEFORE Step 3 ran the harness with empty inputs.
+- **pm.8** (end-to-end smoke before pipeline impl CLEAR) caught v21's features.py time-machine bug BEFORE Step 3 results were trusted.
+- **pm.5 + pm.6** (R2 reversal discipline) WOULD have applied if anyone tried to re-litigate the 0.005 ship floor ex-post — they did not.
+- **Lead Architect override** on v20 (DQ FAIL → CLEAR override) is itself worth a council-level retrospective. The override was procedurally OK because DQ's FAIL was on input-data state (Omicron-era ESPN gaps) which the plan transparently handled, not on plan rigor. Future hard-rule overrides should cite an analogous reasoning template.
+
+These mechanisms operated correctly. The Phase 7 null result is the council process working as intended — falsifying a hypothesis cleanly without ex-post bar movement.
+
+---
+
+### Files affected by this close-out
+
+- This addendum (v23) appended to `Plans/nba-learned-model.md` — append-only per CLAUDE.md doc-hygiene rule.
+- `BACKLOG.md` — Phase 7 status moved from "in flight" to "closed (null result)"; debt #37 added.
+- Memory updates: `project_sportsdata_foundation.md` (snapshot bumped to post-Phase-7-null), `MEMORY.md` index updated.
+- `SESSION_HANDOFF.md` — "Start here next session" block regenerated.
+
+NO code changes. NO new tests. NO data migrations. v23 is pure documentation and ledger discipline.
+
+---
+
+### What this addendum does NOT do
+
+- Does NOT propose a Phase 8 plan or pick from the candidate directions.
+- Does NOT recommend revisiting the Phase 7 result with relaxed ship floors. The result is dispositive on the pre-declared spec.
+- Does NOT touch v5 production code.
+- Does NOT touch the test fold (2024-regular sealed; first allowed touch is whenever a future Phase X reaches Step 5 pre-flight).
+- Does NOT propose retiring `test-fold-touch-counter.json`. It stays at 0 until a future Phase justifies a touch.
+- Does NOT propose any change to pm.5-pm.8 council discipline rules.
+
+---
+
+### Cross-references
+
+- PR #83 (Step 4 val-fold eval, NULL RESULT council CLEAR 10/10) — the source artifact.
+- v22 — Step 4 plan with the pre-declared null-result acceptance.
+- v18 — Phase 7 plan with Risk #4 pre-declaration of model-performance question.
+- v17 — Phase 3 NULL RESULT close-out (same shape; sister document).
+- Phase 4/5/6 post-mortems in earlier addenda.
+

@@ -61,6 +61,25 @@ Skipping any gate is a CRITICAL process failure. The user must never be the firs
 
 ---
 
+### pm.7 — Plan-review data-prereq audit (blocking)
+
+**When it applies:** any plan whose body names specific training, validation, or test data slices (e.g. seasons, date ranges, leagues, segments).
+
+**Rule:** the plan-review cannot return CLEAR until the proponent has explicitly verified, at plan-review time, that the corresponding rows exist in the storage layer at the granularity the plan requires (eligibility view + any joined fact tables). "We'll check later" is not a mitigation. The verification step must be cited inline in the plan.
+
+**Why:** Phase 7 addendum v18 was council-CLEAR with `PHASE7_TRAINING_SEASONS = ('2021-regular','2022-regular')`. All 5 experts + lead architect approved the plan. The plan included a test-fold completeness pre-flight but no parallel training-fold one. When the Step 3 harness ran (2026-05-24), it exited with `RuntimeError: No games matched PHASE7_TRAINING_SEASONS=('2021-regular','2022-regular')` — `nba_game_box_stats` had zero rows for 2021/2022 (Phase 2 backfill was scoped post-2022 per debt #33 ship rule), and the `nba_eligible_games` view whitelist excluded those seasons. A 5-expert panel and the lead architect missed the prereq. Surfaced in addendum v19 and codified here.
+
+**How to apply:** when reading a plan that names a data slice, before voting CLEAR:
+
+1. Run the eligibility query the plan would run (or its closest analogue) against `data/sqlite/sportsdata.db` and confirm row counts at the granularity the plan needs.
+2. If a coverage view exists (e.g. `box_stats_coverage` for NBA Phase 2), check the per-cell numbers for the slice in question.
+3. If the slice spans tables the plan joins on (e.g. NBA needs `games` + `nba_game_box_stats` + `nba_espn_event_ids`), confirm row counts on each.
+4. If any slice has zero rows or coverage below the plan's stated threshold, the plan must declare a pre-flight gate (with executable steps + a coverage threshold + a halt protocol) before any code that consumes the slice is written. Verdict before such a gate exists: WARN at minimum; FAIL if the plan is silent on the gap.
+
+**Canonical example:** addendum v19 (Sprint 10.24) — `nba_game_box_stats` had 0 rows for 2021/2022 + `nba_eligible_games` view whitelist excluded those seasons. Codified rule + Path A backfill remediation: `Plans/nba-learned-model.md` addendum v19.
+
+---
+
 ## Lead Architect hard rules
 
 The Lead Architect applies these non-negotiable verdicts regardless of other expert scores:

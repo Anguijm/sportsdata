@@ -1,0 +1,70 @@
+{
+  "run_id": "phase7-cv-20260524T094230Z-d68280c6",
+  "phase": "phase7",
+  "step": 3,
+  "training_as_of": "2024-01-01",
+  "training_seasons": [
+    "2021-regular",
+    "2022-regular"
+  ],
+  "n_games": 2466,
+  "n_folds": 5,
+  "scored_folds": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "halflives": [
+    7,
+    14,
+    21
+  ],
+  "lgbm_params": {
+    "num_leaves": 63,
+    "min_child_samples": 100,
+    "reg_alpha": 0.1,
+    "n_estimators": 2000,
+    "early_stopping_rounds": 50
+  },
+  "halflife_results": {
+    "7": {
+      "n_features": 49,
+      "fold_briers": [
+        0.24444338135059687,
+        0.23023538544317412,
+        0.23572045099392672,
+        0.22787426608480996
+      ],
+      "mean_brier": 0.2345683709681269,
+      "std_brier": 0.007358190950408818
+    },
+    "14": {
+      "n_features": 49,
+      "fold_briers": [
+        0.243525889152374,
+        0.23090907510186304,
+        0.23476106078593384,
+        0.22658861760907753
+      ],
+      "mean_brier": 0.2339461606623121,
+      "std_brier": 0.007206307159622298
+    },
+    "21": {
+      "n_features": 49,
+      "fold_briers": [
+        0.2437433586880079,
+        0.23246676060148794,
+        0.236087345693555,
+        0.2292104506907661
+      ],
+      "mean_brier": 0.23537697891845424,
+      "std_brier": 0.006244901185202868
+    }
+  },
+  "winner": {
+    "halflife": 14,
+    "mean_brier": 0.2339461606623121
+  },
+  "plan": "Plans/nba-learned-model.md addendum v18 \u00a7Implementation sequence step 3"
+}

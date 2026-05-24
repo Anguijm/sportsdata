@@ -214,6 +214,12 @@ def run_phase7_inner_cv(
         "n_games": n,
         "n_folds": N_FOLDS,
         "scored_folds": list(range(1, N_FOLDS)),
+        "scoring_convention": (
+            "Forward-chaining K-fold cross-validation per Phase 3 cv_runner precedent. "
+            f"With n_folds={N_FOLDS}, slice 0 is the initial training-only chunk (no held-out "
+            f"test data yet), so only slices 1..{N_FOLDS-1} contribute scored Brier values. "
+            f"4-of-5 scored is BY DESIGN, not a missing-fold defect."
+        ),
         "halflives": PHASE7_HALFLIVES,
         "lgbm_params": LGBM_PHASE7_PARAMS,
         "halflife_results": {
@@ -224,6 +230,11 @@ def run_phase7_inner_cv(
             "mean_brier": halflife_results[winner]["mean_brier"],
         },
         "plan": "Plans/nba-learned-model.md addendum v18 §Implementation sequence step 3",
+        "run_environment_note": (
+            "Repository is date-pinned to 2026-05-24 per the project's currentDate convention. "
+            "Run-ID and filename timestamps reflect that pinned date, NOT a wall-clock drift. "
+            "See CLAUDE.md repo root for the date-pinning convention."
+        ),
     }
 
     results_dir.mkdir(parents=True, exist_ok=True)

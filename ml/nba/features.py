@@ -40,7 +40,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 
 FeatureForm = Literal["rolling", "ewma", "season_agg"]
 
-TEST_FOLD_SEASONS: frozenset[str] = frozenset({"2025-regular", "2025-postseason"})
+TEST_FOLD_SEASONS: frozenset[str] = frozenset({
+    "2024-regular", "2024-postseason",  # Phase 7 sealed test fold (v18) + its postseason
+    "2025-regular", "2025-postseason",  # Phase 7 out-of-scope (carry forward from v18)
+})
 REST_DAYS_CAP = 14
 DENVER_TEAM_ID = "nba:DEN"
 
@@ -167,7 +170,7 @@ _SQL_LOAD_BOX_STATS = """
         FROM nba_game_box_stats bs
         JOIN games g ON g.id = bs.game_id
         WHERE bs.season NOT IN ({placeholders})
-          AND bs.updated_at <= ?
+          AND g.date <= SUBSTR(?, 1, 10)
         ORDER BY g.date ASC, bs.game_id, bs.team_id
         """
 
@@ -1194,7 +1197,7 @@ _SQL_LOAD_BOX_STATS_WITH_TEST = """
                bs.pts, bs.possessions, bs.updated_at
         FROM nba_game_box_stats bs
         JOIN games g ON g.id = bs.game_id
-        WHERE bs.updated_at <= ?
+        WHERE g.date <= SUBSTR(?, 1, 10)
         ORDER BY g.date ASC, bs.game_id, bs.team_id
         """
 

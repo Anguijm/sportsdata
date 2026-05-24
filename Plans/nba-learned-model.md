@@ -2636,3 +2636,115 @@ All steps require council review at the gate indicated before proceeding to the 
 - Feature ablations published as separate deliverables: out of scope. Inner-CV winner selection suffices.
 - Cup-knockout TOV convention fix (pm.1 from addendum v10): carry forward to Phase 7 impl-review. ~14 games; negligible but must be pre-declared as known bias.
 - **Postseason prediction**: explicitly out of scope. Phase 7 is trained on and evaluated against regular-season games only. Playoff evaluation requires a separate plan with domain-appropriate val/test splits (shortened rotations, series-level strategic adjustments, and injury management differ materially from the regular season).
+
+---
+
+## Addendum v19 — Phase 7 Step 3 data-prereq gap (2026-05-24)
+
+**Status**: DRAFT — requires plan-review council before any backfill/view code is written.
+
+**Trigger**: Step 3 inner-CV harness (PR #72) was run locally on 2026-05-24. The harness exited with `RuntimeError: No games matched PHASE7_TRAINING_SEASONS=('2021-regular', '2022-regular')`. Investigation found the training-fold data is **absent from the database**.
+
+---
+
+### What we found
+
+| Season | `games` rows (raw) | `nba_game_box_stats` rows | `nba_eligible_games` rows |
+|---|---|---|---|
+| 2021-regular | 1,230 | **0** | **0** (view excludes) |
+| 2022-regular | 1,236 | **0** | **0** (view excludes) |
+| 2023-regular | 1,237 | 1,237 | 1,237 |
+| 2024-regular | 1,237 | 1,237 | 1,237 |
+| 2025-regular | 1,162 | 1,162 | 1,162 |
+
+Two compounding gaps:
+
+1. **Box-stats coverage**: `nba_game_box_stats` has zero rows for 2021/2022. Per debt #33 / Phase 2 addendum v8, the box-stats backfill (`scripts/backfill-nba-box-stats.ts`) was scoped to **post-2022 only** because the Phase 2 ship rule (line 133) is "≥ 98% of post-2022 NBA games have a complete MUST-HAVE row." 2021/2022 were never in scope of that backfill.
+
+2. **Eligibility view whitelist**: `nba_eligible_games` (storage migration in `src/storage/sqlite.ts`) hardcodes `season IN ('2023-regular', '2023-postseason', '2024-regular', '2024-postseason', '2025-regular', '2025-postseason')`. Even if box-stats existed for 2021/2022, the view would not surface them.
+
+The raw `games` table has 2019–2026 rows, so historical schedule/score data exists; only the box-stats prerequisite is missing.
+
+---
+
+### Council-discipline failure mode
+
+Addendum v18 was council-CLEAR with `PHASE7_TRAINING_SEASONS = ('2021-regular','2022-regular')`. The v18 plan added a **test-fold** data-completeness pre-flight (2024-regular ≥ 99%) but **no parallel pre-flight for the training fold**. All 5 experts and the lead architect missed this. Per `feedback_council_discipline.md`, this is a reviewer-discipline gap to be codified: **any plan that names training/val/test seasons must verify the corresponding rows exist in the storage layer at plan-review time**, not at training-run time.
+
+This addendum is the surface-up of that gap. The Step 3 training run is paused until council adjudicates a path forward.
+
+---
+
+### Proposed paths (council picks one)
+
+#### Path A — Backfill 2021/2022 box stats, widen view, re-run Step 3
+
+- Extend `scripts/backfill-nba-box-stats.ts` to accept 2021-regular + 2022-regular as input seasons.
+- Run backfill (~2,466 games × 1 ESPN req @ 2 req/sec ≈ 25–40 min wall-clock plus retries).
+- Migrate `nba_eligible_games` view to add `'2021-regular', '2022-regular'` (and optionally `2021-postseason, 2022-postseason` — but Phase 7 trains on regular-season only, so postseason expansion is out of scope for this addendum).
+- Run cross-source audit on a 50-game sample of 2021/2022 (matches Phase 2's audit protocol from line 122).
+- Confirm coverage ≥ 98% per (team, season) cell on the new backfill (Phase 2 ship-rule line 135).
+- Then re-run Step 3 harness.
+
+**Risk profile**:
+- External API hit on ESPN — same rate-limit / retry posture as Phase 2.
+- Schema-drift risk: 2021/2022 box-score JSON may differ from 2023+ format. Phase 2's hand-rolled validator (`espn-box-schema.ts`) logs schema-drift warnings to `scrape_warnings`; investigate any warnings before merging the backfill.
+- 30-month-old box scores: data should be stable, but verify with audit.
+
+**Pre-declared gates**:
+1. Backfill coverage ≥ 98% per (team, 2021-regular) and per (team, 2022-regular).
+2. Cross-source audit raw-count fields match exactly on the 50-game sample; rate fields within 1% tolerance.
+3. Zero MUST-HAVE schema-drift warnings; NICE-TO-HAVE warnings logged but non-blocking.
+4. Possessions estimate (Oliver formula) populated for 100% of new rows.
+
+#### Path B — Re-scope Phase 7 training fold
+
+Use the data we have:
+
+- **Option B1**: Train on 2023-regular only (1,237 games), val on the first half of 2024-regular (~619 games), test on the second half of 2024-regular (~618 games). Loses the 2024-regular CI-powered N=1,237 test, weakens the ship rule.
+- **Option B2**: Train on 2023-regular + first 75% of 2024-regular, val on next 12.5%, test on final 12.5%. Tiny test fold — Brier CI would not exclude zero at MDE=0.009. Likely DOA at council.
+- **Option B3**: Wait for 2025-26 regular season to complete (Jun 2026), then use 2024-regular as train, 2025-regular partial as val, 2025-regular tail as test. Delay-driven; not a Sprint 10 option.
+
+All three weaken either statistical power or the train/val/test separation v18 was approved on.
+
+#### Path C — Defer Phase 7 entirely, debt-list the backfill prereq
+
+Pause Phase 7 Step 3. Open a new debt (call it #34 / "2021-2022 NBA box-stats backfill") and route it through the standard debt-resolution flow (its own plan-review council, separate PR). Return to Phase 7 once that ships. Cleanest separation of concerns but slowest path.
+
+---
+
+### Recommendation (Lead Architect view, for council to challenge)
+
+**Path A**, with one modification: split it into two PRs.
+
+1. PR-1 (this branch, after plan-review CLEAR): widen `nba_eligible_games` view migration + extend backfill script to take 2021/2022 as input + cross-source audit additions. **No** Step 3 training run in PR-1.
+2. PR-2: execute backfill on a DB-equipped machine, commit audit artifact + coverage report. Council impl-review on the audit. Council CLEAR gates the Step 3 training run.
+3. PR-3 (= current PR #72 after rebase): commit Step 3 results artifact + run-log. Council results-review.
+
+Rationale:
+- Path A preserves the v18-approved train/val/test split — minimal re-litigation of the council-CLEAR plan.
+- Splitting into three PRs keeps each gate auditable.
+- 30-min ESPN backfill is well within Phase 2's established rate-limit envelope.
+
+**Against Path A**: it surfaces a 2-week-old council-discipline gap. Reviewer codification should land in `.harness/council/README.md` as part of this addendum's CLEAR — pre-declared here.
+
+---
+
+### Risks pre-declared
+
+| # | Risk | Mitigation |
+|---|------|-----------|
+| 1 | ESPN box-score JSON for 2021/2022 has schema drift relative to 2023+ | Hand-rolled validator logs `scrape_warnings` rows; cross-source audit (50-game sample) is a blocking gate |
+| 2 | 2021/2022 backfill takes longer than 40 min due to retries | Pause and report at the 60-min mark; do not bypass rate limit |
+| 3 | Coverage falls below 98% per (team, 2021-regular) — i.e., some teams have missing games beyond pathological-scraper rate | Document gap, escalate to council before proceeding |
+| 4 | Reviewer-discipline gap (data-prereq audit) is not codified, recurs in Phase 8+ | Codify in `.harness/council/README.md` as part of this addendum's plan-review CLEAR — pre-declared above |
+
+---
+
+### What this addendum does NOT include
+
+- Changes to Phase 7 train/val/test splits (Path A preserves them; Paths B/C are for council to weigh against A).
+- Changes to the Step 3 harness code in PR #72 (already council-CLEAR pending the v19 disposition).
+- Postseason expansion of `nba_eligible_games` view (out of scope; Phase 7 is regular-season-only per v18).
+- A retroactive re-review of addendum v18's other claims — only the training-fold data-prereq is in scope.
+

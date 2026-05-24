@@ -4,39 +4,102 @@
 
 ---
 
-## Start here next session — 2026-05-01 (Sprint 10.23 — Phase 7 plan locked; debt #16 in review)
+## Start here next session — 2026-05-23 (Phase 7 Step 3 — RUN THE TRAINING)
 
-**Current branch:** `main` (local synced to `635e826`).
-**Production state (Fly):** v5 remains incumbent. Phase 7 plan council-CLEAR on main (addendum v18).
-**Last merged:** PR #67 `plan(phase7): Hybrid Season-Agg + EWMA model — addendum v18` at `635e826`.
+**Your one job this session: run the Phase 7 Step 3 inner-CV training on a
+DB-equipped machine, commit the artifact, push.** Everything else below is
+context. The harness code is already written, pushed, and in review (PR #72).
 
-**Immediate next actions (in order):**
-1. **Check PR #68 council** (`claude/debt-16-position-weighted-injury`) — main was merged into branch at `72d02dd` and pushed 2026-05-01; council should have fired. Expect WARN on magic-number position multipliers (pre-declared). If WARN mitigations are acceptable, merge.
-2. **Phase 7 Step 1** — TOV% fix in `ml/nba/features.py`: compute `tov_pct = TOV / (FGA + 0.44·FTA + TOV)` on [0,1] scale; add ε=1e-6 clip before logit; unit test confirming non-zero std. Branch `claude/phase7-step1-tov-fix`. Council impl-review required before any retraining.
+**Current branch:** `claude/phase7-step3-inner-cv` at `f910d97` (1 commit ahead
+of `origin/main` @ `7cd2868`). Harness only — no training has run yet.
 
-**Open PRs (1):**
-- #68 `claude/debt-16-position-weighted-injury` — position-weighted injury multipliers; council running (main merged in at 72d02dd, 2026-05-01).
+### THE TRAINING RUN — exact steps
+
+```bash
+git checkout claude/phase7-step3-inner-cv      # the branch is on origin
+/usr/bin/python3 -m pip install -r requirements-ml.txt   # lightgbm + numpy etc.
+ls -lh data/sqlite/sportsdata.db               # PREREQ — must exist (~few hundred MB)
+python ml/nba/phase7_cv_runner.py 2024-01-01   # the sweep; ~5-8 min wallclock
+```
+
+- CLI arg is `training_as_of`; `2024-01-01` is fine (just needs to post-date the
+  2021+2022 training fold's last game).
+- Output: prints a per-halflife Brier table + winner, and writes
+  `ml/nba/results/phase7-cv-<run_id>.json`.
+- **Then:** `git add ml/nba/results/phase7-cv-*.json`, commit, push. The push
+  re-triggers council — this is the **results-review** gate.
+
+**Failure modes (all documented in code docstring):**
+- `RuntimeError: No games matched PHASE7_TRAINING_SEASONS` → DB lacks
+  2021-regular / 2022-regular eligible games; check `nba_eligible_games`.
+- `ModuleNotFoundError: lightgbm` → pip step skipped.
+- `no such table: nba_eligible_games` → DB isn't the post-v10 schema; rebuild.
+- DB absent here is expected; this checkout never had `data/sqlite/`.
+
+### What the run decides
+Selects the winning EWMA halflife from `PHASE7_HALFLIVES = [7, 14, 21]` by lowest
+mean held-out Brier over forward-chaining K=5 CV (4 scored folds). Tie-break →
+shortest halflife. LightGBM hyperparams pinned to Phase 3 v13 defaults
+(`num_leaves=63, min_child_samples=100, reg_alpha=0.1, n_estimators=2000,
+early_stopping=50`). This is halflife selection ONLY — no hyperparameter tuning.
+
+### Gate discipline (do NOT skip)
+- Step 3 is a **results-review** gate, not just impl-review. The artifact JSON is
+  what council reviews. Harness-code impl-review fires on PR #72 now; the
+  results-review needs the committed artifact.
+- **Do NOT touch the val fold (2023-regular) until the Step 3 results-review is
+  CLEAR.** This is the locked addendum-v18 discipline.
 
 **Phase 7 data splits (locked, addendum v18):**
 - Training (inner-CV): 2021-regular + 2022-regular (~2,466 games)
-- Val fold: 2023-regular (~1,230 games)
+- Val fold: 2023-regular (~1,230 games) — **untouched until Step 3 CLEARs**
 - Test fold: 2024-regular (1,237 games) — **sealed**
-- Ship rule: Brier improvement ≥ 0.005 + 95% block-bootstrap CI excluding zero on both val and test. 80%-power MDE ≈ 0.009. CI is the binding constraint.
+- Ship rule: Brier improvement ≥ 0.005 + 95% block-bootstrap CI excluding zero on
+  both val and test. 80%-power MDE ≈ 0.009. CI is the binding constraint.
 - Postseason: explicitly out of scope.
 
-**Blockers:**
-- PR #68 council pending.
-- debt #22 coefficient change (NBA cold_coef 0.5→0.92) deferred — still needs council.
-- debt #18 (INJURY_COMPENSATION margin vs winprob) gated on debt #16 shipping.
+**Open PRs (1):**
+- **#72** `claude/phase7-step3-inner-cv` — Step 3 inner-CV harness (this work);
+  impl-review firing. https://github.com/Anguijm/sportsdata/pull/72
 
-**Council bootstrap gotcha (new, 2026-05-01):**
-Branches predating Phase C rollout (PR #66) have no `council.yml`. GitHub Actions uses HEAD branch workflow files for same-repo PRs — so no workflows fire at all. Fix: merge `origin/main` into the branch before opening the PR. Fast check: `git show origin/<branch>:.github/workflows/council.yml 2>/dev/null || echo "MISSING"`.
+**Shipped since Sprint 10.23 (verify against `git log origin/main`):**
+- PR #70 Phase 7 Step 1 (TOV% ε=1e-6 + std regression test) → `edcfb93`
+- PR #71 Phase 7 Step 2 (hybrid season-agg + EWMA-delta, 89-feature tensor) → `7cd2868`
+- PR #68 debt #16 (position-weighted injury multipliers) → `7a3adb6`
+
+**Deferred / still-open debts:**
+- debt #22: NBA `cold_coef` 0.5→0.92 (empirically grounded, 8,699-game replay) — needs council, model-change protocol.
+- debt #18 (INJURY_COMPENSATION margin vs winprob) — gated on debt #16 (now shipped), can proceed.
+
+**After Step 3 results-review CLEARs:** Step 4 = val-fold (2023-regular)
+evaluation with the winning halflife. Then regenerate this Start-here block.
+
+**Council bootstrap gotcha (carried from 2026-05-01):**
+Branches predating Phase C rollout (PR #66) have no `council.yml` → no workflows
+fire. Fix: merge `origin/main` into the branch before opening the PR. Fast check:
+`git show origin/<branch>:.github/workflows/council.yml 2>/dev/null || echo "MISSING"`.
+(Verified PRESENT on `claude/phase7-step3-inner-cv` before PR #72 opened.)
 
 ---
 
 ## Historical session log
 
 Older session-end states are preserved below. Most recent at top.
+
+### 2026-05-23 — Phase 7 Step 3 harness written; training run pending
+
+**What shipped (to branch + PR, not merged):**
+- `ml/nba/phase7_cv_runner.py` (196 lines) + `ml/nba/test_phase7_cv_runner.py`
+  (130 lines, 9 synthetic tests, all PASS) on `claude/phase7-step3-inner-cv` @ `f910d97`.
+- PR #72 opened; council impl-review on harness code firing.
+
+**What's pending:** the actual training run (see Start-here block). No DB in the
+working environment this session, so the run is deferred to a DB-equipped session.
+
+**Status reconciliation done this session:** `SESSION_HANDOFF.md` was ~3 weeks
+stale (top block dated 2026-05-01, but Steps 1+2 and debt #16 had merged since).
+Verified actual state from `git log origin/main` + GitHub PR list rather than
+local/memory state, per CLAUDE.md doc-hygiene rule.
 
 ### 2026-05-01 — Sprint 10.23 — Phase 7 plan locked + debt sweep council close-out
 

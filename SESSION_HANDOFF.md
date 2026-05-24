@@ -4,81 +4,86 @@
 
 ---
 
-## Start here next session — 2026-05-23 (Phase 7 Step 3 — RUN THE TRAINING)
+## Start here next session — 2026-05-24 (Phase 7 Path A complete; Step 4 next)
 
-**Your one job this session: run the Phase 7 Step 3 inner-CV training on a
-DB-equipped machine, commit the artifact, push.** Everything else below is
-context. The harness code is already written, pushed, and in review (PR #72).
+**TL;DR.** Phase 7 Path A (Steps 1-3 + the three prereq remediation PRs) is
+fully shipped to main. Step 3 winner is **halflife=14, mean Brier 0.233946**
+on 2021-regular + 2022-regular inner-CV. v5 incumbent Brier ~0.220 — Phase 7
+training-fold is worse, consistent with addendum v18 Risk #4 (val/test gates
+resolve the actual ship question). Next session: plan + execute Step 4
+(val-fold evaluation on 2023-regular).
 
-**Current branch:** `claude/phase7-step3-inner-cv` at `f910d97` (1 commit ahead
-of `origin/main` @ `7cd2868`). Harness only — no training has run yet.
+**Current branch:** `main` at `f07468d`.
 
-### THE TRAINING RUN — exact steps
+### What this session shipped (Sprint 10.25, all merged to main 2026-05-24)
 
-```bash
-git checkout claude/phase7-step3-inner-cv      # the branch is on origin
-/usr/bin/python3 -m pip install -r requirements-ml.txt   # lightgbm + numpy etc.
-ls -lh data/sqlite/sportsdata.db               # PREREQ — must exist (~few hundred MB)
-python ml/nba/phase7_cv_runner.py 2024-01-01   # the sweep; ~5-8 min wallclock
-```
+- PR #72 Step 3 inner-CV harness + ddof=1 fix → CLEAR 10/10
+- PR #73 addendum v19 (data-prereq gap surfaced) → CLEAR 10/10
+- PR #74 PR-1: widen `nba_eligible_games` view to 2021/2022 + codify pm.7 → CLEAR 10/10
+- PR #75 PR-2: backfill 2021/2022 (12,498 rows) + addendum v20 gate adjustment → CLEAR 9/10 (DQ FAIL on input-data state was override-resolved by lead architect)
+- PR #76 v21: features.py time-machine filter (updated_at → g.date) + TEST_FOLD_SEASONS refresh + smoke test → CLEAR 10/10
+- PR #77 PR-3: Step 3 inner-CV results artifact (h=14 winner) → WARN 8/10 (modest perf, pre-declared per v18 Risk #4)
+- PR #78 codify pm.8 council rule → CLEAR 10/10
 
-- CLI arg is `training_as_of`; `2024-01-01` is fine (just needs to post-date the
-  2021+2022 training fold's last game).
-- Output: prints a per-halflife Brier table + winner, and writes
-  `ml/nba/results/phase7-cv-<run_id>.json`.
-- **Then:** `git add ml/nba/results/phase7-cv-*.json`, commit, push. The push
-  re-triggers council — this is the **results-review** gate.
+### Step 3 canonical result
 
-**Failure modes (all documented in code docstring):**
-- `RuntimeError: No games matched PHASE7_TRAINING_SEASONS` → DB lacks
-  2021-regular / 2022-regular eligible games; check `nba_eligible_games`.
-- `ModuleNotFoundError: lightgbm` → pip step skipped.
-- `no such table: nba_eligible_games` → DB isn't the post-v10 schema; rebuild.
-- DB absent here is expected; this checkout never had `data/sqlite/`.
+| halflife | mean Brier | std Brier | n_features |
+|---|---|---|---|
+| 7 | 0.234568 | 0.007358 | 49 |
+| **14** | **0.233946** | **0.007206** | 49 |
+| 21 | 0.235377 | 0.006245 | 49 |
 
-### What the run decides
-Selects the winning EWMA halflife from `PHASE7_HALFLIVES = [7, 14, 21]` by lowest
-mean held-out Brier over forward-chaining K=5 CV (4 scored folds). Tie-break →
-shortest halflife. LightGBM hyperparams pinned to Phase 3 v13 defaults
-(`num_leaves=63, min_child_samples=100, reg_alpha=0.1, n_estimators=2000,
-early_stopping=50`). This is halflife selection ONLY — no hyperparameter tuning.
+Winner: **halflife=14**. Note that Brier separations (~0.0007–0.0014) are smaller
+than fold-std (~0.007), so the winner is selected per the lowest-mean rule but is
+not robustly differentiated. Artifact: `ml/nba/results/phase7-cv-20260524T094619Z-135677f1.json`.
 
-### Gate discipline (do NOT skip)
-- Step 3 is a **results-review** gate, not just impl-review. The artifact JSON is
-  what council reviews. Harness-code impl-review fires on PR #72 now; the
-  results-review needs the committed artifact.
-- **Do NOT touch the val fold (2023-regular) until the Step 3 results-review is
-  CLEAR.** This is the locked addendum-v18 discipline.
+### Step 4 — val-fold evaluation (next session)
 
-**Phase 7 data splits (locked, addendum v18):**
-- Training (inner-CV): 2021-regular + 2022-regular (~2,466 games)
-- Val fold: 2023-regular (~1,230 games) — **untouched until Step 3 CLEARs**
-- Test fold: 2024-regular (1,237 games) — **sealed**
-- Ship rule: Brier improvement ≥ 0.005 + 95% block-bootstrap CI excluding zero on
-  both val and test. 80%-power MDE ≈ 0.009. CI is the binding constraint.
+**What:** Train a single LightGBM model on 2021-regular + 2022-regular using
+halflife=14 (the Step 3 winner), Platt-calibrate on a held-out portion of the
+training fold, score on **2023-regular** (1,230 games), compute Brier and compare
+to v5's 2023-regular Brier.
+
+**Ship rule (per addendum v18):** Brier improvement ≥ 0.005 + 95% block-bootstrap
+CI excluding zero, on BOTH val (this step) and test (Step 8). 80%-power MDE ≈ 0.009.
+CI is the binding constraint.
+
+**Discipline:**
+- Step 4 does NOT touch the test fold (2024-regular sealed).
+- Plan-review council BEFORE writing the Step 4 code, per CLAUDE.md.
+- pm.7 applies: verify 2023-regular row counts at plan-review time
+  (`SELECT COUNT(*) FROM nba_eligible_games WHERE season='2023-regular'` — should
+  return 1,237 vs the expected 1,230 from the plan body; reconcile any diff).
+- pm.8 applies: the Step 4 implementation PR must include a smoke run with
+  non-degenerate feature variance assertions BEFORE impl-review CLEAR.
+
+### Deferred / parallel work
+
+- **PR-2b** (deferred per v20 A4, NOT gating): bbref cross-source audit on 20
+  hand-picked 2021/2022 games. ~15 min: Playwright bbref scraper + audit script.
+  Verification only.
+- **debt #22**: NBA `cold_coef` 0.5→0.92 — needs council, model-change protocol.
+- **debt #18** (INJURY_COMPENSATION margin vs winprob) — unblocked by debt #16 ship.
+
+### Council rules codified this session
+
+- **pm.7** (`.harness/council/README.md`): plan-review must verify data-prereq
+  existence at plan-review time. Canonical: v19 + PR #74.
+- **pm.8** (`.harness/council/README.md`): pipeline impl-review requires
+  end-to-end smoke run on representative data. Canonical: v21 + PR #76 + PR #78.
+
+Both rules came out of council-discipline gaps Path A surfaced: pattern-correctness
+in isolation ≠ production-correctness when the data path actually exists.
+
+### Phase 7 data splits (locked, addendum v18 + v20 R3 adjustment)
+
+- Training (inner-CV, DONE): 2021-regular (1,224/1,230 games, 99.5% coverage)
+  + 2022-regular (1,236/1,236 games, 100%) — 2,466 eligible, 12,498 box-stat rows
+  across 28 teams at 100%, 2 teams (CHI, TOR) at 93.9% per v20 R3' adjustment
+  (Omicron cluster Dec 14, 2021 – Feb 3, 2022).
+- Val fold (NEXT, Step 4): 2023-regular (1,237 games)
+- Test fold (sealed, Step 8): 2024-regular (1,237 games)
 - Postseason: explicitly out of scope.
-
-**Open PRs (1):**
-- **#72** `claude/phase7-step3-inner-cv` — Step 3 inner-CV harness (this work);
-  impl-review firing. https://github.com/Anguijm/sportsdata/pull/72
-
-**Shipped since Sprint 10.23 (verify against `git log origin/main`):**
-- PR #70 Phase 7 Step 1 (TOV% ε=1e-6 + std regression test) → `edcfb93`
-- PR #71 Phase 7 Step 2 (hybrid season-agg + EWMA-delta, 89-feature tensor) → `7cd2868`
-- PR #68 debt #16 (position-weighted injury multipliers) → `7a3adb6`
-
-**Deferred / still-open debts:**
-- debt #22: NBA `cold_coef` 0.5→0.92 (empirically grounded, 8,699-game replay) — needs council, model-change protocol.
-- debt #18 (INJURY_COMPENSATION margin vs winprob) — gated on debt #16 (now shipped), can proceed.
-
-**After Step 3 results-review CLEARs:** Step 4 = val-fold (2023-regular)
-evaluation with the winning halflife. Then regenerate this Start-here block.
-
-**Council bootstrap gotcha (carried from 2026-05-01):**
-Branches predating Phase C rollout (PR #66) have no `council.yml` → no workflows
-fire. Fix: merge `origin/main` into the branch before opening the PR. Fast check:
-`git show origin/<branch>:.github/workflows/council.yml 2>/dev/null || echo "MISSING"`.
-(Verified PRESENT on `claude/phase7-step3-inner-cv` before PR #72 opened.)
 
 ---
 

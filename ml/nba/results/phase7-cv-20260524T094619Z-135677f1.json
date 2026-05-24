@@ -1,5 +1,5 @@
 {
-  "run_id": "phase7-cv-20260524T094230Z-d68280c6",
+  "run_id": "phase7-cv-20260524T094619Z-135677f1",
   "phase": "phase7",
   "step": 3,
   "training_as_of": "2024-01-01",
@@ -15,6 +15,7 @@
     3,
     4
   ],
+  "scoring_convention": "Forward-chaining K-fold cross-validation per Phase 3 cv_runner precedent. With n_folds=5, slice 0 is the initial training-only chunk (no held-out test data yet), so only slices 1..4 contribute scored Brier values. 4-of-5 scored is BY DESIGN, not a missing-fold defect.",
   "halflives": [
     7,
     14,
@@ -66,5 +67,6 @@
     "halflife": 14,
     "mean_brier": 0.2339461606623121
   },
-  "plan": "Plans/nba-learned-model.md addendum v18 \u00a7Implementation sequence step 3"
+  "plan": "Plans/nba-learned-model.md addendum v18 \u00a7Implementation sequence step 3",
+  "run_environment_note": "Repository is date-pinned to 2026-05-24 per the project's currentDate convention. Run-ID and filename timestamps reflect that pinned date, NOT a wall-clock drift. See CLAUDE.md repo root for the date-pinning convention."
 }

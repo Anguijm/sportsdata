@@ -15,7 +15,43 @@
 
 import type { Sport } from '../schema/provenance.js';
 import { appendLog } from '../storage/json-log.js';
-import { getDb } from '../storage/sqlite.js';
+import { getDb, recordScrapeWarnings } from '../storage/sqlite.js';
+
+/** Extract the ESPN player ID from athlete URL fields.
+ *  ESPN's `injuries` endpoint stopped populating `athlete.id` and
+ *  `athlete.uid` on/before 2026-04-13; the only stable IDs left are
+ *  embedded in `athlete.headshot.href` (`.../players/full/<ID>.png`)
+ *  and `athlete.links[*].href` (`.../id/<ID>/...`).
+ *  Returns null if no ID found — caller falls back to a name+team
+ *  composite and increments a schema-drift counter for diagnostics.
+ */
+export function extractEspnPlayerId(athlete: unknown): string | null {
+  if (!athlete || typeof athlete !== 'object') return null;
+  const a = athlete as Record<string, unknown>;
+
+  // Future-proof: if ESPN restores `id`/`uid`, use it directly.
+  if (typeof a.id === 'string' && a.id) return a.id;
+  if (typeof a.id === 'number') return String(a.id);
+  if (typeof a.uid === 'string' && a.uid) return a.uid;
+
+  // Parse from headshot.href: ".../headshots/<sport>/players/full/<ID>.png"
+  const headshot = a.headshot as Record<string, unknown> | undefined;
+  const headshotHref = typeof headshot?.href === 'string' ? headshot.href : '';
+  const headshotMatch = headshotHref.match(/\/players\/full\/(\d+)\.png/);
+  if (headshotMatch) return headshotMatch[1];
+
+  // Parse from links[*].href: ".../player/_/id/<ID>/<slug>"
+  const links = Array.isArray(a.links) ? a.links : [];
+  for (const link of links) {
+    if (!link || typeof link !== 'object') continue;
+    const href = (link as Record<string, unknown>).href;
+    if (typeof href !== 'string') continue;
+    const linkMatch = href.match(/\/id\/(\d+)(?:\/|$)/);
+    if (linkMatch) return linkMatch[1];
+  }
+
+  return null;
+}
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
@@ -153,6 +189,7 @@ export async function fetchInjuries(sport: Sport): Promise<InjuryEntry[]> {
 
     const data = await response.json() as EspnInjuryResponse;
 
+    let schemaDriftMisses = 0;
     if (data.injuries) {
       for (const team of data.injuries) {
         if (!team.injuries) continue;
@@ -164,12 +201,33 @@ export async function fetchInjuries(sport: Sport): Promise<InjuryEntry[]> {
           // Skip active players — we only care about unavailable ones
           if (status === 'active') continue;
 
+          // ESPN's injuries endpoint stopped populating `athlete.id` at some
+          // point on or before 2026-04-13 (the day this scraper was first
+          // deployed). With the empty-string fallback that used to live
+          // here, every injury wrote `player_id=''` → PK collision on
+          // `(player_id, sport)` → only the LAST insert per sport survived
+          // (1 row per sport in the DB, despite 100+ injuries scraped).
+          // Detected 2026-05-28 via debt #18 prereq-evaluation snapshot.
+          //
+          // Fix: parse the player ID from `athlete.headshot.href` or
+          // `athlete.links[*].href` (both contain it as `.../id/<ID>/...`).
+          // Fall back to a name+team composite if no URL parse succeeds —
+          // a composite still gives distinct rows per (player, team) and
+          // tolerates the in-season trade case (DELETE-then-INSERT in
+          // storeInjuries clears prior rows per scrape).
+          const teamAbbr = inj.athlete.team?.abbreviation ?? '';
+          const playerId = extractEspnPlayerId(inj.athlete) ||
+                           `${inj.athlete.displayName}|${teamAbbr}`;
+          if (!extractEspnPlayerId(inj.athlete)) {
+            schemaDriftMisses++;
+          }
+
           entries.push({
-            playerId: String(inj.athlete.id ?? ''),
+            playerId,
             playerName: inj.athlete.displayName,
             position: inj.athlete.position?.abbreviation ?? '',
-            teamAbbr: inj.athlete.team?.abbreviation ?? '',
-            teamId: `${sport}:${inj.athlete.team?.abbreviation ?? 'UNK'}`,
+            teamAbbr,
+            teamId: `${sport}:${teamAbbr || 'UNK'}`,
             sport,
             status,
             injuryType: inj.details?.type ?? '',
@@ -180,6 +238,20 @@ export async function fetchInjuries(sport: Sport): Promise<InjuryEntry[]> {
           });
         }
       }
+    }
+
+    // If every injury this scrape used the composite fallback (no URL ID found),
+    // ESPN's schema has drifted again. Log a single warning so it's visible in
+    // scrape_warnings without spamming a row per athlete.
+    if (entries.length > 0 && schemaDriftMisses === entries.length) {
+      recordScrapeWarnings([{
+        sport,
+        source: 'espn-injuries',
+        game_id: null,
+        warning_type: 'schema_error',
+        detail: `All ${entries.length} ${sport} injuries fell back to name+team composite ID — extractEspnPlayerId() found no usable ID. ESPN schema likely drifted again; re-investigate athlete fields.`,
+        scraped_at: now,
+      }]);
     }
 
     appendLog('scrape', {

@@ -45,9 +45,30 @@ Verdicts from the script (`±0.15` tolerance vs in-code defaults `cold=0.5, hot=
 | NHL | N_all | not run | 4,345 | — |
 | NFL | N_all | not run | 871 | — |
 
-The N_all decrease for NBA + N_cold increase is hard to explain on first glance. The likely driver is **selection: today's snapshot may include a different time-window slice of `game_results` than the April snapshot did**, AND/OR the streak-detection has shifted because more games means more 3-game-cold sequences within long stretches.
+## Root cause: debt #1 (canonical_game_id) is unresolved (revision 2026-05-28b)
 
-The methodology produces estimates that shift by `1.3×` between successive snapshots taken ~5 weeks apart. That's not the property a coefficient calibration is supposed to have.
+Cross-snapshot inspection found the actual source of instability. Production has **two scrapers writing the same physical NBA games as separate rows**, with non-overlapping `game_id` namespaces and distinct season strings:
+
+| Scraper | game_id format | Season value (NBA 2023-24) | NBA 2023-24 row count |
+|---|---|---|---|
+| ESPN | `nba:401591869` | `'2023-24'` | 1,395 |
+| BDL | `nba:bdl-1037593` | `'2023-regular'` + `'2023-postseason'` | 1,237 + 82 = 1,319 |
+
+Same games, same teams, same dates — two row sets with **zero overlap on `game_id`**. The validate-debt22.py script counts both row sets as independent entries when replaying team game-history. Every NBA team's history double-counts each game, every 3-game cold streak gets identified ~2× (once per scraper namespace), and the resulting cold_coef estimate is distorted upward.
+
+Cross-source `N_all` comparison:
+
+| Source | NBA games | NBA cold_coef |
+|---|---|---|
+| LOCAL DB (May 24, BDL-only, single namespace) | 8,699 | 0.922 |
+| PROD DB (May 28, ESPN + BDL dual-namespace) | 7,887* | 2.227 |
+| April snapshot (smaller dataset, dual-namespace already present) | 3,738 | 0.515 |
+
+*Prod has fewer NBA games than local because local picked up Path A 2021/2022 BDL backfill but Path A code/data never deployed to Fly (those are pure local-dev artifacts). Prod still has the ESPN-namespace 2023-25 dual-counting.
+
+**This is debt #1** — `canonical_game_id schema migration` — flagged in BACKLOG as `P0-deferred, Sprint 8.5`. It has been deferred for ~5 months. The original Sprint-8.5-era impact assessment did not account for downstream effects on empirical-calibration analyses like debt #22; this PR is the first concrete evidence that debt #1 has a load-bearing downstream consequence.
+
+**The methodology instability the council's DQ FAIL flagged is correct — and the actual fix is at debt #1, not at the validate-debt22.py script (which is doing the right thing on the data it was given). Debt #22 is downstream-blocked on debt #1.**
 
 ## Why this matters for the ship decision
 
@@ -59,30 +80,47 @@ The original "model change protocol" deferral language in the PR #63 commit was 
 
 **Old framing**: NBA `cold_coef` 0.5 → 0.92. Council impl-review the change.
 
-**New framing**: streak-adjustment methodology robustness study, multi-sport.
+**Revised framing (after root cause)**: debt #22 is downstream-blocked on debt #1 (canonical_game_id schema migration). The streak-adjustment recalibration cannot produce stable estimates while the games table has two non-overlapping ID namespaces for the same physical games. Resolving debt #1 unblocks debt #22; not resolving debt #1 means any debt #22 work stays inside the dual-namespace distortion.
 
-Specifically, before any coefficient change ships, this debt needs:
+Two possible paths forward, depending on which debt the user prioritizes:
 
-1. **Bootstrap CI on the empirical estimates per sport.** The current script reports point estimates. A 95% CI gives the council a concrete sense of how stable each estimate is. If NBA `cold_coef` has CI like `[0.5, 3.5]`, even the in-code `0.5` is inside the CI and "no change" is a defensible council outcome.
-2. **Cross-window stability check.** Re-run on a series of historical end-dates (e.g., end-of-each-season since 2019) to see if the empirical coefficient is drifting over time, snapshot-dependent, or stationary. If drift is real, a fixed coefficient is the wrong abstraction — we'd want a rolling re-estimate or a different model form (e.g., a regression on streak length rather than a binary >=3-cold threshold).
-3. **Per-sport gate.** Sports with negative empirical coefficients (MLB, NHL today) need either: (a) the cold-streak adjustment removed for that sport (`coef = 0`), or (b) a positive-direction explanation for the negative empirical (e.g., regression-to-mean dominates the cold-streak signal for those sports).
-4. **Methodology audit.** Why does N_all change between snapshots? Is the script joining tables differently than expected? Is `game_results` being pruned somewhere? Does it depend on a derived column like `home_win IN (0,1)` that has hidden null behavior?
+### Path A — resolve debt #1 first, then debt #22
 
-Items 1-2 are quantitative work. Item 3 requires per-sport reasoning. Item 4 is a debugging audit.
+1. Draft `Plans/canonical-game-id-migration.md` per Sprint-8.5-era issue. Plan-review council.
+2. Implement: add `canonical_game_id` column, populate via `(sport, date, home_team_id, away_team_id)` natural key, dedupe games with multiple namespace rows.
+3. Cascade: update `game_results`, `nba_game_box_stats`, `predictions`, `nba_eligible_games` view, etc. to reference the canonical key.
+4. Once unified, re-run validate-debt22.py. Methodology robustness work (items below) becomes meaningful.
+
+### Path B — script-side dedupe as interim mitigation
+
+Add a dedupe pass to `scripts/validate-debt22.py`: collapse `(sport, date, home_team_id, away_team_id)` to a single team-history entry. This works around the dual-namespace issue WITHOUT solving debt #1. Caveat: every downstream analysis that uses `games` joins is similarly distorted (e.g., the Phase 3-7 NBA learned model work probably has the same issue — though Phase 7 used a season-filter that may have avoided cross-namespace double-counting).
+
+### Methodology robustness items (still needed after either Path)
+
+After debt #1 (or interim dedupe) lands, the following work remains:
+
+1. **Bootstrap CI on the empirical estimates per sport.**
+2. **Cross-window stability check** (re-run on a series of historical end-dates).
+3. **Per-sport gate** for sports with negative empirical (MLB, NHL today, even after dedupe — those negatives may be real, not artifactual).
+4. **Methodology audit** — once debt #1 lands, re-verify N_all is now stable across snapshots taken on different dates.
 
 ## Plans/* anchor
 
-Debt #22 should be moved out of the BACKLOG snapshot table and into a `Plans/streak-adjustment-recalibration.md` plan file, with the four work-items above as the implementation sequence. That plan needs a council plan-review (pm.7 + pm.8 apply) before any code is written — including methodology code, not just the eventual coefficient change.
+The methodology work above should be tracked in a `Plans/streak-adjustment-recalibration.md` plan file (post debt #1 resolution OR post script-side dedupe). The plan needs a council plan-review (pm.7 + pm.8 apply) before any code is written — including methodology code, not just the eventual coefficient change.
 
 ## What this PR ships
 
-- This document: `docs/debt-22-recalibration-findings.md`.
-- BACKLOG.md edit: move debt #22 out of "open debts (compact snapshot)" and into "Now (this week's actionable work)" as the reframed methodology study. Reword the entry to reflect the actual scope.
+- This document: `docs/debt-22-recalibration-findings.md`. Updated 2026-05-28b with root-cause finding (debt #1 dual-namespace IDs).
+- BACKLOG.md edit: debt #22 reframed in "Now" with the debt-#1 dependency made explicit.
 - **Zero source-code changes.** `src/analysis/predict.ts:358` stays at `0.5` for NBA cold_coef. No production behavior change.
 
-## Council framing
+## Council framing (revision after R1 FAIL)
 
-Council impl-review on this PR is reviewing the **finding + reframing**, not a coefficient change. Expected outcome: CLEAR or WARN with mitigations on the reframing itself; the actual coefficient change is a future PR that depends on the Plans/* anchor being drafted, council-CLEAR'd, and executed.
+Round 1 council on this PR (Gemini, 2026-05-28) returned FAIL 4/10 — the hard rule "any DQ FAIL → FAIL" fired correctly on the unexplained N_all instability between snapshots. The DQ finding was correct; the inferred cause (script methodology problem) was incomplete — the actual cause is upstream at the data layer (debt #1).
+
+The revision in this commit adds the root-cause finding **and acknowledges that debt #22 is downstream-blocked on debt #1**. The "ship 0.92" recommendation is even more clearly stale than the round-1 framing suggested: not just unstable, but unstable BECAUSE of a known-but-deferred architectural debt.
+
+Expected R2 council disposition: CLEAR or WARN on the revised framing. The next concrete action item moves to **debt #1** (canonical_game_id migration), not to a debt-#22-internal methodology study.
 
 ## What this PR does NOT do
 

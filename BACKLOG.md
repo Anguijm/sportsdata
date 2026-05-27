@@ -24,12 +24,8 @@ If `SESSION_HANDOFF.md` "Start here" block date is more than ~48 hours stale, re
 ## Now (this week's actionable work)
 
 - **debt #37: Phase 8 NBA learned-model strategic decision** — Phase 7 NULL RESULT closed at PR #83 (2026-05-24); v23 close-out at PR #84. Pick from candidate Phase 8 directions: (1) injury features, (2) schedule/travel features, (3) BPM with trade-pipeline fix, (4) declare v5 permanent NBA incumbent + redirect to other sports, (5) different model class. **Requires user-level prioritization session before any Phase 8 plan PR.**
-- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob (unblocked by debt #16 ship at PR #68). Can proceed independently of Phase 8 decision.
-- **debt #22** — NBA cold_coef 0.5→0.92 coefficient change; still needs council review. Unrelated to Phase 7 close-out; v5-specific calibration.
-
-## Next (queued, scoped)
-
-- (intentionally empty until debt #37 strategic decision lands)
+- **debt #18** — Fit INJURY_COMPENSATION separately for margin vs winprob. Infra dependency RESOLVED by PR #85 (injury scraper PK fix, 2026-05-28); production `player_injuries` jumped from 4 stale rows to ~1,386 fresh rows on first scrape post-deploy. Actual debt-#18 N≥200 evaluation now gated on ≥7 days of natural injury data accumulation. **Wait ≥7 days, then re-evaluate.**
+- **debt #22 (REFRAMED)** — Streak-adjustment methodology robustness study (multi-sport). The April-era "ship NBA cold_coef 0.92" recommendation is stale (today's snapshot says 2.227 for NBA; MLB and NHL show negative empirical coefficients). Findings: `docs/debt-22-recalibration-findings.md`. Pre-change work: bootstrap CI on per-sport coefficients, cross-window stability check, per-sport gate (or removal), methodology audit on why N_all shifts between snapshots. Plan file `Plans/streak-adjustment-recalibration.md` is the next deliverable; council plan-review applies (pm.7).
 
 ## Someday (daydreams, architectural ideas)
 
@@ -51,7 +47,7 @@ None. (`gh issue list --state open` returns empty as of 2026-04-27.)
 
 ## In flight (branches not yet merged)
 
-- `claude/phase7-v23-closeout` — Phase 7 NULL RESULT close-out addendum v23 + this BACKLOG update + memory updates. Pushing imminently; auto-council on diff.
+- `claude/debt-22-streak-coef-multi-sport-findings` — this PR: findings doc + BACKLOG reframing. **Zero source-code changes.** Council impl-review pending.
 
 ---
 

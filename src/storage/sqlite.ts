@@ -52,7 +52,12 @@ function initTables(db: Database.Database): void {
       odds_json TEXT,
       weather_json TEXT,
       provenance_json TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      -- Debt #1 (Sprint 10.26): natural-key-derived ID for cross-namespace
+      -- deduplication. Populated by ALTER+UPDATE migration block below for
+      -- existing rows; for new INSERTs, callers should set it explicitly.
+      -- Format: '<sport>:nk:<YYYY-MM-DD>:<home_short>:<away_short>'.
+      canonical_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS odds_raw (
@@ -164,6 +169,66 @@ function initTables(db: Database.Database): void {
   } catch {
     // Table doesn't exist yet (fresh install) — CREATE TABLE above includes the column.
   }
+
+  // Debt #1 migration (Sprint 10.26): add canonical_id to games table.
+  //
+  // Problem: NBA games table holds rows from two scrapers (BDL + ESPN) with
+  // non-overlapping id namespaces (`nba:bdl-1037593` vs `nba:401591869`) for
+  // the same physical games. Production DB has ~943 cross-namespace duplicate
+  // NBA games. Downstream analyses that aggregate by team-game history (e.g.,
+  // validate-debt22.py streak detection, Phase 7 feature builder) double-count.
+  //
+  // Fix: derive canonical_id from the natural key `(sport, date, home, away)`,
+  // dedupe-on-write. For sports without dual-namespace exposure (MLB/NHL/MLS/
+  // NFL/EPL today), canonical_id is just a deterministic restatement of the id;
+  // those rows are no-op-affected. For NBA cross-namespace pairs, both rows get
+  // the SAME canonical_id and downstream queries can DISTINCT/GROUP on it.
+  //
+  // Format: `<sport>:nk:<YYYY-MM-DD>:<home_short>:<away_short>`
+  //   - home_short / away_short strip the `<sport>:` prefix from team_id
+  //   - Example: nba:nk:2024-01-13:DAL:NO
+  // Limitations: same-day repeat matchups (MLB doubleheaders) WILL collide
+  // under this scheme. Debt #2 (MLB doubleheader handling) handles that with
+  // a game_number suffix at the natural-key level. For sports that have
+  // doubleheaders, downstream consumers must be aware OR debt #2 must precede
+  // any cross-namespace work for those sports. Today only NBA is dual-namespace
+  // and NBA has no same-day repeats; debt #1 scope is intentionally NBA-first.
+  //
+  // PR scope (this commit): add the column + index + populate. NO query changes
+  // (those are follow-up PRs). Production sqlite migration runs automatically
+  // on next getDb() call after deploy; UPDATE is whole-table but ~22k rows is
+  // sub-second.
+  //
+  // Backward compatibility: existing queries that use `games.id` continue
+  // working unchanged. canonical_id is additive metadata for now.
+  try {
+    const cols = db.pragma('table_info(games)') as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'canonical_id')) {
+      db.exec('ALTER TABLE games ADD COLUMN canonical_id TEXT');
+    }
+  } catch {
+    // Table doesn't exist yet on fresh install — CREATE TABLE above does not yet
+    // include canonical_id (would require schema bump). Migration block on next
+    // getDb() call handles populating it.
+  }
+  // Populate canonical_id for any games row that lacks one. Idempotent: the
+  // WHERE clause skips already-populated rows so re-running is a no-op.
+  // Uses substr(date,1,10) to normalize across the two date formats observed
+  // in production: 'YYYY-MM-DD' (BDL) and 'YYYY-MM-DDTHH:MM[Z]' (ESPN).
+  // Uses replace() to strip the sport prefix from team_id ('nba:DAL' -> 'DAL').
+  db.exec(`
+    UPDATE games
+    SET canonical_id =
+      sport || ':nk:' ||
+      substr(date, 1, 10) || ':' ||
+      replace(home_team_id, sport || ':', '') || ':' ||
+      replace(away_team_id, sport || ':', '')
+    WHERE canonical_id IS NULL
+  `);
+  // Index for DISTINCT/GROUP BY canonical_id query patterns. Non-unique because
+  // cross-namespace duplicates intentionally produce two rows with the same
+  // canonical_id (that IS the point of debt #1).
+  db.exec('CREATE INDEX IF NOT EXISTS idx_games_canonical_id ON games(canonical_id)');
 
   // Phase 3 step 3 migration: update nba_eligible_games to add neutral_site column.
   // Phase 7 addendum v19 migration: widen season whitelist to include

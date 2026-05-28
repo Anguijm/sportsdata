@@ -39,19 +39,59 @@ def sigmoid(x):
 conn = sqlite3.connect(DB_PATH)
 conn.row_factory = sqlite3.Row
 
+# Debt #1 (PR A merged 2026-05-28 at #87): games table has canonical_id
+# column populated by ALTER+UPDATE in storage/sqlite.ts. Two scrapers (BDL +
+# ESPN) produce non-overlapping id namespaces for the same NBA physical games;
+# the GROUP BY canonical_id below collapses the 944 known cross-namespace
+# duplicate pairs into a single team-history entry per physical game.
+#
+# Pre-PR-A behavior: this script joined on g.id and counted both scraper rows
+# for the same game, double-counting every NBA streak and distorting the
+# empirical cold_coef estimate (April single-namespace LOCAL: 0.92; today's
+# dual-namespace PROD pre-dedup: 2.227). The first stable estimate is the
+# one this query produces post-dedup; for sports without dual-namespace
+# (MLB/NFL/NHL/MLS/EPL today), canonical_id collapses no rows and behavior
+# is unchanged.
+#
+# We pick the lowest game_id per canonical_id as the survivor — deterministic
+# selection means the script's output is reproducible across runs.
 rows = conn.execute("""
+    WITH dedup AS (
+      SELECT
+        MIN(g.id) AS canonical_game_id,
+        g.canonical_id,
+        g.sport,
+        g.date,
+        g.home_team_id,
+        g.away_team_id,
+        COALESCE(g.season, 0) AS season
+      FROM games g
+      WHERE g.sport IN ('nba','nfl','mlb','nhl')
+        AND g.canonical_id IS NOT NULL
+      GROUP BY g.canonical_id
+    )
     SELECT gr.game_id, gr.sport, gr.date, gr.home_score, gr.away_score,
-           gr.home_win, gr.margin, g.home_team_id, g.away_team_id,
-           COALESCE(g.season, 0) as season
-    FROM game_results gr
-    JOIN games g ON gr.game_id = g.id
-    WHERE gr.sport IN ('nba','nfl','mlb','nhl')
-      AND gr.margin IS NOT NULL
+           gr.home_win, gr.margin, dedup.home_team_id, dedup.away_team_id,
+           dedup.season
+    FROM dedup
+    JOIN game_results gr ON gr.game_id = dedup.canonical_game_id
+    WHERE gr.margin IS NOT NULL
       AND gr.home_win IN (0, 1)
     ORDER BY gr.date, gr.game_id
 """).fetchall()
 
-print(f"Loaded {len(rows)} scored games across NBA/NFL/MLB/NHL.\n")
+# Diagnostic: pre-dedup count for visibility
+pre_dedup_total = conn.execute("""
+    SELECT COUNT(*) FROM games g
+    JOIN game_results gr ON gr.game_id = g.id
+    WHERE g.sport IN ('nba','nfl','mlb','nhl')
+      AND gr.margin IS NOT NULL
+      AND gr.home_win IN (0, 1)
+""").fetchone()[0]
+
+print(f"Loaded {len(rows)} scored games across NBA/NFL/MLB/NHL "
+      f"(deduped from {pre_dedup_total} pre-canonical_id rows; "
+      f"delta = {pre_dedup_total - len(rows)} cross-namespace dupes collapsed).\n")
 
 # ── Replay team states ──
 

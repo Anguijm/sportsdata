@@ -15,7 +15,10 @@ name: Harness Drift Check
 env:
   # The harness-cli release tag this repo is pinned to.
   # Bump deliberately; see https://github.com/Anguijm/harness-cli/releases.
+  # HARNESS_SHA must be updated alongside (immutable commit pin for the
+  # actual checkout — supply-chain guard against tag force-push).
   HARNESS_VERSION: V0.2.1
+  HARNESS_SHA: c9a5bedea63afbc4e94b3f0625de32836ccda0c5
 
 on:
   schedule:
@@ -39,7 +42,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Anguijm/harness-cli
-          ref: ${{ env.HARNESS_VERSION }}
+          # Pin to immutable SHA, not tag (tag could theoretically be force-pushed).
+          # HARNESS_VERSION above is the human-readable label for the same release.
+          ref: ${{ env.HARNESS_SHA }}
           path: .harness-cli-canonical
 
       - uses: actions/setup-node@v4

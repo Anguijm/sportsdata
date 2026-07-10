@@ -17,8 +17,8 @@ env:
   # Bump deliberately; see https://github.com/Anguijm/harness-cli/releases.
   # HARNESS_SHA must be updated alongside (immutable commit pin for the
   # actual checkout — supply-chain guard against tag force-push).
-  HARNESS_VERSION: V0.2.1
-  HARNESS_SHA: c9a5bedea63afbc4e94b3f0625de32836ccda0c5
+  HARNESS_VERSION: V0.3.2
+  HARNESS_SHA: 644cae64ab50e691b73f19446b25d32874dcdfe2
 
 on:
   schedule:
